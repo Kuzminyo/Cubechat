@@ -64,6 +64,17 @@ class _FakeRelayServer {
     }
   }
 
+  Completer<void>? _upgradeHold;
+
+  /// Leave every new socket mid-handshake until [releaseUpgrades]: the relay
+  /// that is still connecting, as on a cold start over EDGE.
+  void holdUpgrades() => _upgradeHold = Completer<void>();
+
+  void releaseUpgrades() {
+    _upgradeHold?.complete();
+    _upgradeHold = null;
+  }
+
   String get url => 'ws://localhost:${_server.port}';
 
   static Future<_FakeRelayServer> start() async {
@@ -75,6 +86,7 @@ class _FakeRelayServer {
         await req.response.close();
         return;
       }
+      await relay._upgradeHold?.future;
       final ws = await WebSocketTransformer.upgrade(req);
       relay._sockets.add(ws);
       final socketNo = relay.connections++;
@@ -192,12 +204,21 @@ class _FakeRelayServer {
 /// The real meter, with every timing the pool hands it written down — so a
 /// test can check *what* was measured, not only what the meter concluded.
 class _RecordingMeter extends LinkQualityMeter {
+  _RecordingMeter({super.clock});
+
   final List<(String url, Duration elapsed)> acks = [];
+  final List<String> silences = [];
 
   @override
   void recordAck(String url, Duration elapsed) {
     acks.add((url, elapsed));
     super.recordAck(url, elapsed);
+  }
+
+  @override
+  void recordSilence(String url) {
+    silences.add(url);
+    super.recordSilence(url);
   }
 }
 
@@ -965,7 +986,7 @@ void main() {
     late _FakeRelayServer pubB;
     late _FakeRelayServer geo;
     late DateTime now;
-    late LinkQualityMeter meter;
+    late _RecordingMeter meter;
     late WebSocketNostrRelayClient client;
 
     const fast = Duration(milliseconds: 100);
@@ -985,14 +1006,17 @@ void main() {
       addTearDown(pubB.stop);
       addTearDown(geo.stop);
       now = DateTime.utc(2026, 10, 20, 12);
-      meter = LinkQualityMeter(clock: () => now);
+      meter = _RecordingMeter(clock: () => now);
       addTearDown(meter.dispose);
     });
 
+    /// [connected] is how many sockets to wait for: all of them by default.
     Future<void> startPool({
       int? sinceSeconds,
       List<String> media = const [],
       String? mediaPrimary,
+      Duration? publishAckTimeout,
+      int? connected,
     }) async {
       client = WebSocketNostrRelayClient(
         relayUrls: const [],
@@ -1003,12 +1027,13 @@ void main() {
         anchorUrl: anchor.url,
         linkQuality: meter,
         sinceSeconds: sinceSeconds,
+        publishAckTimeout: publishAckTimeout,
       );
       addTearDown(client.dispose);
       client.start();
       await _until(
-        () => openUrls(client).length == 4 + media.length,
-        reason: 'every relay connected',
+        () => openUrls(client).length == (connected ?? 4 + media.length),
+        reason: 'relays connected',
       );
     }
 
@@ -1051,12 +1076,106 @@ void main() {
       await anchor.stop();
       await anchor.dropSockets();
       await _until(
-        () => client.states[anchorUrl] != RelayState.connected,
+        () => client.states[anchorUrl] == RelayState.failed,
         reason: 'our relay down',
       );
       goSlow();
       await _until(() => geo.activeConnections == 0, reason: 'geo let go');
       expect(openUrls(client), {pubA.url, pubB.url});
+    });
+
+    test('slow mode entered while our relay is still connecting keeps it',
+        () async {
+      // A cold start over EDGE: every socket handshakes at once, the first to
+      // finish takes past 5 s and makes the link slow, and ours is still
+      // connecting. It is the relay every peer listens on, so it stays.
+      anchor.holdUpgrades();
+      await startPool(connected: 3);
+      expect(client.states[anchor.url], RelayState.connecting);
+      goSlow();
+      await _until(
+        () => geo.activeConnections == 0 && pubB.activeConnections == 0,
+        reason: 'the rest let go',
+      );
+      expect(client.states[anchor.url], RelayState.connecting);
+      anchor.releaseUpgrades();
+      await _until(
+        () => client.states[anchor.url] == RelayState.connected,
+        reason: 'ours connected',
+      );
+      expect(openUrls(client), {anchor.url, pubA.url});
+      expect(anchor.connections, 1);
+    });
+
+    test(
+        'our relay failing while slow opens a second public one, and its '
+        'return lets that one go again', () async {
+      await startPool();
+      goSlow();
+      await _until(() => pubB.activeConnections == 0, reason: 'pubB let go');
+      // Ours drops us; the server stays up, so it comes back on its backoff.
+      await anchor.dropSockets();
+      await _until(
+        () => pubB.activeConnections == 1,
+        reason: 'a second public relay while ours is down',
+      );
+      expect(client.states[anchor.url], isNot(RelayState.connected));
+      await _until(
+        () =>
+            client.states[anchor.url] == RelayState.connected &&
+            pubB.activeConnections == 0,
+        reason: 'ours back, the extra one let go',
+      );
+      expect(openUrls(client), {anchor.url, pubA.url});
+      expect(anchor.connections, 2, reason: 'reconnected on its own, once');
+    });
+
+    test('slow, fast and slow again keeps the same three sockets', () async {
+      await startPool();
+      goSlow();
+      await _until(
+        () => geo.activeConnections == 0 && pubB.activeConnections == 0,
+        reason: 'the rest let go',
+      );
+      goFast();
+      await _until(
+        () => openUrls(client).length == 4,
+        reason: 'every relay back',
+      );
+      goSlow();
+      await _until(
+        () => geo.activeConnections == 0 && pubB.activeConnections == 0,
+        reason: 'the rest let go again',
+      );
+      expect(openUrls(client), {anchor.url, pubA.url});
+      // The kept two were never reopened, and nothing was opened twice.
+      expect(anchor.connections, 1);
+      expect(pubA.connections, 1);
+      expect(anchor.activeConnections, 1);
+      expect(pubA.activeConnections, 1);
+      expect(geo.connections, 2);
+      expect(pubB.connections, 2);
+    });
+
+    test(
+        'a publish left waiting on a socket we let go settles at once, '
+        'and is no silence', () async {
+      // A long deadline, so waiting it out cannot pass for settling.
+      await startPool(publishAckTimeout: const Duration(seconds: 4));
+      geo.okAnswer = null;
+      final watch = Stopwatch()..start();
+      final beacon = NostrTransport(signer: signer, relay: client).sendFrame(
+        recipientNpubHex: 'ab' * 32,
+        frameBytes: frame,
+        lane: RelayLane.location,
+      );
+      await _until(() => geo.received.isNotEmpty, reason: 'beacon written');
+      goSlow();
+      final receipt = await beacon;
+      expect(watch.elapsed, lessThan(const Duration(seconds: 2)));
+      expect(receipt.accepted, 0);
+      // Only the two goSlow() fed in: closing geo ourselves is not the link.
+      expect(meter.silences, hasLength(2));
     });
 
     test('a wake in slow mode does not reopen what was let go', () async {

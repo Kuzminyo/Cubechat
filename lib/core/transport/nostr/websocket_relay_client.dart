@@ -144,8 +144,9 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   final LinkQualityMeter _linkQuality;
   final bool _ownsLinkQuality;
 
-  /// Our own relay, the conversation socket a slow link keeps while it is up.
-  /// See [_slowKeep].
+  /// Our own relay, the conversation socket a slow link always keeps — the
+  /// meeting point every build with lanes listens on, and for a peer with an
+  /// edited relay list the only relay we share. See [_slowKeep].
   final String? anchorUrl;
 
   /// Where conversation traffic goes, in the caller's order.
@@ -159,10 +160,15 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// and every copy of a publish queues behind the others. What a slow link
   /// keeps is the least that still delivers:
   ///
-  /// - ours ([anchorUrl]), if it is up — every build with lanes listens there;
+  /// - ours ([anchorUrl]), always. Still connecting counts — on a cold start
+  ///   over EDGE every socket handshakes at once, the first past 5 s makes
+  ///   the link slow, and ours is usually still mid-handshake. Judged by
+  ///   "open right now" it was closed for the whole slow spell, which on EDGE
+  ///   can be all day. Down, it reconnects on its own backoff;
   /// - one public conversation relay beside it, the fastest measured, because
   ///   a peer on an older build may not listen on ours;
-  /// - two public ones when ours is down, so text never loses its road;
+  /// - a second public one only while ours is [RelayState.failed], so text
+  ///   never loses its road — chosen again whenever ours fails or comes back;
   /// - our media relay, so a file keeps the one road its chunks take anyway.
   ///
   /// Location and the public media fallbacks wait for the link to recover. A
@@ -381,19 +387,49 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
       return;
     }
     final keep = _slowKeep = _chooseSlowKeep();
-    final letGo = _conns.keys.where((u) => !keep.contains(u)).toList();
     DebugLog.instance.log(
       'NOSTR',
-      'link slow (${describeLink()}) — keeping ${keep.join(', ')}; '
-          'closing ${letGo.length} other socket(s) until it recovers',
+      'link slow (${describeLink()}) — keeping ${keep.join(', ')} '
+          'until it recovers',
     );
-    for (final url in letGo) {
-      final conn = _conns.remove(url)!;
-      unawaited(conn.close());
-      _forgetOwed(url);
+    _enforceSlowKeep(keep);
+  }
+
+  /// Our relay failed or came back while the link is slow: the second public
+  /// relay that stands in for it is opened, or let go. See [_slowKeep].
+  void _rechooseSlowKeep() {
+    final before = _slowKeep;
+    if (_disposed || before == null) return;
+    final keep = _chooseSlowKeep();
+    if (setEquals(before, keep)) return;
+    _slowKeep = keep;
+    DebugLog.instance.log(
+      'NOSTR',
+      '$anchorUrl ${_states[anchorUrl]?.name} on a slow link — now keeping '
+          '${keep.join(', ')}',
+    );
+    _enforceSlowKeep(keep);
+  }
+
+  /// Let go of every connection outside [keep], and open any in it that has
+  /// none yet.
+  void _enforceSlowKeep(Set<String> keep) {
+    for (final url in _conns.keys.where((u) => !keep.contains(u)).toList()) {
+      _letGo(url);
     }
-    // A kept relay that had no connection yet gets one.
     start();
+  }
+
+  void _letGo(String url) {
+    final conn = _conns.remove(url);
+    if (conn == null) return;
+    unawaited(conn.close());
+    _forgetOwed(url);
+    // A write still waiting on this socket will never hear from it, and that
+    // is our doing, not the link's: it stops waiting for it at once.
+    for (final pending in _pending.values.toList()) {
+      pending.letGo(url);
+    }
   }
 
   /// See [_slowKeep]. Never empty while any relay is configured: if the rule
@@ -401,14 +437,11 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// worse than too many.
   Set<String> _chooseSlowKeep() {
     bool isOpen(String url) => _conns[url]?.isOpen ?? false;
-    final anyOpen = _conns.values.any((c) => c.isOpen);
     final anchor = anchorUrl;
-    // Before anything has connected "open" says nothing, so ours is assumed.
-    final keepAnchor = anchor != null &&
-        _conversationUrls.contains(anchor) &&
-        (isOpen(anchor) || !anyOpen);
+    final keepAnchor = anchor != null && _conversationUrls.contains(anchor);
+    final anchorUp = keepAnchor && _states[anchor] != RelayState.failed;
     final public = _conversationUrls.where((u) => u != anchor).toList();
-    final wanted = keepAnchor ? 1 : 2;
+    final wanted = anchorUp ? 1 : 2;
     final picked = <String>[];
     // Open ones first, the fastest measured before the rest; then, if too few
     // are up, ones that are down — a relay reconnecting is still a road, and
@@ -529,6 +562,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     final now = DateTime.now();
     final willing = inLane.where((c) => !_isPausing(c.url, now)).toList();
     var targets = willing.isNotEmpty ? willing : inLane;
+    final everyTarget = targets;
     final id = event.id;
     final payload = NostrRelayProtocol.event(event);
     // Our own relay first, and alone — see [_lanePrimary]. Anything short of
@@ -564,6 +598,11 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     }
     receipt ??= await _publishTo(targets, id, payload);
 
+    // Slow mode closed every socket this went to while it waited (see
+    // [_letGo]). Nobody was there to answer, which says nothing about the
+    // link: no probe of sockets we closed ourselves, and no silence.
+    final allLetGo = everyTarget.every((c) => !identical(_conns[c.url], c));
+
     // Nobody answered at all: find out whether anybody is there.
     //
     // One relay being slow is ordinary, and the publish already settles on the
@@ -584,7 +623,10 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     // measured link needs (see [defaultProbeTimeout]) rather than calling a
     // crawling socket dead and paying a new TLS handshake to replace it. A
     // socket that misses even the stretched probe is reopened as before.
-    if (id != null && receipt.accepted == 0 && receipt.rejected == 0) {
+    if (id != null &&
+        receipt.accepted == 0 &&
+        receipt.rejected == 0 &&
+        !allLetGo) {
       final before = targets.length;
       final probeTimeout = _currentProbeTimeout;
       final alive = await Future.wait([
@@ -620,6 +662,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
         receipt.accepted == 0 &&
         receipt.rejected == 0 &&
         !primaryRefused &&
+        !allLetGo &&
         !_disposed) {
       _linkQuality.recordSilence(targets.first.url);
     }
@@ -672,7 +715,11 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     if (identical(_pending[id], pending)) _pending.remove(id);
     // Only the bookkeeping for a late answer here. Whether the publish as a
     // whole went unanswered is decided once, in [publish], over every write.
-    if (pending.timedOut && !_disposed) _owe(id, pending.unanswered, sentAt);
+    // A socket we let go meanwhile will never answer this write, and a later
+    // one under the same url must not be timed from it.
+    if (pending.timedOut && !_disposed) {
+      _owe(id, pending.unanswered.where(_conns.containsKey).toSet(), sentAt);
+    }
     return receipt;
   }
 
@@ -820,6 +867,11 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     if (_states[url] == state) return;
     _states[url] = state;
     if (!_stateController.isClosed) _stateController.add(states);
+    // Connecting is neither: ours still counts as kept until it has failed.
+    if (url == anchorUrl &&
+        (state == RelayState.failed || state == RelayState.connected)) {
+      _rechooseSlowKeep();
+    }
   }
 
   /// Gate an inbound event and hand it to the merged stream. Everything that
@@ -923,6 +975,10 @@ class _PendingPublish {
   final _completer = Completer<PublishReceipt>();
   final List<String> _rejections = [];
   final Set<String> _answered = <String>{};
+
+  /// Relays among [urls] whose socket the pool closed on purpose while this
+  /// waited; they will never answer, and are not waited for.
+  final Set<String> _letGo = <String>{};
   int _accepted = 0;
   int _rejected = 0;
   Timer? _deadline;
@@ -935,12 +991,23 @@ class _PendingPublish {
 
   /// Relays among [urls] that have said nothing yet.
   Set<String> get unanswered =>
-      urls.where((u) => !_answered.contains(u)).toSet();
+      urls.where((u) => !_answered.contains(u) && !_letGo.contains(u)).toSet();
 
   /// Whether an `OK` from [url] now would be this write's first answer from
   /// it — the only one worth timing against [sentAt].
   bool awaits(String url) =>
-      !isSettled && urls.contains(url) && !_answered.contains(url);
+      !isSettled &&
+      urls.contains(url) &&
+      !_answered.contains(url) &&
+      !_letGo.contains(url);
+
+  /// Stop waiting for [url]: its socket was closed on purpose. Settles at
+  /// once when nobody else is left to answer, rather than at the deadline.
+  void letGo(String url) {
+    if (!awaits(url)) return;
+    _letGo.add(url);
+    if (_accepted + _rejected + _letGo.length >= sentTo) settle();
+  }
 
   void record({
     required String url,
@@ -965,7 +1032,9 @@ class _PendingPublish {
     //
     // Refusal still needs the full count, because "every relay refused" is only
     // knowable once every relay has spoken.
-    if (_accepted > 0 || _accepted + _rejected >= sentTo) settle();
+    if (_accepted > 0 || _accepted + _rejected + _letGo.length >= sentTo) {
+      settle();
+    }
   }
 
   Future<PublishReceipt> wait(Duration timeout) {
