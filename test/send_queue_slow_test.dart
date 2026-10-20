@@ -107,4 +107,29 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('21 queued in Ukrainian reads 21, not 1', (tester) async {
+    // `=1{…}` is emitted as the `one` form, and Ukrainian's `one` covers 21,
+    // 31, 41… — so the literal "1" in it was shown for all of them.
+    await pump(tester, slow: true, queued: 21, locale: const Locale('uk'));
+    expect(
+      find.text('Повільна мережа — надсилаємо 21 повідомлення'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the waiting row reads 21, not 1, in Ukrainian too',
+      (tester) async {
+    // Same pattern in the older string beside it.
+    await pump(tester, slow: false, queued: 21, locale: const Locale('uk'));
+    expect(
+      find.text('21 повідомлення чекає на зв’язок'),
+      findsOneWidget,
+    );
+    await pump(tester, slow: false, queued: 1, locale: const Locale('uk'));
+    expect(
+      find.text('1 повідомлення чекає на зв’язок'),
+      findsOneWidget,
+    );
+  });
 }

@@ -633,7 +633,7 @@ class AppLocalizationsUk extends AppLocalizations {
       other: '$count повідомлення чекають на зв’язок',
       many: '$count повідомлень чекають на зв’язок',
       few: '$count повідомлення чекають на зв’язок',
-      one: '1 повідомлення чекає на зв’язок',
+      one: '$count повідомлення чекає на зв’язок',
     );
     return '$_temp0';
   }
@@ -646,7 +646,7 @@ class AppLocalizationsUk extends AppLocalizations {
       other: 'Повільна мережа — надсилаємо $count повідомлення',
       many: 'Повільна мережа — надсилаємо $count повідомлень',
       few: 'Повільна мережа — надсилаємо $count повідомлення',
-      one: 'Повільна мережа — надсилаємо 1 повідомлення',
+      one: 'Повільна мережа — надсилаємо $count повідомлення',
     );
     return '$_temp0';
   }
