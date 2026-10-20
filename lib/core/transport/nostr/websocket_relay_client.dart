@@ -55,7 +55,9 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     Duration? probeTimeout,
     LinkQualityMeter? linkQuality,
     this.anchorUrl,
-  })  : _linkQuality = linkQuality ?? LinkQualityMeter(),
+    List<String> pushWatchedUrls = const <String>[],
+  })  : _pushWatched = Set.unmodifiable(pushWatchedUrls),
+        _linkQuality = linkQuality ?? LinkQualityMeter(),
         _ownsLinkQuality = linkQuality == null,
         _authSigner = authSigner,
         _probeTimeout = probeTimeout ?? defaultProbeTimeout,
@@ -149,6 +151,11 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// edited relay list the only relay we share. See [_slowKeep].
   final String? anchorUrl;
 
+  /// The public relays the push service watches for the doorbell — see
+  /// `RelaySettings.pushWatchedUrls`. A slow link keeps one of these as its
+  /// public conversation relay when it can; see [_chooseSlowKeep].
+  final Set<String> _pushWatched;
+
   /// Where conversation traffic goes, in the caller's order.
   final List<String> _conversationUrls;
 
@@ -165,8 +172,10 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   ///   the link slow, and ours is usually still mid-handshake. Judged by
   ///   "open right now" it was closed for the whole slow spell, which on EDGE
   ///   can be all day. Down, it reconnects on its own backoff;
-  /// - one public conversation relay beside it, the fastest measured, because
-  ///   a peer on an older build may not listen on ours;
+  /// - one public conversation relay beside it, because a peer on an older
+  ///   build may not listen on ours — one the push service watches when there
+  ///   is one ([_pushWatched]), or the doorbell stops ringing; the fastest
+  ///   measured only among equals;
   /// - a second public one only while ours is [RelayState.failed], so text
   ///   never loses its road — chosen again whenever ours fails or comes back;
   /// - our media relay, so a file keeps the one road its chunks take anyway.
@@ -443,13 +452,30 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     final public = _conversationUrls.where((u) => u != anchor).toList();
     final wanted = anchorUp ? 1 : 2;
     final picked = <String>[];
-    // Open ones first, the fastest measured before the rest; then, if too few
-    // are up, ones that are down — a relay reconnecting is still a road, and
-    // keeping none would leave peers on older builds with no way to hear us.
-    for (final pool in [public.where(isOpen).toList(), public]) {
+    final before = _slowKeep ?? const <String>{};
+    // The relays the push service watches come first, whatever is faster: the
+    // doorbell rings only for events on those (see `nostr_transport.dart`
+    // above `wakesPeer`), so a slow phone keeping nostr.mom beside ours sent
+    // every text and call invite where nothing watched — delivered ticks, no
+    // notification, a call that does not ring a sleeping iPhone. Costs, when
+    // wrong, a public relay a few hundred milliseconds slower than the best.
+    final watched = public.where(_pushWatched.contains).toList();
+    // Within each tier open ones first, then — if too few are up — ones that
+    // are down: a relay reconnecting is still a road, and keeping none would
+    // leave peers on older builds with no way to hear us. One already kept is
+    // kept again before the fastest is measured afresh, so a re-pick when ours
+    // fails or comes back does not swap the public relay for a new handshake.
+    for (final pool in [
+      watched.where(isOpen).toList(),
+      watched,
+      public.where(isOpen).toList(),
+      public,
+    ]) {
       final rest = pool.where((u) => !picked.contains(u)).toList();
       while (picked.length < wanted && rest.isNotEmpty) {
-        final next = _linkQuality.fastestOf(rest) ?? rest.first;
+        final kept = rest.where(before.contains).toList();
+        final among = kept.isNotEmpty ? kept : rest;
+        final next = _linkQuality.fastestOf(among) ?? among.first;
         picked.add(next);
         rest.remove(next);
       }

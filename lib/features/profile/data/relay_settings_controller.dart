@@ -61,6 +61,24 @@ class RelaySettings {
     'wss://nostr.mom',
   ];
 
+  /// The relays the push service watches for the doorbell: the default of
+  /// `RELAYS` in `push/src/index.js` (and `push/.env.example`).
+  ///
+  /// **The two lists must agree.** A sleeping phone is woken only by events on
+  /// a relay this list names — `nostr_transport.dart` says so above
+  /// `wakesPeer`: the doorbell works because conversation traffic goes to
+  /// relays on that list. Every other conversation relay carries the text
+  /// and nobody is told. A slow link keeps a single public relay beside ours
+  /// ([WebSocketNostrRelayClient] `_chooseSlowKeep`), and picked by speed
+  /// alone it could be `nostr.mom`: delivered ticks with no notification, and
+  /// a call from a phone on EDGE that did not ring a sleeping iPhone (final
+  /// review of the weak-network branch, 2026-10-20). Change the server's
+  /// list, change this one.
+  static const pushWatchedUrls = <String>[
+    'wss://nos.lol',
+    'wss://relay.primal.net',
+  ];
+
   /// Where media chunks go, so a burst does not throttle a conversation.
   ///
   /// A transfer is one publish per 63 KiB chunk — a photo is a handful of

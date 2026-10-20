@@ -1057,6 +1057,9 @@ class MessagingService {
         // The conversation socket a slow link always keeps — see
         // [WebSocketNostrRelayClient.anchorUrl].
         anchorUrl: RelaySettings.meetingPointUrl,
+        // Which public relay that link keeps beside ours: one the push service
+        // watches, so a slow phone's texts still ring the doorbell.
+        pushWatchedUrls: RelaySettings.pushWatchedUrls,
         authSigner: signer,
         // Subscribed to like any other — see [RelayLane]. Only *publishing* is
         // split, so a chunk or a beacon never lands somewhere the recipient is

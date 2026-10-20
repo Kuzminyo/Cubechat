@@ -1068,6 +1068,43 @@ void main() {
       expect(client.states[pubB.url], RelayState.idle);
     });
 
+    test(
+        'the kept public relay is one the push service watches, even when '
+        'another is faster', () async {
+      // The doorbell only rings for events on the relays the push service
+      // watches (nos.lol and relay.primal.net). Kept by speed alone, a slow
+      // phone could hold nostr.mom and ours — and its texts and call invites
+      // would stop waking a sleeping phone.
+      final mom = await _FakeRelayServer.start();
+      addTearDown(mom.stop);
+      client = WebSocketNostrRelayClient(
+        relayUrls: const [],
+        conversationRelayUrls: [anchor.url, pubA.url, pubB.url, mom.url],
+        locationRelayUrls: [geo.url],
+        anchorUrl: anchor.url,
+        pushWatchedUrls: [pubA.url, pubB.url],
+        linkQuality: meter,
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await _until(() => openUrls(client).length == 5, reason: 'all up');
+      // nostr.mom answers fastest by far.
+      meter.recordAck(mom.url, const Duration(milliseconds: 50));
+      meter.recordAck(pubA.url, const Duration(milliseconds: 900));
+      meter.recordAck(pubB.url, const Duration(milliseconds: 700));
+      meter.recordSilence(pubA.url);
+      meter.recordSilence(pubB.url);
+      expect(client.isSlow, isTrue);
+      await _until(
+        () => geo.activeConnections == 0 && openUrls(client).length == 2,
+        reason: 'the rest let go',
+      );
+      final kept = openUrls(client);
+      expect(kept, contains(anchor.url));
+      expect(kept.intersection({pubA.url, pubB.url}), hasLength(1));
+      expect(kept, isNot(contains(mom.url)));
+    });
+
     test('without our relay slow mode keeps the two fastest public ones',
         () async {
       await startPool();
