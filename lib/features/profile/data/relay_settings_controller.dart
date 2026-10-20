@@ -370,3 +370,19 @@ final relayStatusProvider =
     NotifierProvider<RelayStatusController, Map<String, RelayState>>(
   RelayStatusController.new,
 );
+
+/// Whether the relay pool currently calls the link slow — see
+/// [WebSocketNostrRelayClient.isSlow]. Published by [MessagingService] on
+/// every transition of the pool's `slowChanges`, so the UI can say so without
+/// reaching into the sockets. `false` while the fallback is off: with no relay
+/// there is no link to measure.
+class SlowNetworkController extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void publish(bool slow) => state = slow;
+}
+
+final slowNetworkProvider = NotifierProvider<SlowNetworkController, bool>(
+  SlowNetworkController.new,
+);

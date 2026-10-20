@@ -625,6 +625,9 @@ class MessagingService {
   NostrTransport? _nostr;
   StreamSubscription<InboundFrame>? _nostrSub;
   StreamSubscription<Map<String, RelayState>>? _relayStateSub;
+
+  /// The pool's slow/fast transitions — see [WebSocketNostrRelayClient.isSlow].
+  StreamSubscription<bool>? _slowSub;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   List<ConnectivityResult> _connectivity = const <ConnectivityResult>[];
 
@@ -1106,6 +1109,21 @@ class MessagingService {
         }
         _relayWasConnected = connected;
       });
+      // One line per transition and nothing in between: the in-app log keeps
+      // 200 lines, and a link that is slow is exactly the one whose log the
+      // owner will be asked for. `slowChanges` emits transitions only.
+      _slowSub = client.slowChanges.listen((slow) {
+        // Same shutdown race as the state listener above: the pool's timers
+        // can deliver after disposal, and reading a provider then throws.
+        if (_disposed) return;
+        _ref.read(slowNetworkProvider.notifier).publish(slow);
+        DebugLog.instance.log(
+          'NET',
+          slow
+              ? 'slow: ${client.describeLink()} → 3 sockets'
+              : 'fast again: ${client.describeLink()}',
+        );
+      });
       client.start();
       _ref.read(relayStatusProvider.notifier).publish(client.states);
       DebugLog.instance.log(
@@ -1125,6 +1143,8 @@ class MessagingService {
     _nostrSub = null;
     await _relayStateSub?.cancel();
     _relayStateSub = null;
+    await _slowSub?.cancel();
+    _slowSub = null;
     _relayStatesSeen = const {};
     _nostr = null;
     final client = _relayClient;
@@ -1134,6 +1154,9 @@ class MessagingService {
     // relays" to the UI. On our own disposal the container is already going
     // down, and reading a provider out of it here throws.
     if (!_disposed) _ref.read(relayStatusProvider.notifier).clear();
+    // With the pool gone there is no link to call slow, and a flag left up
+    // would keep saying so about sockets that no longer exist.
+    if (!_disposed) _ref.read(slowNetworkProvider.notifier).publish(false);
   }
 
   /// Watches a burst of relay frames settle, so a doorbell nobody answered can
@@ -1918,6 +1941,8 @@ class MessagingService {
       final wireBytes = outboundFrame.encode();
       var deliveredVia = 0;
       MessageRoute? deliveredRoute;
+      // Non-null by here; a closure cannot see that promotion, a final can.
+      final relayPeer = canonicalId;
 
       // The internet first, if this conversation asked for it.
       //
@@ -1933,7 +1958,9 @@ class MessagingService {
           _ref
               .read(conversationSettingsControllerProvider.notifier)
               .prefersRelay(canonicalId) &&
-          await _sendOverNostr(canonicalId, wireBytes, wakesPeer: true)) {
+          await _whileTextOnRelay(
+            () => _sendOverNostr(relayPeer, wireBytes, wakesPeer: true),
+          )) {
         deliveredVia = 1;
         deliveredRoute = MessageRoute.internet;
       }
@@ -1987,20 +2014,23 @@ class MessagingService {
       // `transient` already exists to mean "not a message a person wrote" —
       // the branch above consults it — and this one simply did not ask.
       if (deliveredVia == 0 &&
-          await _sendOverNostr(
-            canonicalId,
-            wireBytes,
-            wakesPeer: !transient,
-            // `transient` is the map beacon and nothing else — the only two
-            // callers that set it are `MapPresenceController`'s publish and
-            // its retraction. So it is also the answer to which lane this
-            // belongs on, with no second flag to keep in step.
-            //
-            // Worth the split more than media is: a 72-minute field log had
-            // 191 of 274 publishes be these, 70% of everything the radio did,
-            // to carry 55 kB. That is the throttle a sentence was competing
-            // with.
-            lane: transient ? RelayLane.location : RelayLane.conversation,
+          await _whileTextOnRelay(
+            counts: !transient,
+            () => _sendOverNostr(
+              relayPeer,
+              wireBytes,
+              wakesPeer: !transient,
+              // `transient` is the map beacon and nothing else — the only two
+              // callers that set it are `MapPresenceController`'s publish and
+              // its retraction. So it is also the answer to which lane this
+              // belongs on, with no second flag to keep in step.
+              //
+              // Worth the split more than media is: a 72-minute field log had
+              // 191 of 274 publishes be these, 70% of everything the radio
+              // did, to carry 55 kB. That is the throttle a sentence was
+              // competing with.
+              lane: transient ? RelayLane.location : RelayLane.conversation,
+            ),
           )) {
         deliveredVia = 1;
         deliveredRoute = MessageRoute.internet;
@@ -3462,6 +3492,16 @@ class MessagingService {
   DateTime? _lastReadReceiptFlush;
   static const Duration _readReceiptFlushGap = Duration(seconds: 5);
 
+  /// The gap above on a fast link; 30 s on a slow one.
+  ///
+  /// A sweep is one sealed control frame per chat with anything unacknowledged,
+  /// and on EDGE — a few KB/s over three sockets — a sweep at the 5 s cadence
+  /// is the radio spending its time on ticks while a sentence waits. Thirty
+  /// seconds lets the receipts of a reading session gather into one round; a
+  /// tick that moves half a minute late on a link that slow is not noticed.
+  static Duration readReceiptFlushGapFor({required bool slow}) =>
+      slow ? const Duration(seconds: 30) : _readReceiptFlushGap;
+
   /// Carry queued messages over a relay that has just come up.
   ///
   /// Until this existed, a message that found no route was handed to
@@ -3499,6 +3539,9 @@ class MessagingService {
     final messages = _ref.read(messagesControllerProvider.notifier);
     final delivered = <String, Set<String>>{};
     var failures = 0;
+    // Texts on their way: on a slow link presence and receipts wait for them —
+    // see [textWaitingForRelay]. Taken back in the `finally` below.
+    _textRelayInFlight++;
     try {
       // A copy, because a send that succeeds mutates the map underneath us.
       for (final entry in _outbox.entries.toList()) {
@@ -3544,18 +3587,78 @@ class MessagingService {
       // three failures: what did go out has gone out, and the sender is owed
       // the tick for it.
       messages.markDeliveredBatch(delivered, MessageRoute.internet);
+      _textLeftRelay();
     }
   }
 
   bool _flushingOutbox = false;
 
+  /// Texts currently being published to a relay: a `sendText` that took the
+  /// relay road, or an outbox flush. Counted rather than flagged because
+  /// several can be in flight at once, and always taken back in a `finally`
+  /// — a publish that throws must not leave presence and receipts held back
+  /// for the rest of the session. See [textWaitingForRelay].
+  int _textRelayInFlight = 0;
+
+  /// A receipt sweep that a slow link held back for a text, owed once the
+  /// text is through — see [_flushPendingReadReceipts]. Without it the sweep
+  /// would wait for the next relay-up or app resume, which on a link that
+  /// stays slow but connected may be a long time.
+  bool _readReceiptFlushDeferred = false;
+
+  /// Whether the relay pool calls the link slow right now — see
+  /// [WebSocketNostrRelayClient.isSlow]. `false` with the fallback off.
+  bool get isSlowNetwork => _relayClient?.isSlow ?? false;
+
+  /// A text is on its way over the relay, or waiting in the outbox for one.
+  ///
+  /// On a slow link this is what lets a text go first: the heartbeat and the
+  /// receipt sweep skip their round while it holds — see [heartbeatDue] and
+  /// [_flushPendingReadReceipts]. On EDGE the three sockets carry a few KB/s,
+  /// and a presence fan-out to thirty contacts ahead of a sentence is seconds
+  /// of the sentence waiting.
+  bool get textWaitingForRelay => _textRelayInFlight > 0 || _outbox.isNotEmpty;
+
+  /// Run [send] counted as a text on the relay (when [counts]), so
+  /// [textWaitingForRelay] sees it for exactly as long as it is in flight.
+  Future<T> _whileTextOnRelay<T>(
+    Future<T> Function() send, {
+    bool counts = true,
+  }) async {
+    if (!counts) return send();
+    _textRelayInFlight++;
+    try {
+      return await send();
+    } finally {
+      _textLeftRelay();
+    }
+  }
+
+  /// One text off the relay road; the receipt sweep it held back, if any,
+  /// goes now that nothing is ahead of it.
+  void _textLeftRelay() {
+    _textRelayInFlight--;
+    if (_readReceiptFlushDeferred && !_disposed && !textWaitingForRelay) {
+      _readReceiptFlushDeferred = false;
+      unawaited(_flushPendingReadReceipts());
+    }
+  }
+
   Future<void> _flushPendingReadReceipts() async {
     if (_disposed) return;
     if (!_ref.read(privacySettingsProvider).shareReadReceipts) return;
     if (_flushingReadReceipts) return;
+    final slow = isSlowNetwork;
+    // On a slow link a text goes first. The round is owed rather than lost:
+    // [_textLeftRelay] runs it once the text is through.
+    if (slow && textWaitingForRelay) {
+      _readReceiptFlushDeferred = true;
+      return;
+    }
     final since = _lastReadReceiptFlush;
     if (since != null &&
-        DateTime.now().difference(since) < _readReceiptFlushGap) {
+        DateTime.now().difference(since) <
+            readReceiptFlushGapFor(slow: slow)) {
       return;
     }
     _flushingReadReceipts = true;
@@ -9923,8 +10026,21 @@ class MessagingService {
   @visibleForTesting
   Future<void> debugRemintQueued() => _remintQueued();
 
+  /// How long a send waits for a relay socket to open: 1.5 s on a fast link,
+  /// 8 s on a slow one.
+  ///
+  /// On EDGE a socket takes seconds to open — the pool measures connects of
+  /// several seconds there (see [WebSocketNostrRelayClient.describeLink]) —
+  /// so 1.5 s gave up on a socket that was about to come up, and the text went
+  /// to store-and-forward to wait for a Bluetooth meeting that, for two people
+  /// in different cities, never happens. Eight seconds covers the connects
+  /// measured on a crawling link and still ends.
+  static Duration relayWakeWaitFor({required bool slow}) => slow
+      ? const Duration(seconds: 8)
+      : const Duration(milliseconds: 1500);
+
   Future<bool> _ensureRelayAwakeForSend({
-    Duration timeout = const Duration(milliseconds: 1500),
+    Duration? timeout,
   }) async {
     final client = _relayClient;
     if (client == null) return false;
@@ -9936,10 +10052,17 @@ class MessagingService {
           .firstWhere(
             (_) => client.isConnected || _disposed,
           )
-          .timeout(timeout);
+          .timeout(timeout ?? relayWakeWaitFor(slow: client.isSlow));
     } on TimeoutException {
       // The caller falls back to mesh/store-forward. Keeping this short matters:
       // a send button should feel broken if it blocks behind bad mobile data.
+      //
+      // On a slow link it waits longer — see [relayWakeWaitFor] — and that is
+      // not the button blocking: the send is asynchronous — the composer does
+      // not await it (see `ChatInput`) and clears the moment it is pressed.
+      // What waits is only the frame, for a socket that on EDGE takes seconds
+      // to open; giving up sooner sends it to the slower road, not a faster
+      // one.
     }
     return !_disposed && client.isConnected;
   }
@@ -10588,11 +10711,58 @@ class MessagingService {
   /// Presence heartbeat. Fires regardless of foreground state and checks
   /// inside — [announcePresence] is the one place that decides whether a beacon
   /// is warranted, so there's a single rule to reason about.
+  ///
+  /// On a slow link the tick still comes every [presenceHeartbeat] but only
+  /// sends when [heartbeatDue] says so. The arriving beacon and the goodbye do
+  /// not pass through here and are never held back.
   void _startPresenceTimer() {
     _presenceTimer?.cancel();
     _presenceTimer = Timer.periodic(presenceHeartbeat, (_) {
+      final now = DateTime.now();
+      if (!heartbeatDue(
+        slow: isSlowNetwork,
+        textWaiting: textWaitingForRelay,
+        lastHeartbeat: _lastHeartbeatAt,
+        now: now,
+      )) {
+        return;
+      }
+      _lastHeartbeatAt = now;
       unawaited(announcePresence(online: true));
     });
+  }
+
+  /// When the timer above last let a heartbeat through, on either kind of
+  /// link — so the first slow round counts from the last real beat.
+  DateTime? _lastHeartbeatAt;
+
+  /// The heartbeat cadence on a slow link.
+  ///
+  /// **150 s against [PeerPresence.ttl] of 60 s, on purpose.** On EDGE a round
+  /// is a sealed beacon to up to [_presenceFanoutCap] contacts over a link that
+  /// carries a few KB/s, and every one of them is a sentence's worth of airtime
+  /// the sentence then waits behind. The price is that the other side's
+  /// "online" goes out between rounds — about 90 s dark in every 150 — while
+  /// the link stays slow. That is the trade the plan chose: a text that goes is
+  /// worth more than a green dot that stays. On a fast link nothing changes:
+  /// every [presenceHeartbeat] tick sends, as `presence_expiry_test` holds.
+  static const Duration _slowHeartbeatGap = Duration(seconds: 150);
+
+  /// Whether the presence timer's tick should send a heartbeat.
+  ///
+  /// A fast link: always — exactly the cadence before slow mode existed. A
+  /// slow link: never while a text is waiting for the relay (the text goes
+  /// first), and otherwise once [_slowHeartbeatGap] has passed since the last.
+  static bool heartbeatDue({
+    required bool slow,
+    required bool textWaiting,
+    required DateTime? lastHeartbeat,
+    required DateTime now,
+  }) {
+    if (!slow) return true;
+    if (textWaiting) return false;
+    return lastHeartbeat == null ||
+        now.difference(lastHeartbeat) >= _slowHeartbeatGap;
   }
 
   /// Tell internet-reachable peers whether we're in the app.
