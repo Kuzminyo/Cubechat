@@ -344,12 +344,21 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         if (humanizeLogLine(e.line, t) case final friendly?) (e, friendly),
     ];
     if (lines.isEmpty) {
-      return Center(
-        child: Text(
-          t.diagnosticsEmpty,
-          textAlign: TextAlign.center,
-          style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
-        ),
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
+        children: [
+          const _RadioSpikePanel(),
+          Padding(
+            padding: const EdgeInsets.only(top: 40),
+            child: Center(
+              child: Text(
+                t.diagnosticsEmpty,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+              ),
+            ),
+          ),
+        ],
       );
     }
     final time = TextStyle(
@@ -359,9 +368,15 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     );
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
-      itemCount: lines.length,
+      itemCount: lines.length + 1,
       itemBuilder: (_, i) {
-        final (entry, friendly) = lines[i];
+        if (i == 0) {
+          return const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: _RadioSpikePanel(),
+          );
+        }
+        final (entry, friendly) = lines[i - 1];
         final problem = friendly.kind == LogKind.problem;
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
