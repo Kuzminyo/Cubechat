@@ -76,6 +76,23 @@ enum MediaQuality {
       };
 }
 
+/// The quality a photo is really encoded at, given what the person chose and
+/// whether the link is crawling.
+///
+/// On EDGE the relay path moves ~3-5 KB/s up. A [MediaQuality.standard] photo
+/// is up to [kMaxOutgoingImageBytes] — several times the 96 KiB [economy]
+/// budget — so it sits in the queue for minutes where [MediaQuality.economy]
+/// goes in tens of seconds. Only the default is lowered: [MediaQuality.high] is something the
+/// person asked for by name, and "send as file" never reaches the encoder at
+/// all, so both keep what they chose.
+MediaQuality effectiveMediaQuality(
+  MediaQuality chosen, {
+  required bool slowNetwork,
+}) =>
+    slowNetwork && chosen == MediaQuality.standard
+        ? MediaQuality.economy
+        : chosen;
+
 Uint8List? _encodeBytesForMesh((Uint8List, MediaQuality) job) {
   final (src, quality) = job;
   final decoded = img.decodeImage(src);

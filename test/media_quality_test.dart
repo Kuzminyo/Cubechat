@@ -79,6 +79,31 @@ void main() {
     });
   });
 
+  test(
+      'a slow link sends standard photos as economy, and leaves a chosen high '
+      'alone', () {
+    expect(
+      effectiveMediaQuality(MediaQuality.standard, slowNetwork: true),
+      MediaQuality.economy,
+    );
+    expect(
+      effectiveMediaQuality(MediaQuality.high, slowNetwork: true),
+      MediaQuality.high,
+    );
+    expect(
+      effectiveMediaQuality(MediaQuality.economy, slowNetwork: true),
+      MediaQuality.economy,
+    );
+    expect(
+      effectiveMediaQuality(MediaQuality.standard, slowNetwork: false),
+      MediaQuality.standard,
+    );
+    expect(
+      effectiveMediaQuality(MediaQuality.high, slowNetwork: false),
+      MediaQuality.high,
+    );
+  });
+
   test('every ladder starts at its largest side and only goes down', () {
     for (final quality in MediaQuality.values) {
       final sizes = quality.rungs.map((r) => r.size).toList();

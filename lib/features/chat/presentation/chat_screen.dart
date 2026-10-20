@@ -5128,7 +5128,12 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
       );
     }
 
-    final quality = await ref.read(mediaQualityProvider.notifier).resolved();
+    // A slow link carries the default budget in minutes, so it is lowered to
+    // economy there; a chosen "high" stays.
+    final quality = effectiveMediaQuality(
+      await ref.read(mediaQualityProvider.notifier).resolved(),
+      slowNetwork: ref.read(slowNetworkProvider),
+    );
     if (!mounted) return;
     final encoded = <Uint8List>[];
     try {
@@ -5305,7 +5310,12 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     bool viewOnce = false,
   }) async {
     try {
-      final quality = await ref.read(mediaQualityProvider.notifier).resolved();
+      // Economy while the link is slow, unless "high" was chosen (see
+      // [effectiveMediaQuality]).
+      final quality = effectiveMediaQuality(
+        await ref.read(mediaQualityProvider.notifier).resolved(),
+        slowNetwork: ref.read(slowNetworkProvider),
+      );
       final wire = await encodeBytesForMesh(bytes, quality: quality);
       if (!mounted) return;
       if (wire == null) {
