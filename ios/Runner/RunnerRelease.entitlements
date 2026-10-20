@@ -35,5 +35,9 @@
 	<array>
 		<string>group.app.cubechat</string>
 	</array>
+	<!-- Stage-0 radio spike (branch spike/ios-ptt): PushToTalk. Needs the Push
+	     to Talk capability on app.cubechat and a regenerated profile. -->
+	<key>com.apple.developer.push-to-talk</key>
+	<true/>
 </dict>
 </plist>

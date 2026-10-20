@@ -12,6 +12,7 @@ import '../../../core/theme/colors.dart';
 import '../../../core/theme/glass.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/notifications/ios_significant_location.dart';
+import '../../../core/radio_spike.dart';
 import '../../../core/util/cpu_probe.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/frame_stats.dart';
@@ -220,6 +221,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                   const _FramePanel(),
                   const _TransitionPanel(),
                   const _WakePanel(),
+                  const _RadioSpikePanel(),
                   Expanded(
                     child: _buildLog(context, t, entries),
                   ),
@@ -228,6 +230,7 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
             : Column(
                 children: [
                   _intro(t, entries),
+                  const _RadioSpikePanel(),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 8, 12, 0),
                     child: Row(
@@ -779,6 +782,53 @@ class _WakePanelState extends State<_WakePanel> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Stage-0 walkie-talkie spike (branch spike/ios-ptt, never merged): joins the
+/// PushToTalk test channel and shows the last [RadioSpike.tag] lines.
+class _RadioSpikePanel extends StatelessWidget {
+  const _RadioSpikePanel();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: DebugLog.instance,
+      builder: (context, _) {
+        final lines = [
+          for (final e in DebugLog.instance.entries)
+            if (e.line.startsWith('[${RadioSpike.tag}]')) e.text,
+        ].take(8).toList();
+        return Container(
+          width: double.infinity,
+          margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.glass(0.06),
+            border: Border.all(color: AppColors.glass(0.12)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextButton(
+                onPressed: () => unawaited(RadioSpike.instance.join()),
+                child: const Text('Рація: проба — увійти в канал'),
+              ),
+              for (final line in lines)
+                Text(
+                  line,
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 10.5,
+                    height: 1.3,
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

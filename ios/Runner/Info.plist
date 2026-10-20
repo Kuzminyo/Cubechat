@@ -173,6 +173,9 @@
 		     are spent only on a call; see CubechatCallKit. -->
 		<string>voip</string>
 		<string>audio</string>
+		<!-- Stage-0 radio spike (branch spike/ios-ptt): PushToTalk. Needs the
+		     Push to Talk capability on app.cubechat and a regenerated profile. -->
+		<string>push-to-talk</string>
 	</array>
 	<!-- BGTaskScheduler refuses to register an identifier that is not listed
 	     here, and throws at launch when the app tries. Must match
