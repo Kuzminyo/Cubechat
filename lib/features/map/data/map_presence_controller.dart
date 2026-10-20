@@ -16,6 +16,7 @@ import '../../chat/models/message.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../../peers/models/known_peer.dart';
 import '../../profile/data/privacy_settings_controller.dart';
+import '../../profile/data/relay_settings_controller.dart';
 import 'map_friends_controller.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/platform_capabilities.dart';
@@ -109,6 +110,16 @@ class MapPresenceController extends Notifier<int> {
   /// minutes — and cuts a standing phone's beacons from about 40 an hour to
   /// 15. Still unchanged for a phone in motion.
   static const _repeatSamePlaceAfter = Duration(minutes: 4);
+
+  /// Whether a beacon round may go out given the state of the link: always
+  /// unless the relay pool judges it slow, and even then when [force]d. See
+  /// the hold in [_publish].
+  static bool roundAllowed({required bool slow, required bool force}) =>
+      !slow || force;
+
+  /// Set while rounds are being held, so the log says so once per spell
+  /// instead of once per 45-second tick.
+  bool _heldForSlowLink = false;
 
   Timer? _timer;
   StreamSubscription<LocationFix>? _watch;
@@ -534,6 +545,31 @@ class MapPresenceController extends Notifier<int> {
     if (_sending || !_shouldShare) return;
     final peers = _audience();
     if (peers.isEmpty) return;
+
+    // On a slow link the map waits.
+    //
+    // A beacon is a full X3DH derivation, a Schnorr signature and a relay
+    // publish per friend, and on EDGE every one of those competes with a text
+    // for the same few kB/s. Beacons repeat every [_tick], so a round skipped
+    // here costs nothing — the next one carries a position at least as fresh —
+    // while a text queued behind them is a message that does not arrive. In the
+    // 72-minute field log above, 191 of 274 publishes were map beacons.
+    //
+    // Before the bookkeeping on purpose: a held round is neither a dead round
+    // (it must not count toward parking the GPS) nor a sent one (it must not
+    // move [_lastSentAt], or the first round after the link recovers would be
+    // thought a repeat). A forced send still goes, and so does a retraction,
+    // which does not pass through here at all — "I stopped sharing" is worth
+    // more than the bytes it costs.
+    if (!roundAllowed(slow: ref.read(slowNetworkProvider), force: force)) {
+      if (!_heldForSlowLink) {
+        _heldForSlowLink = true;
+        DebugLog.instance
+            .log('MAP', 'slow link — holding the beacon until it recovers');
+      }
+      return;
+    }
+    _heldForSlowLink = false;
 
     _sending = true;
     try {
