@@ -106,6 +106,8 @@ Future<List<AirDropSource>?> pickAirDropFiles(
     ];
   }
   if (result is! MediaPickerAssets) return null;
+  // Not effectiveMediaQuality: AirDrop is local, and the relay link's speed
+  // (slowNetworkProvider) says nothing about it.
   final quality = await ref.read(mediaQualityProvider.notifier).resolved();
   final out = <AirDropSource>[];
   for (final asset in result.assets.take(nearbyMaxFiles)) {

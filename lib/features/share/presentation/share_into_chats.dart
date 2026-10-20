@@ -18,6 +18,7 @@ import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
 import '../../chats/presentation/widgets/chat_picker_screen.dart';
 import '../../profile/data/media_quality_controller.dart';
+import '../../profile/data/relay_settings_controller.dart';
 import '../data/direct_share.dart';
 import '../domain/share_plan.dart';
 
@@ -118,8 +119,12 @@ Future<void> sendSharedTo(
         // Fitted to the mesh budget, the way the gallery's and the camera's
         // pictures are — a phone photo straight off the camera is many times
         // what a Bluetooth link can carry.
-        final quality =
-            await ref.read(mediaQualityProvider.notifier).resolved();
+        // Economy while the relay link is slow, unless "high" was chosen (see
+        // [effectiveMediaQuality]).
+        final quality = effectiveMediaQuality(
+          await ref.read(mediaQualityProvider.notifier).resolved(),
+          slowNetwork: ref.read(slowNetworkProvider),
+        );
         final wire = await encodeBytesForMesh(original, quality: quality);
         if (wire == null) throw StateError('picture too large');
         final cached = await _cacheSent(wire);
