@@ -1112,6 +1112,10 @@ class MessagingService {
       // One line per transition and nothing in between: the in-app log keeps
       // 200 lines, and a link that is slow is exactly the one whose log the
       // owner will be asked for. `slowChanges` emits transitions only.
+      //
+      // No socket count here: how many the pool keeps depends on whether our
+      // relay is up (three, or four without it), and the pool logs which ones
+      // in its own "link slow (…) — keeping …" line.
       _slowSub = client.slowChanges.listen((slow) {
         // Same shutdown race as the state listener above: the pool's timers
         // can deliver after disposal, and reading a provider then throws.
@@ -1120,7 +1124,7 @@ class MessagingService {
         DebugLog.instance.log(
           'NET',
           slow
-              ? 'slow: ${client.describeLink()} → 3 sockets'
+              ? 'slow: ${client.describeLink()}'
               : 'fast again: ${client.describeLink()}',
         );
       });
@@ -1236,19 +1240,24 @@ class MessagingService {
           .log('NOSTR', 'internet fallback is off — $canonicalId stays queued');
       return RelayPublishOutcome.unavailable;
     }
+    // Before waiting for a socket, not after: the wait is up to 8 s on a slow
+    // link (see [relayWakeWaitFor]), and a contact with no Nostr key cannot go
+    // by relay however long it lasts.
+    final npub =
+        _ref.read(knownPeersControllerProvider)[canonicalId]?.nostrPubkey;
+    if (npub == null || npub.length != 32) {
+      DebugLog.instance.log(
+        'NOSTR',
+        'no npub for $canonicalId — cannot use internet fallback',
+      );
+      return RelayPublishOutcome.unavailable;
+    }
     // If the relay pool is merely asleep/backing off, wake it and wait briefly
     // for one socket. This is the common iOS path: the user opens the app or a
     // background window starts, immediately sends/flushes something, and the
     // relay is still in `connecting`. Returning false in that window pushed a
     // perfectly sendable message into the slow mesh/store-forward path.
     if (!await _ensureRelayAwakeForSend()) {
-      return RelayPublishOutcome.unavailable;
-    }
-    final npub =
-        _ref.read(knownPeersControllerProvider)[canonicalId]?.nostrPubkey;
-    if (npub == null || npub.length != 32) {
-      DebugLog.instance.log(
-          'NOSTR', 'no npub for $canonicalId — cannot use internet fallback');
       return RelayPublishOutcome.unavailable;
     }
     final npubHex = _hexOf(npub);
@@ -3603,8 +3612,14 @@ class MessagingService {
   /// A receipt sweep that a slow link held back for a text, owed once the
   /// text is through — see [_flushPendingReadReceipts]. Without it the sweep
   /// would wait for the next relay-up or app resume, which on a link that
-  /// stays slow but connected may be a long time.
+  /// stays slow but connected may be a long time. The presence tick re-offers
+  /// it too, so the cap in [readReceiptSweepWaits] is reached even when no
+  /// text finishes.
   bool _readReceiptFlushDeferred = false;
+
+  /// When the sweep was first held back for a text, for the cap in
+  /// [readReceiptSweepWaits]. Cleared when a sweep is let through.
+  DateTime? _readReceiptHeldSince;
 
   /// Whether the relay pool calls the link slow right now — see
   /// [WebSocketNostrRelayClient.isSlow]. `false` with the fallback off.
@@ -3617,7 +3632,36 @@ class MessagingService {
   /// [_flushPendingReadReceipts]. On EDGE the three sockets carry a few KB/s,
   /// and a presence fan-out to thirty contacts ahead of a sentence is seconds
   /// of the sentence waiting.
-  bool get textWaitingForRelay => _textRelayInFlight > 0 || _outbox.isNotEmpty;
+  ///
+  /// Only outbox entries that *can* go by relay count — a recipient with a
+  /// 32-byte Nostr key on file. One queued to a contact without one can never
+  /// leave by this road (`_publishOverNostr` answers "no npub"), survives a
+  /// restart through [_remintQueued], and would otherwise hold presence and
+  /// receipts back for the whole slow spell.
+  bool get textWaitingForRelay {
+    if (_textRelayInFlight > 0) return true;
+    if (_outbox.isEmpty) return false;
+    final peers = _ref.read(knownPeersControllerProvider);
+    return _outbox.values
+        .any((held) => peers[held.canonicalId]?.nostrPubkey?.length == 32);
+  }
+
+  /// Whether a receipt sweep should wait for a text on the relay.
+  ///
+  /// Only on a slow link, only while a text is waiting, and never for more
+  /// than twice the slow gap (60 s) counted from [heldSince], the first time it
+  /// was held: an outbox that keeps failing to drain must not keep every tick
+  /// on the other phones still for the rest of the slow spell.
+  static bool readReceiptSweepWaits({
+    required bool slow,
+    required bool textWaiting,
+    required DateTime? heldSince,
+    required DateTime now,
+  }) {
+    if (!slow || !textWaiting) return false;
+    return heldSince == null ||
+        now.difference(heldSince) < readReceiptFlushGapFor(slow: true) * 2;
+  }
 
   /// Run [send] counted as a text on the relay (when [counts]), so
   /// [textWaitingForRelay] sees it for exactly as long as it is in flight.
@@ -3638,10 +3682,14 @@ class MessagingService {
   /// goes now that nothing is ahead of it.
   void _textLeftRelay() {
     _textRelayInFlight--;
-    if (_readReceiptFlushDeferred && !_disposed && !textWaitingForRelay) {
-      _readReceiptFlushDeferred = false;
-      unawaited(_flushPendingReadReceipts());
-    }
+    _offerDeferredReadReceipts();
+  }
+
+  /// Re-offer a sweep a slow link held back. The sweep decides for itself
+  /// whether it still waits — see [readReceiptSweepWaits].
+  void _offerDeferredReadReceipts() {
+    if (!_readReceiptFlushDeferred || _disposed) return;
+    unawaited(_flushPendingReadReceipts());
   }
 
   Future<void> _flushPendingReadReceipts() async {
@@ -3650,17 +3698,29 @@ class MessagingService {
     if (_flushingReadReceipts) return;
     final slow = isSlowNetwork;
     // On a slow link a text goes first. The round is owed rather than lost:
-    // [_textLeftRelay] runs it once the text is through.
-    if (slow && textWaitingForRelay) {
+    // [_textLeftRelay] and the presence tick offer it again, and the cap in
+    // [readReceiptSweepWaits] lets it through after 60 s whatever is waiting.
+    final heldAt = DateTime.now();
+    if (readReceiptSweepWaits(
+      slow: slow,
+      textWaiting: slow && textWaitingForRelay,
+      heldSince: _readReceiptHeldSince,
+      now: heldAt,
+    )) {
+      _readReceiptHeldSince ??= heldAt;
       _readReceiptFlushDeferred = true;
       return;
     }
+    _readReceiptHeldSince = null;
     final since = _lastReadReceiptFlush;
     if (since != null &&
         DateTime.now().difference(since) <
             readReceiptFlushGapFor(slow: slow)) {
+      // An owed sweep stays owed through the gap — the presence tick offers
+      // it again — rather than being dropped until the next relay-up.
       return;
     }
+    _readReceiptFlushDeferred = false;
     _flushingReadReceipts = true;
     _lastReadReceiptFlush = DateTime.now();
     try {
@@ -6032,11 +6092,18 @@ class MessagingService {
   }) async {
     _rememberChannelFrame(frameBytes);
     final mesh = await _fanoutAllLinks(frameBytes, excludePeerId: null);
-    final relayed = await _broadcastChannelOverNostr(
-      frameBytes,
-      room: room,
-      wakes: wakes,
-      lane: lane,
+    // A room post of the author's own counts as a text on the relay, so on a
+    // slow link a heartbeat does not go ahead of it — see
+    // [textWaitingForRelay]. [wakes] is exactly "the author's own post", and
+    // the media lane is chunks, which are not what the rule is for.
+    final relayed = await _whileTextOnRelay(
+      counts: wakes && lane == RelayLane.conversation,
+      () => _broadcastChannelOverNostr(
+        frameBytes,
+        room: room,
+        wakes: wakes,
+        lane: lane,
+      ),
     );
     return mesh + relayed;
   }
@@ -10718,23 +10785,32 @@ class MessagingService {
   void _startPresenceTimer() {
     _presenceTimer?.cancel();
     _presenceTimer = Timer.periodic(presenceHeartbeat, (_) {
-      final now = DateTime.now();
+      if (_disposed) return;
+      // A receipt sweep a slow link held back gets its next chance on the
+      // same clock, so its cap is reached even when no text finishes.
+      _offerDeferredReadReceipts();
+      final slow = isSlowNetwork;
       if (!heartbeatDue(
-        slow: isSlowNetwork,
-        textWaiting: textWaitingForRelay,
-        lastHeartbeat: _lastHeartbeatAt,
-        now: now,
+        slow: slow,
+        textWaiting: slow && textWaitingForRelay,
+        lastHeartbeat: _lastOnlineBeaconAt,
+        now: DateTime.now(),
       )) {
         return;
       }
-      _lastHeartbeatAt = now;
       unawaited(announcePresence(online: true));
     });
   }
 
-  /// When the timer above last let a heartbeat through, on either kind of
-  /// link — so the first slow round counts from the last real beat.
-  DateTime? _lastHeartbeatAt;
+  /// When an "online" beacon last actually went out — a heartbeat or an
+  /// arriving one, either is what the other side holds for its TTL.
+  ///
+  /// Read from what [announcePresence] records on success rather than stamped
+  /// when the tick fires: a beat can go nowhere (backgrounded, no socket), and
+  /// counting it would hold the next one back for 150 s on a slow link — the
+  /// same trap the note above `_lastPresenceAt`'s update describes.
+  DateTime? get _lastOnlineBeaconAt =>
+      _lastPresenceOnline == true ? _lastPresenceAt : null;
 
   /// The heartbeat cadence on a slow link.
   ///
@@ -10744,15 +10820,20 @@ class MessagingService {
   /// the sentence then waits behind. The price is that the other side's
   /// "online" goes out between rounds — about 90 s dark in every 150 — while
   /// the link stays slow. That is the trade the plan chose: a text that goes is
-  /// worth more than a green dot that stays. On a fast link nothing changes:
+  /// worth more than a green dot that stays. A text waiting can stretch that to
+  /// at most 300 s between beats, never further — see [heartbeatDue]. On a
+  /// fast link nothing changes:
   /// every [presenceHeartbeat] tick sends, as `presence_expiry_test` holds.
   static const Duration _slowHeartbeatGap = Duration(seconds: 150);
 
   /// Whether the presence timer's tick should send a heartbeat.
   ///
   /// A fast link: always — exactly the cadence before slow mode existed. A
-  /// slow link: never while a text is waiting for the relay (the text goes
-  /// first), and otherwise once [_slowHeartbeatGap] has passed since the last.
+  /// slow link: once [_slowHeartbeatGap] has passed since the last, and not
+  /// while a text is waiting for the relay (the text goes first) — up to twice
+  /// the gap, 300 s. Past that the beat goes anyway: an outbox that keeps
+  /// failing to drain must not show this phone offline to everybody for the
+  /// whole slow spell.
   static bool heartbeatDue({
     required bool slow,
     required bool textWaiting,
@@ -10760,7 +10841,10 @@ class MessagingService {
     required DateTime now,
   }) {
     if (!slow) return true;
-    if (textWaiting) return false;
+    if (textWaiting) {
+      return lastHeartbeat != null &&
+          now.difference(lastHeartbeat) >= _slowHeartbeatGap * 2;
+    }
     return lastHeartbeat == null ||
         now.difference(lastHeartbeat) >= _slowHeartbeatGap;
   }

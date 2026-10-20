@@ -85,6 +85,44 @@ void main() {
     );
   });
 
+  test('a waiting text holds a slow heartbeat back for at most 300 s', () {
+    bool due(int secondsAgo) => MessagingService.heartbeatDue(
+          slow: true,
+          textWaiting: true,
+          lastHeartbeat: now.subtract(Duration(seconds: secondsAgo)),
+          now: now,
+        );
+    // Past the ordinary 150 s gap, the text still goes first…
+    expect(due(150), isFalse);
+    expect(due(299), isFalse);
+    // …but an outbox that never drains cannot keep this phone dark for good.
+    expect(due(300), isTrue);
+    expect(due(600), isTrue);
+  });
+
+  test('a slow link holds a receipt sweep for a text, for at most 60 s', () {
+    bool waits({
+      bool slow = true,
+      bool textWaiting = true,
+      int? heldSecondsAgo,
+    }) =>
+        MessagingService.readReceiptSweepWaits(
+          slow: slow,
+          textWaiting: textWaiting,
+          heldSince: heldSecondsAgo == null
+              ? null
+              : now.subtract(Duration(seconds: heldSecondsAgo)),
+          now: now,
+        );
+    expect(waits(), isTrue);
+    expect(waits(heldSecondsAgo: 59), isTrue);
+    expect(waits(heldSecondsAgo: 60), isFalse);
+    expect(waits(textWaiting: false), isFalse);
+    // A fast link never holds a sweep back.
+    expect(waits(slow: false), isFalse);
+    expect(waits(slow: false, heldSecondsAgo: 5), isFalse);
+  });
+
   test('receipts gather for 30 s on a slow link', () {
     expect(
       MessagingService.readReceiptFlushGapFor(slow: true),
