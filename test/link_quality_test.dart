@@ -46,6 +46,19 @@ void main() {
     m.dispose();
   });
 
+  test('a bulk publish gets the ceiling while slow, the floor while fast', () {
+    // The median is mostly small texts (2.4 s → 9.6 s); a 16 KiB chunk at a
+    // few KB/s takes about that long to upload before the relay sees it.
+    final m = LinkQualityMeter();
+    expect(m.ackTimeout(floor: floor, bulk: true), floor);
+    for (var i = 0; i < 3; i++) {
+      m.recordAck('a', slowAck);
+    }
+    expect(m.ackTimeout(floor: floor), const Duration(milliseconds: 9600));
+    expect(m.ackTimeout(floor: floor, bulk: true), const Duration(seconds: 15));
+    m.dispose();
+  });
+
   test('two silences in a row make it slow', () {
     final m = LinkQualityMeter();
     m.recordSilence('a');

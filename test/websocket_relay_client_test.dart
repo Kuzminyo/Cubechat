@@ -12,6 +12,7 @@ import 'package:cubechat/core/transport/nostr/nostr_frame_codec.dart';
 import 'package:cubechat/core/transport/nostr/nostr_signer.dart';
 import 'package:cubechat/core/transport/nostr/nostr_transport.dart';
 import 'package:cubechat/core/transport/nostr/websocket_relay_client.dart';
+import 'package:cubechat/core/util/debug_log.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// A throwaway in-process relay speaking just enough NIP-01: ack every EVENT
@@ -208,6 +209,15 @@ class _RecordingMeter extends LinkQualityMeter {
 
   final List<(String url, Duration elapsed)> acks = [];
   final List<String> silences = [];
+
+  /// The `bulk` flag of every ack wait the pool asked for, in order.
+  final List<bool> ackWaits = [];
+
+  @override
+  Duration ackTimeout({required Duration floor, bool bulk = false}) {
+    ackWaits.add(bulk);
+    return super.ackTimeout(floor: floor, bulk: bulk);
+  }
 
   @override
   void recordAck(String url, Duration elapsed) {
@@ -899,6 +909,89 @@ void main() {
       expect((await send(client, 'cd')).silent, 2);
       expect(client.isSlow, isTrue, reason: 'two publishes in a row');
       expect(a.connections + b.connections, 2, reason: 'both answered probes');
+    });
+
+    test('a media chunk waits as bulk, a text does not', () async {
+      final conv = await _FakeRelayServer.start();
+      final media = await _FakeRelayServer.start();
+      addTearDown(conv.stop);
+      addTearDown(media.stop);
+      final meter = _RecordingMeter();
+      addTearDown(meter.dispose);
+      final client = WebSocketNostrRelayClient(
+        relayUrls: const [],
+        conversationRelayUrls: [conv.url],
+        mediaRelayUrls: [media.url],
+        linkQuality: meter,
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await _until(
+        () =>
+            client.states.values
+                .where((s) => s == RelayState.connected)
+                .length ==
+            2,
+        reason: 'both relays connected',
+      );
+      final transport = NostrTransport(signer: signer, relay: client);
+      await transport.sendFrame(recipientNpubHex: 'ab' * 32, frameBytes: frame);
+      await transport.sendFrame(
+        recipientNpubHex: 'cd' * 32,
+        frameBytes: frame,
+        lane: RelayLane.media,
+      );
+      expect(meter.ackWaits, [false, true]);
+    });
+
+    test('an accepted media chunk writes no line of its own; a text still does',
+        () async {
+      // A 1 MB file at 16 KiB is ~64 chunks; a line each evicted the one
+      // `[NET]` transition line from the 200-line buffer.
+      DebugLog.install();
+      final conv = await _FakeRelayServer.start();
+      final media = await _FakeRelayServer.start();
+      addTearDown(conv.stop);
+      addTearDown(media.stop);
+      final client = WebSocketNostrRelayClient(
+        relayUrls: const [],
+        conversationRelayUrls: [conv.url],
+        mediaRelayUrls: [media.url],
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await _until(
+        () =>
+            client.states.values
+                .where((s) => s == RelayState.connected)
+                .length ==
+            2,
+        reason: 'both relays connected',
+      );
+      final transport = NostrTransport(signer: signer, relay: client);
+      List<String> published() => [
+            for (final e in DebugLog.instance.entries)
+              if (e.line.contains('published ')) e.line,
+          ];
+      DebugLog.instance.clear();
+      final chunk = await transport.sendFrame(
+        recipientNpubHex: 'cd' * 32,
+        frameBytes: frame,
+        lane: RelayLane.media,
+      );
+      expect(chunk.isAccepted, isTrue);
+      expect(published(), isEmpty);
+      await transport.sendFrame(recipientNpubHex: 'ab' * 32, frameBytes: frame);
+      expect(published(), hasLength(1));
+      // Not taken is still said, chunk or not.
+      media.okAnswer = false;
+      media.refusalMessage = 'blocked: too large';
+      await transport.sendFrame(
+        recipientNpubHex: 'cd' * 32,
+        frameBytes: frame,
+        lane: RelayLane.media,
+      );
+      expect(published(), hasLength(2));
     });
 
     group('our media relay answering late', () {

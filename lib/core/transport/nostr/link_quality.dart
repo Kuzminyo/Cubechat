@@ -190,10 +190,20 @@ class LinkQualityMeter {
   }
 
   /// How long the pool should wait for a relay's `OK`, never below [floor].
-  Duration ackTimeout({required Duration floor}) {
+  ///
+  /// [bulk] is a file chunk (the media lane), which on a slow link gets the
+  /// whole [_ackCeiling]. The median is mostly small text events — 2.4 s
+  /// gives 9.6 s — and a 16-22 KB chunk at about 3 KB/s takes 8-9 s just to
+  /// leave the phone. The first chunks of a file missed the deadline, and
+  /// each miss uploaded the same chunk again, a new event, while the first
+  /// copy was still in the uplink; it only settled once chunk answers filled
+  /// the median's window. On a fast link a chunk waits like anything else.
+  Duration ackTimeout({required Duration floor, bool bulk = false}) {
+    if (bulk && _slow) return _atLeast(floor, _ackCeiling);
     final median = _median(_acks);
-    if (median == null)
+    if (median == null) {
       return _slow ? _atLeast(floor, _ackSlowNoSamples) : floor;
+    }
     return _clamp(median * _ackMedianFactor, floor, _ackCeiling);
   }
 

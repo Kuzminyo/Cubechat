@@ -1383,8 +1383,10 @@ class MessagingService {
         return outcome;
       }
       // Map beacons are counted once per round by `MapPresenceController` —
-      // see the matching note in `WebSocketNostrRelayClient.publish`.
-      if (lane != RelayLane.location) {
+      // see the matching note in `WebSocketNostrRelayClient.publish`. Media
+      // chunks once per transfer, by [_logTransferSent]: on a slow link a
+      // 1 MB file is ~64 chunks, and a line each evicted the `[NET]` line.
+      if (lane != RelayLane.location && lane != RelayLane.media) {
         DebugLog.instance.log('NOSTR',
             'sent ${frameBytes.length}B to $canonicalId via relay — $receipt');
       }
@@ -2635,6 +2637,14 @@ class MessagingService {
         messages.updateStatus(chatId, msg.id, MessageStatus.delivered);
       }
       transfers.setStatus(transferId, FileTransferStatus.completed);
+      _logTransferSent(
+        'FILE',
+        '"$safe"',
+        chunks: total,
+        chunkData: chunkData,
+        route: relayOnly ? (slow ? 'relay, slow link' : 'relay') : 'mesh',
+        since: manifestSentAt,
+      );
     } catch (e, st) {
       // Named and measured, because "sendFile failed" on its own never
       // identified *which* file — and the reports that matter are always "this
@@ -2677,6 +2687,25 @@ class MessagingService {
   /// it. One line at the end, not one per interval: the chunk lines around it
   /// fill the 200-line log in about fifteen seconds, and the end of the send
   /// is the part still in the buffer when the log is exported.
+  /// One line for a finished transfer, in place of the line per chunk the
+  /// relay used to write — see the note in [_publishOverNostr]. [since] is
+  /// when its manifest went out; [route] how its chunks went.
+  void _logTransferSent(
+    String tag,
+    String what, {
+    required int chunks,
+    required int chunkData,
+    required String route,
+    required DateTime since,
+  }) {
+    final seconds = DateTime.now().difference(since).inMilliseconds / 1000;
+    DebugLog.instance.log(
+      tag,
+      'sent $what — $chunks × $chunkData B in '
+          '${seconds.toStringAsFixed(1)} s ($route)',
+    );
+  }
+
   Future<void> _logSendCpu(Future<CpuSpan?> cpu, String name) async {
     try {
       final span = await cpu;
@@ -3011,6 +3040,14 @@ class MessagingService {
       if (chatId != canonicalId) {
         messages.updateStatus(chatId, msg.id, MessageStatus.delivered);
       }
+      _logTransferSent(
+        'IMG',
+        'photo',
+        chunks: total,
+        chunkData: chunkData,
+        route: relayOnly ? 'relay' : 'mesh',
+        since: manifestSentAt,
+      );
     } on SendCancelled {
       // Taken back: the bubble is already gone, so there is nothing to mark
       // failed and nothing to tell the caller. The rest of an album goes on.
@@ -3309,6 +3346,14 @@ class MessagingService {
       if (chatId != canonicalId) {
         messages.updateStatus(chatId, msg.id, MessageStatus.delivered);
       }
+      _logTransferSent(
+        'VOICE',
+        'voice note',
+        chunks: total,
+        chunkData: chunkData,
+        route: relayOnly ? 'relay' : 'mesh',
+        since: manifestSentAt,
+      );
     } on SendCancelled {
       _ref.read(mediaSendProgressProvider.notifier).clear(msg.id);
       DebugLog.instance.log('VOICE', 'voice send cancelled by the user');
@@ -3990,13 +4035,20 @@ class MessagingService {
   }) async {
     final peerPub = _resolvePeerPub(canonicalId);
     if (peerPub == null) return ControlDelivery.notSent;
-    return _deliverControlToPeer(
-      canonicalId: canonicalId,
-      peerPub: peerPub,
-      type: InnerPayloadType.callSignal,
-      innerBody: signal.encode(),
-      wakesPeer: callWakesPeer(signal.kind),
-      wakesCall: callIsVoipWake(signal.kind),
+    // Counted as a text on the relay, so on a slow link a file chunk stands
+    // aside for it ([_yieldToText]) — the spec puts texts *and call signals*
+    // first. Harmless while chunks ride the `/media` socket; when that is
+    // down they fall back to the conversation sockets, and an invite queued
+    // behind a 16-22 KB chunk at a few KB/s is a call that rings seconds late.
+    return _whileTextOnRelay(
+      () => _deliverControlToPeer(
+        canonicalId: canonicalId,
+        peerPub: peerPub,
+        type: InnerPayloadType.callSignal,
+        innerBody: signal.encode(),
+        wakesPeer: callWakesPeer(signal.kind),
+        wakesCall: callIsVoipWake(signal.kind),
+      ),
     );
   }
 

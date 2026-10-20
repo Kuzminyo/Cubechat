@@ -381,8 +381,14 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// timer, no silence for the meter, and the relay shows idle rather than
   /// failed. The connection is dropped from the pool, so neither [start],
   /// [wake] nor a retry timer can bring it back while the link is slow. On the
-  /// way out [start] opens it fresh, and its REQ asks from the watermark, so
-  /// what it held for us meanwhile still arrives.
+  /// way out [start] opens it fresh, and its REQ asks from the watermark less
+  /// [_sinceSlack] — which is not "from where this relay left off". The
+  /// watermark is pool-wide, and the sockets kept through the slow spell go on
+  /// advancing it, so a reopened relay is asked for the last ten minutes or so
+  /// of the spell, not all of it. An event that reached only let-go relays
+  /// before that is never fetched. In practice that is a peer on a build from
+  /// before the meeting point whose relay list misses the public one we kept:
+  /// narrow, but not nothing.
   void _applySlowMode(bool slow) {
     if (_disposed) return;
     if (!slow) {
@@ -603,7 +609,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
       final primary = targets.where((c) => c.url == primaryUrl).firstOrNull;
       final rest = targets.where((c) => c.url != primaryUrl).toList();
       if (primary != null && rest.isNotEmpty) {
-        final first = await _publishTo([primary], id, payload);
+        final first = await _publishTo([primary], id, payload, lane);
         if (first.accepted > 0) {
           receipt = first;
         } else {
@@ -622,7 +628,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
         }
       }
     }
-    receipt ??= await _publishTo(targets, id, payload);
+    receipt ??= await _publishTo(targets, id, payload, lane);
 
     // Slow mode closed every socket this went to while it waited (see
     // [_letGo]). Nobody was there to answer, which says nothing about the
@@ -674,7 +680,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
             : reopened.where((c) => wanted.contains(c.url)).toList();
         final retargets = again.isNotEmpty ? again : reopened;
         if (retargets.isNotEmpty && !_disposed) {
-          receipt = await _publishTo(retargets, id, payload);
+          receipt = await _publishTo(retargets, id, payload, lane);
         }
       }
     }
@@ -699,7 +705,16 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     // rounds to 5 friends at 15 lines each — with not one chat message left in
     // the window to measure the "slow to send" report by. A beacon that did not
     // land still says so here.
-    if (id != null && !(lane == RelayLane.location && receipt.isAccepted)) {
+    //
+    // A media chunk that landed is summed up once per transfer by the sender
+    // too (`MessagingService`'s "sent … chunks" lines). On a slow link a file
+    // goes in 16 KiB pieces, four times as many, and a 1 MB file was ~64 of
+    // these plus as many "sent … via relay" — enough to push the single
+    // `[NET]` transition line out of the 200-line log the owner sends us.
+    // A chunk that did not land still says so here.
+    final summedElsewhere =
+        lane == RelayLane.location || lane == RelayLane.media;
+    if (id != null && !(summedElsewhere && receipt.isAccepted)) {
       DebugLog.instance.log(
         'NOSTR',
         'published ${id.substring(0, 8)} — $receipt',
@@ -708,11 +723,14 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     return receipt;
   }
 
-  /// One write of [payload] to [targets], and the answers to it.
+  /// One write of [payload] to [targets], and the answers to it. [lane]
+  /// decides the wait: a media chunk is bulk — see
+  /// [LinkQualityMeter.ackTimeout].
   Future<PublishReceipt> _publishTo(
     List<_RelayConnection> targets,
     String? id,
     String payload,
+    RelayLane lane,
   ) async {
     final sentAt = DateTime.now();
     final sentTo = <String>[];
@@ -736,7 +754,10 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     _pending[id] = pending;
 
     final receipt = await pending.wait(
-      _linkQuality.ackTimeout(floor: _publishAckTimeout),
+      _linkQuality.ackTimeout(
+        floor: _publishAckTimeout,
+        bulk: lane == RelayLane.media,
+      ),
     );
     if (identical(_pending[id], pending)) _pending.remove(id);
     // Only the bookkeeping for a late answer here. Whether the publish as a
