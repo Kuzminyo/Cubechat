@@ -364,14 +364,20 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// Publishes still waiting for their `OK`, keyed by event id.
   final Map<String, _PendingPublish> _pending = {};
 
-  /// Publishes that ran out of time recently, by event id: when they went
-  /// out and which relays still owe them an answer.
+  /// Publishes that ran out of time recently, by event id: each relay that
+  /// still owes an answer, and when *that* relay was written to.
   ///
   /// A late `OK` is still the best measurement there is. Dropped, the meter
   /// would only ever see the answers that beat the deadline, so on EDGE the
   /// median could never climb past the wait it is meant to stretch — the
   /// slower the link, the less of it got measured.
-  final Map<String, ({DateTime sentAt, Set<String> owed})> _timedOut = {};
+  ///
+  /// Per relay, because one id goes out more than once: the media lane writes
+  /// to our relay alone and then to the rest, and a silent publish is sent
+  /// again after the probe. Timed against the later write, our relay's 2.4 s
+  /// answer would have been recorded as 0.4 s; and re-registering the id
+  /// replaced the earlier relays' entries, losing their late answers outright.
+  final Map<String, Map<String, DateTime>> _timedOut = {};
 
   /// Room for a run of file chunks timing out back to back; the oldest is
   /// forgotten first, and an `OK` that arrives after that has stopped being a
@@ -416,6 +422,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     // [primaryMissPause], so a relay that is down costs one chunk a delay,
     // not every chunk.
     PublishReceipt? receipt;
+    var primaryRefused = false;
     final primaryUrl = _lanePrimary[lane];
     if (primaryUrl != null && id != null) {
       final primary = targets.where((c) => c.url == primaryUrl).firstOrNull;
@@ -425,6 +432,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
         if (first.accepted > 0) {
           receipt = first;
         } else {
+          primaryRefused = first.rejected > 0;
           final already = _isPausing(primaryUrl, DateTime.now());
           _pausedUntil[primaryUrl] = DateTime.now().add(primaryMissPause);
           if (!already) {
@@ -488,6 +496,19 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
       }
     }
 
+    // One silence per publish nobody answered — after every write it got
+    // (ours alone, the rest of the lane, the resend after the probe), never
+    // one per quiet relay. The meter calls the link slow on two in a row, and
+    // counting relays would have let one publish to three quiet relays do
+    // that alone. A refusal is an answer, so it is not a silence either.
+    if (id != null &&
+        receipt.accepted == 0 &&
+        receipt.rejected == 0 &&
+        !primaryRefused &&
+        !_disposed) {
+      _linkQuality.recordSilence(targets.first.url);
+    }
+
     // A map beacon that landed is summed up once per round by
     // `MapPresenceController` instead. Per event it was a line per friend per
     // round, and a 75-minute log from 2026-10-16 was 70% map beacons — 47
@@ -534,20 +555,52 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
       _linkQuality.ackTimeout(floor: _publishAckTimeout),
     );
     if (identical(_pending[id], pending)) _pending.remove(id);
-    if (pending.timedOut && !_disposed) {
-      final owed = pending.unanswered;
-      if (owed.isNotEmpty) {
-        _timedOut.remove(id);
-        _timedOut[id] = (sentAt: sentAt, owed: owed);
-        while (_timedOut.length > _timedOutCapacity) {
-          _timedOut.remove(_timedOut.keys.first);
-        }
-        for (final url in owed) {
-          _linkQuality.recordSilence(url);
-        }
-      }
-    }
+    // Only the bookkeeping for a late answer here. Whether the publish as a
+    // whole went unanswered is decided once, in [publish], over every write.
+    if (pending.timedOut && !_disposed) _owe(id, pending.unanswered, sentAt);
     return receipt;
+  }
+
+  /// Remember that [urls] were written [id] at [sentAt] and have not answered.
+  /// A relay already owed keeps its own, earlier time — see [_sentAtFor].
+  void _owe(String id, Set<String> urls, DateTime sentAt) {
+    if (urls.isEmpty) return;
+    // Removed and put back, so the id counts as the newest for eviction.
+    final owed = _timedOut.remove(id) ?? <String, DateTime>{};
+    for (final url in urls) {
+      owed.putIfAbsent(url, () => sentAt);
+    }
+    _timedOut[id] = owed;
+    while (_timedOut.length > _timedOutCapacity) {
+      _timedOut.remove(_timedOut.keys.first);
+    }
+  }
+
+  /// A socket that went down will never answer what was written to it; its
+  /// replacement's answer belongs to the write that went over the new one.
+  void _forgetOwed(String url) {
+    for (final owed in _timedOut.values) {
+      owed.remove(url);
+    }
+    _timedOut.removeWhere((_, owed) => owed.isEmpty);
+  }
+
+  /// When the write that [url]'s `OK` for [eventId] answers went out, or null
+  /// when it is not one we are timing.
+  ///
+  /// An earlier write still owed comes first: one socket answers in the order
+  /// it was written to, so a relay that missed the first deadline and was
+  /// written to again is answering the first write when its `OK` arrives.
+  DateTime? _sentAtFor(String url, String eventId) {
+    final owed = _timedOut[eventId];
+    final early = owed?.remove(url);
+    if (early != null) {
+      if (owed!.isEmpty) _timedOut.remove(eventId);
+      return early;
+    }
+    final pending = _pending[eventId];
+    if (pending != null && pending.awaits(url)) return pending.sentAt;
+    return null;
   }
 
   /// Route an `OK` back to whoever is waiting on that event id, and time it.
@@ -556,18 +609,11 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// event is stored", and a refusal can come back before the relay did any
   /// of that work.
   void _onOk(String url, String eventId, bool accepted, String message) {
-    final now = DateTime.now();
-    final pending = _pending[eventId];
-    if (pending != null && !pending.isSettled) {
-      if (accepted) _linkQuality.recordAck(url, now.difference(pending.sentAt));
-      pending.record(url: url, accepted: accepted, message: message);
-      return;
+    final sentAt = _sentAtFor(url, eventId);
+    if (accepted && sentAt != null) {
+      _linkQuality.recordAck(url, DateTime.now().difference(sentAt));
     }
-    // Late: the publish already gave up on this relay. See [_timedOut].
-    final late = _timedOut[eventId];
-    if (late == null || !late.owed.remove(url)) return;
-    if (late.owed.isEmpty) _timedOut.remove(eventId);
-    if (accepted) _linkQuality.recordAck(url, now.difference(late.sentAt));
+    _pending[eventId]?.record(url: url, accepted: accepted, message: message);
   }
 
   /// How long a relay that refused us for rate is left alone. A little over
@@ -773,6 +819,11 @@ class _PendingPublish {
   /// Relays among [urls] that have said nothing yet.
   Set<String> get unanswered =>
       urls.where((u) => !_answered.contains(u)).toSet();
+
+  /// Whether an `OK` from [url] now would be this write's first answer from
+  /// it — the only one worth timing against [sentAt].
+  bool awaits(String url) =>
+      !isSettled && urls.contains(url) && !_answered.contains(url);
 
   void record({
     required String url,
@@ -1128,6 +1179,7 @@ class _RelayConnection {
         '$url down ($reason) — retry in '
             '${_backoff.inSeconds}s');
     _teardownSocket();
+    _pool._forgetOwed(url);
     _pool._setState(url, RelayState.failed);
     _retryTimer?.cancel();
     _retryTimer = Timer(_backoff, () => unawaited(open()));

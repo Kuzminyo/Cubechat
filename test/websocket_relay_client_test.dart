@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:cubechat/core/transport/frame.dart';
 import 'package:cubechat/core/crypto/secp256k1.dart';
+import 'package:cubechat/core/transport/nostr/link_quality.dart';
 import 'package:cubechat/core/transport/nostr/nostr_event.dart';
 import 'package:cubechat/core/transport/nostr/nostr_relay_protocol.dart';
 import 'package:cubechat/core/transport/nostr/nostr_frame_codec.dart';
@@ -171,6 +172,18 @@ class _FakeRelayServer {
   void willDeliver(NostrEvent event) => _toReplay.add(event.toJson());
 
   Future<void> stop() => _server.close(force: true);
+}
+
+/// The real meter, with every timing the pool hands it written down — so a
+/// test can check *what* was measured, not only what the meter concluded.
+class _RecordingMeter extends LinkQualityMeter {
+  final List<(String url, Duration elapsed)> acks = [];
+
+  @override
+  void recordAck(String url, Duration elapsed) {
+    acks.add((url, elapsed));
+    super.recordAck(url, elapsed);
+  }
 }
 
 /// Wait for [check] to hold, polling the event loop — the client connects,
@@ -799,9 +812,13 @@ void main() {
     test('on a fast link the floor still holds', () async {
       final relay = await _FakeRelayServer.start();
       addTearDown(relay.stop);
+      final meter = _RecordingMeter();
+      addTearDown(meter.dispose);
+      const twoSeconds = Duration(seconds: 2);
       final client = WebSocketNostrRelayClient(
         relayUrls: [relay.url],
-        publishAckTimeout: const Duration(seconds: 2),
+        publishAckTimeout: twoSeconds,
+        linkQuality: meter,
       );
       addTearDown(client.dispose);
       client.start();
@@ -810,6 +827,117 @@ void main() {
       expect(receipt.isAccepted, isTrue);
       expect(client.isSlow, isFalse);
       expect(relay.connections, 1);
+      // The fast OK was measured, and still nothing waits less than before.
+      expect(meter.acks, hasLength(1));
+      expect(meter.ackTimeout(floor: twoSeconds), twoSeconds);
+      expect(meter.probeTimeout(floor: twoSeconds), twoSeconds);
+    });
+
+    test('one publish nobody answered is one silence, however many relays',
+        () async {
+      // Three quiet conversation relays used to be three silences, and the
+      // meter calls two in a row slow — so one unanswered text did it alone.
+      final a = await _FakeRelayServer.start();
+      final b = await _FakeRelayServer.start();
+      addTearDown(a.stop);
+      addTearDown(b.stop);
+      a.okAnswer = null;
+      b.okAnswer = null;
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [a.url, b.url],
+        publishAckTimeout: floor,
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await _until(
+        () =>
+            client.states.values
+                .where((s) => s == RelayState.connected)
+                .length ==
+            2,
+        reason: 'both relays connected',
+      );
+
+      expect((await send(client, 'ab')).silent, 2);
+      expect(client.isSlow, isFalse, reason: 'one publish, one silence');
+      expect((await send(client, 'cd')).silent, 2);
+      expect(client.isSlow, isTrue, reason: 'two publishes in a row');
+      expect(a.connections + b.connections, 2, reason: 'both answered probes');
+    });
+
+    group('our media relay answering late', () {
+      // Our relay is written to alone first; past the deadline the rest of the
+      // lane gets the same id. Its late OK must be timed from *its* write.
+      /// What the meter recorded for our relay's answer.
+      Future<Duration> chunkWithLateOwnRelay({
+        required Duration floor,
+        required Duration own,
+        required Duration rest,
+      }) async {
+        final ownRelay = await _FakeRelayServer.start();
+        final other = await _FakeRelayServer.start();
+        addTearDown(ownRelay.stop);
+        addTearDown(other.stop);
+        final meter = _RecordingMeter();
+        addTearDown(meter.dispose);
+        final client = WebSocketNostrRelayClient(
+          relayUrls: const [],
+          mediaRelayUrls: [ownRelay.url, other.url],
+          mediaPrimaryUrl: ownRelay.url,
+          publishAckTimeout: floor,
+          linkQuality: meter,
+        );
+        addTearDown(client.dispose);
+        client.start();
+        await _until(
+          () =>
+              client.states.values
+                  .where((s) => s == RelayState.connected)
+                  .length ==
+              2,
+          reason: 'both relays connected',
+        );
+        ownRelay.answerDelay = own;
+        other.answerDelay = rest;
+        await NostrTransport(signer: signer, relay: client).sendFrame(
+          recipientNpubHex: 'ab' * 32,
+          frameBytes: frame,
+          lane: RelayLane.media,
+        );
+        await _until(
+          () => meter.acks.any((a) => a.$1 == ownRelay.url),
+          reason: 'our relay measured',
+        );
+        return meter.acks.singleWhere((a) => a.$1 == ownRelay.url).$2;
+      }
+
+      test('while the rest of the lane is still waiting', () async {
+        // Ours times out at 500 ms, the rest is written then and waits until
+        // 1000 ms; ours answers at 800 ms, inside the rest's wait. Timed from
+        // the rest's write it was recorded as 300 ms.
+        const own = Duration(milliseconds: 800);
+        final sample = await chunkWithLateOwnRelay(
+          floor: const Duration(milliseconds: 500),
+          own: own,
+          rest: const Duration(milliseconds: 1500),
+        );
+        expect(sample, greaterThanOrEqualTo(own));
+        expect(sample, lessThan(own * 1.5));
+      });
+
+      test('after the rest of the lane has run out too', () async {
+        // Ours times out at 300 ms, the rest at 600 ms and re-registers the
+        // id; ours answers at 900 ms. Overwritten, its entry was gone and the
+        // answer was never measured at all.
+        const own = Duration(milliseconds: 900);
+        final sample = await chunkWithLateOwnRelay(
+          floor: const Duration(milliseconds: 300),
+          own: own,
+          rest: const Duration(milliseconds: 1200),
+        );
+        expect(sample, greaterThanOrEqualTo(own));
+        expect(sample, lessThan(own * 1.5));
+      });
     });
   });
 
