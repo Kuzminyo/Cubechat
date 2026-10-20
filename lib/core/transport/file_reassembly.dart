@@ -26,7 +26,7 @@ class _PendingFile {
     required this.file,
     required this.handle,
     required this.startedAt,
-  });
+  }) : lastChunkAt = startedAt;
 
   final int total;
   final File file;
@@ -39,6 +39,10 @@ class _PendingFile {
   final RandomAccessFile handle;
 
   final DateTime startedAt;
+
+  /// When the last chunk of this transfer was taken in. What [FileReassembler]
+  /// expires by — see [FileReassembler.staleAfter].
+  DateTime lastChunkAt;
 
   /// Size of a non-final chunk, learned from the first one that arrives.
   /// Null until then — the final chunk is short and says nothing about it.
@@ -98,7 +102,8 @@ class FileReassembler {
     this.maxPendingTransfers = 4,
     this.maxBytesPerTransfer = 256 * 1024 * 1024,
     this.maxBytesOnDisk = 512 * 1024 * 1024,
-  });
+    DateTime Function()? clock,
+  }) : _now = clock ?? DateTime.now;
 
   /// Scratch directory for partial transfers. Injected rather than resolved
   /// through path_provider so this is testable without a plugin.
@@ -107,6 +112,17 @@ class FileReassembler {
   /// A transfer nobody has fed in this long is abandoned. Longer than the
   /// image window (two minutes): a large file over BLE legitimately takes
   /// minutes, and expiring it mid-flight would waste everything already sent.
+  ///
+  /// Counted from the transfer's last chunk, not its first. Until 2026-10-20 it
+  /// was measured from `startedAt`, so a file was thrown away ten minutes after
+  /// it began however steadily its chunks were still arriving — and on EDGE,
+  /// at the 3–5 KB/s up a phone gets there, ten minutes is about 2 MB. A file
+  /// of a few megabytes could not arrive at all. A transfer that is moving is
+  /// alive; one silent for this long is not.
+  ///
+  /// Older receivers still count from the start, so to a phone on an older
+  /// build a file sent over a crawling link is still capped at roughly what
+  /// ten minutes carries.
   final Duration staleAfter;
 
   /// Concurrent transfers per reassembler. Low on purpose — a file is a
@@ -127,6 +143,10 @@ class FileReassembler {
   /// Raised with the sender's ceiling in 1047; see
   /// [MessagingService.maxFileBytesRelay].
   final int maxBytesOnDisk;
+
+  /// Where "now" comes from. Injected so the expiry can be tested in minutes
+  /// that take no time; [DateTime.now] everywhere else.
+  final DateTime Function() _now;
 
   final Map<String, _PendingFile> _pending = <String, _PendingFile>{};
 
@@ -207,7 +227,7 @@ class FileReassembler {
         // Truncating is right here and only here: the transfer is new, so
         // anything left under this id is debris from an abandoned one.
         handle: await f.open(mode: FileMode.write),
-        startedAt: DateTime.now(),
+        startedAt: _now(),
       );
       _pending[key] = entry;
     }
@@ -225,6 +245,9 @@ class FileReassembler {
       return null;
     }
     if (entry.have.contains(chunk.seq)) return null; // duplicate, ignore
+    // Only a chunk that is news keeps the transfer alive: a peer replaying one
+    // sequence forever must not hold a scratch file open past [staleAfter].
+    entry.lastChunkAt = _now();
 
     // A one-chunk transfer has no stride to learn — its only chunk is also the
     // final one, and it sits at offset zero. Without this the transfer would
@@ -297,7 +320,7 @@ class FileReassembler {
   /// transfer that merely timed out is not remembered, so a peer coming back
   /// into range can retry.
   Future<void> _discard(String key, {bool remember = true}) async {
-    if (remember) _dropped[key] = DateTime.now();
+    if (remember) _dropped[key] = _now();
     final entry = _pending.remove(key);
     if (entry == null) return;
     try {
@@ -311,11 +334,11 @@ class FileReassembler {
   }
 
   Future<void> _gc() async {
-    final now = DateTime.now();
+    final now = _now();
     _dropped.removeWhere((_, at) => now.difference(at) > staleAfter);
     if (_pending.isEmpty) return;
     final dead = _pending.entries
-        .where((e) => now.difference(e.value.startedAt) > staleAfter)
+        .where((e) => now.difference(e.value.lastChunkAt) > staleAfter)
         .map((e) => e.key)
         .toList();
     for (final key in dead) {

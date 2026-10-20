@@ -90,16 +90,64 @@ const int kBleMediaChunkData = 4096;
 /// field cannot silently push a chunk past the u16 and make every transfer
 /// unencodable. The ceiling that stops this going higher is now ours, not
 /// anyone else's.
+///
+/// **Not on a slow link** — see [kRelaySlowMediaChunkData]. The size above is
+/// what one event may weigh; on EDGE what decides it is how long one event
+/// takes to go up.
 const int kRelayMediaChunkData = 63 * 1024;
 
+/// Relay chunk `data` while the pool calls the link slow
+/// (`WebSocketNostrRelayClient.isSlow`).
+///
+/// On EDGE a phone gets about 3–5 KB/s up. A 63 KiB chunk is ~87 KB of event,
+/// which is 20–30 s on that link — longer than the 15 s ceiling on how long the
+/// pool waits for an `OK` (`LinkQualityMeter.ackTimeout`), so the chunk was counted lost while it was still going
+/// up, retried, and lost again. 16 KiB is ~22 KB of event, 5–7 s there: inside
+/// the wait, and a text queued behind a chunk waits seconds rather than half a
+/// minute.
+///
+/// Nothing on the wire changes. A receiver takes a chunk of any size as long as
+/// it is the same size all through one transfer (`FileReassembler` writes at
+/// `seq * stride`; the image and audio reassemblers concatenate by `seq`), so
+/// the size is decided once, when a transfer is sliced, and kept to the end
+/// even if the link turns fast half way. Four times the events per file; our
+/// relay's write policy allows 3000 a minute per address, and a link this slow
+/// sends about ten.
+const int kRelaySlowMediaChunkData = 16 * 1024;
+
 /// Media-chunk `data` size for the Nostr relay path, clamped to the chunk
-/// type's own protocol cap.
+/// type's own protocol cap. [slow] picks [kRelaySlowMediaChunkData].
 ///
 /// A separate function from [bleMediaChunkData] because the two paths are
 /// sized by different things entirely: BLE by how many fragments a chunk may
 /// occupy, the relay by what one event may weigh.
-int relayMediaChunkData({required int ceiling}) =>
-    kRelayMediaChunkData > ceiling ? ceiling : kRelayMediaChunkData;
+int relayMediaChunkData({required int ceiling, bool slow = false}) {
+  final target = slow ? kRelaySlowMediaChunkData : kRelayMediaChunkData;
+  return target > ceiling ? ceiling : target;
+}
+
+/// Relay chunk `data` for a file of [size] bytes: [relayMediaChunkData],
+/// stepped up just far enough that the file still numbers no more than
+/// [maxChunks] chunks.
+///
+/// Only the slow size ever needs the step. 8192 chunks of 16 KiB is 128 MiB,
+/// half of what the relay will carry, and a larger file sliced at 16 KiB would
+/// throw "too many chunks" before its first byte. Such a file goes in the
+/// smallest pieces that fit the counter instead — 32 KiB at the 256 MiB
+/// ceiling, still well under the fast size. At the fast size the counter holds
+/// 504 MiB, so a fast file is sized exactly as before.
+int relayFileChunkData({
+  required int size,
+  required int maxChunks,
+  required int ceiling,
+  bool slow = false,
+}) {
+  final base = relayMediaChunkData(ceiling: ceiling, slow: slow);
+  final needed = (size + maxChunks - 1) ~/ maxChunks;
+  if (needed <= base) return base;
+  final fast = relayMediaChunkData(ceiling: ceiling);
+  return needed > fast ? fast : needed;
+}
 
 /// Fragments one media chunk may occupy, well under the protocol's
 /// [kMaxFragments].

@@ -2340,8 +2340,22 @@ class MessagingService {
     try {
       final tid = session?.peerId;
       final direct = tid != null ? _clients[tid] : null;
+      // Decided once for the whole transfer, here — see
+      // [kRelaySlowMediaChunkData]. A re-send under the same id takes the
+      // first slicing's answer; see [_relaySlicedSlow].
+      final slow = _relaySlicedSlow[transferId] ?? isSlowNetwork;
       var chunkData = _mediaChunkData(direct,
           relayOnly: relayOnly, ceiling: FileChunk.maxDataBytes);
+      if (relayOnly) {
+        _relaySlicedSlow[transferId] = slow;
+        // 16 KiB numbers only 128 MiB in 8192 chunks; a larger file steps up.
+        chunkData = relayFileChunkData(
+          size: size,
+          maxChunks: FileChunk.maxChunks,
+          ceiling: FileChunk.maxDataBytes,
+          slow: slow,
+        );
+      }
       // Over Bluetooth, a file too large for the chunk count at the usual size
       // goes in bigger chunks — see [kBleLargeFileChunkData]. Sized to the
       // narrower of the direct link and the conservative one, because a chunk
@@ -2377,7 +2391,7 @@ class MessagingService {
       DebugLog.instance.log(
         'FILE',
         'sending "$safe" — $size B as $total × $chunkData B '
-            '(${relayOnly ? 'relay' : 'mesh'})',
+            '(${relayOnly ? (slow ? 'relay, slow link' : 'relay') : 'mesh'})',
       );
 
       // Off the UI isolate — 1318 ms of it for a 115 MB video in the 1105
@@ -2456,7 +2470,9 @@ class MessagingService {
             body: body,
           );
           _dedup.acceptEnvelope(env);
-          final delivery = await _deliverMediaFrameRetrying(
+          // On a slow link: texts first, and a dropout waited out on this
+          // same chunk. See [_deliverMediaChunk].
+          final delivery = await _deliverMediaChunk(
             frameBytes: Frame(type: FrameType.transport, payload: env.encode())
                 .encode(),
             session: session,
@@ -2764,8 +2780,13 @@ class MessagingService {
       // while a central was connected, the link dropped during the async
       // setup below, and the send went relay-only into a dead relay.
       final relayOnly = !_hasAnyLink && _relayClient?.isConnected == true;
-      final chunkData = _mediaChunkData(imgDirect,
-          relayOnly: relayOnly, ceiling: ImageChunk.maxDataBytes);
+      // Slow or not is read once, here, and kept for every chunk.
+      final chunkData = _mediaChunkData(
+        imgDirect,
+        relayOnly: relayOnly,
+        ceiling: ImageChunk.maxDataBytes,
+        slow: isSlowNetwork,
+      );
       final total = (bytes.length + chunkData - 1) ~/ chunkData;
       if (total < 1 || total > ImageChunk.maxChunks) {
         throw StateError(
@@ -2830,7 +2851,7 @@ class MessagingService {
           payload: env.encode(),
         ).encode();
 
-        final delivery = await _deliverMediaFrameRetrying(
+        final delivery = await _deliverMediaChunk(
           frameBytes: frameBytes,
           session: session,
           canonicalId: canonicalId,
@@ -3039,8 +3060,13 @@ class MessagingService {
       // keep the route decision honest so retry/backoff can recover instead of
       // committing a voice note to a dead internet path.
       final relayOnly = !_hasAnyLink && _relayClient?.isConnected == true;
-      final chunkData = _mediaChunkData(audDirect,
-          relayOnly: relayOnly, ceiling: AudioChunk.maxDataBytes);
+      // Slow or not is read once, here, and kept for every chunk.
+      final chunkData = _mediaChunkData(
+        audDirect,
+        relayOnly: relayOnly,
+        ceiling: AudioChunk.maxDataBytes,
+        slow: isSlowNetwork,
+      );
       final total = (bytes.length + chunkData - 1) ~/ chunkData;
       if (total < 1 || total > AudioChunk.maxChunks) {
         throw StateError(
@@ -3120,7 +3146,7 @@ class MessagingService {
           payload: env.encode(),
         ).encode();
 
-        final delivery = await _deliverMediaFrameRetrying(
+        final delivery = await _deliverMediaChunk(
           frameBytes: frameBytes,
           session: session,
           canonicalId: canonicalId,
@@ -3682,6 +3708,10 @@ class MessagingService {
   /// goes now that nothing is ahead of it.
   void _textLeftRelay() {
     _textRelayInFlight--;
+    // A file chunk standing aside for it goes now — see [_yieldToText].
+    final signal = _textLeftRelaySignal;
+    _textLeftRelaySignal = null;
+    signal?.complete();
     _offerDeferredReadReceipts();
   }
 
@@ -5303,8 +5333,13 @@ class MessagingService {
 
     try {
       final relayOnly = !_hasAnyLink;
-      final chunkData = _mediaChunkData(null,
-          relayOnly: relayOnly, ceiling: ImageChunk.maxDataBytes);
+      // Slow or not is read once, here, and kept for every chunk.
+      final chunkData = _mediaChunkData(
+        null,
+        relayOnly: relayOnly,
+        ceiling: ImageChunk.maxDataBytes,
+        slow: isSlowNetwork,
+      );
       final total = (bytes.length + chunkData - 1) ~/ chunkData;
       if (total < 1 || total > ImageChunk.maxChunks) {
         throw StateError(
@@ -5344,6 +5379,10 @@ class MessagingService {
           mime: mime,
           data: Uint8List.fromList(bytes.sublist(start, end)),
         );
+        // A room post's chunks stand aside for texts on a slow link too — see
+        // [_yieldToText]. A broadcast has no single route to wait for, so the
+        // dropout patience of [_deliverMediaChunk] does not apply here.
+        if (isSlowNetwork) await _yieldToText(max: _textYieldMax);
         fanout = await _broadcastChannelFrame(
           await _buildChannelFrame(
             channel,
@@ -5426,8 +5465,13 @@ class MessagingService {
 
     try {
       final relayOnly = !_hasAnyLink;
-      final chunkData = _mediaChunkData(null,
-          relayOnly: relayOnly, ceiling: AudioChunk.maxDataBytes);
+      // Slow or not is read once, here, and kept for every chunk.
+      final chunkData = _mediaChunkData(
+        null,
+        relayOnly: relayOnly,
+        ceiling: AudioChunk.maxDataBytes,
+        slow: isSlowNetwork,
+      );
       final total = (bytes.length + chunkData - 1) ~/ chunkData;
       if (total < 1 || total > AudioChunk.maxChunks) {
         throw StateError(
@@ -5467,6 +5511,8 @@ class MessagingService {
           mime: mime,
           data: Uint8List.fromList(bytes.sublist(start, end)),
         );
+        // Texts first on a slow link, as for a room photo above.
+        if (isSlowNetwork) await _yieldToText(max: _textYieldMax);
         fanout = await _broadcastChannelFrame(
           await _buildChannelFrame(
             channel,
@@ -10221,12 +10267,17 @@ class MessagingService {
   /// The two paths never mix. [_deliverMediaFrame] short-circuits a
   /// relay-chunked transfer straight to the relay, so a 63 KiB chunk is never
   /// handed to the fragmenter as a thousand unpaced BLE notifies.
+  ///
+  /// [slow] is read once, by the caller, when it slices the transfer, and the
+  /// size it gives is kept to the last chunk — see [kRelaySlowMediaChunkData].
+  /// A receiver kills a transfer whose chunks change size half way.
   int _mediaChunkData(
     BleGattClient? direct, {
     required bool relayOnly,
     required int ceiling,
+    bool slow = false,
   }) {
-    if (relayOnly) return relayMediaChunkData(ceiling: ceiling);
+    if (relayOnly) return relayMediaChunkData(ceiling: ceiling, slow: slow);
     // BLE chunks are sized for the fragmenter, not for one write. See
     // [bleMediaChunkData] for why matching the MTU was the wrong instinct —
     // it spent more airtime on packaging than on the photo.
@@ -10310,6 +10361,224 @@ class MessagingService {
       await Future<void>.delayed(_mediaRetryBackoff * attempt);
     }
     return (sent: false, gap: next);
+  }
+
+  /// How long a chunk on a slow link waits for its road to come back before
+  /// the transfer is given up.
+  ///
+  /// A retry of a file is a new transfer: [retryFileTransfer] calls [sendFile]
+  /// again, under a new id, from chunk zero — there is no resume on the wire.
+  /// On EDGE the link drops for tens of seconds at a time, and each drop used
+  /// to throw away everything sent so far. Waiting inside the transfer keeps
+  /// the same id and the same chunk, so what has gone up stays up. Five
+  /// minutes rides out a lift or a train through a cutting, and is half the
+  /// ten a receiver keeps a silent transfer ([FileReassembler.staleAfter]), so
+  /// the chunk the wait ends on still has somewhere to land.
+  static const Duration _slowChunkPatience = Duration(minutes: 5);
+
+  /// The longest one chunk on a slow link stands aside for texts — see
+  /// [_yieldToText]. A text on EDGE takes a few seconds; this only bounds a
+  /// stream of them, so a chatty conversation cannot stop a file outright.
+  static const Duration _textYieldMax = Duration(seconds: 30);
+
+  /// Relay transfers sliced on a slow link, by media id: whether they were.
+  ///
+  /// A receiver that stalls asks for the file again under the *same* id
+  /// ([_handleMediaRequest]), and its half-built copy is still waiting. Sliced
+  /// again at the other size, the re-send changes the chunk count under that
+  /// id and the receiver drops the transfer for good — see
+  /// [kRelaySlowMediaChunkData]. So a re-send takes the size the first slicing
+  /// took. Held for the session only: one bool per file sent.
+  final Map<String, bool> _relaySlicedSlow = {};
+
+  /// Signalled each time a text leaves the relay road ([_textLeftRelay]), so
+  /// a chunk standing aside for it ([_yieldToText]) wakes then and not on a
+  /// timer. Replaced after each signal.
+  Completer<void>? _textLeftRelaySignal;
+
+  /// One chunk of a transfer, delivered the way the link allows.
+  ///
+  /// On a fast link exactly [_deliverMediaFrameRetrying], once. On a slow one
+  /// ([isSlowNetwork]) the chunk first lets any text on the relay go ahead of
+  /// it, and a chunk that could not be delivered waits — up to
+  /// [_slowChunkPatience] — for the route to come back and is then tried once
+  /// more, the same chunk of the same transfer, before the transfer fails.
+  Future<({bool sent, Duration gap})> _deliverMediaChunk({
+    required Uint8List frameBytes,
+    required ChatSession? session,
+    required String canonicalId,
+    required bool relayOnly,
+    required Duration gap,
+    bool directOnly = false,
+  }) {
+    return deliverMediaChunkPatiently(
+      // AirDrop is the person in reach or nobody; the relay's pace says
+      // nothing about it.
+      slow: () => !directOnly && !_disposed && isSlowNetwork,
+      yieldToText: () => _yieldToText(max: _textYieldMax),
+      routeBack: () async {
+        DebugLog.instance.log(
+          'FILE',
+          'chunk to $canonicalId refused on a slow link — waiting up to '
+              '${_slowChunkPatience.inMinutes} min for the route',
+        );
+        final back = await _awaitMediaRouteBack(
+          canonicalId,
+          max: _slowChunkPatience,
+          relayOnly: relayOnly,
+        );
+        DebugLog.instance.log(
+          'FILE',
+          back
+              ? 'route to $canonicalId back — same chunk again'
+              : 'route to $canonicalId did not come back',
+        );
+        return back;
+      },
+      deliver: (gap) => _deliverMediaFrameRetrying(
+        frameBytes: frameBytes,
+        session: session,
+        canonicalId: canonicalId,
+        relayOnly: relayOnly,
+        directOnly: directOnly,
+        gap: gap,
+      ),
+      gap: gap,
+    );
+  }
+
+  /// The decision inside [_deliverMediaChunk], with every effect handed in so
+  /// it can be tested without a relay.
+  ///
+  /// [slow] is asked twice — before the chunk and after a refusal — because the
+  /// link can turn either way while a chunk is out. Only the chunk *size* is
+  /// fixed for the transfer; how patient to be is not.
+  @visibleForTesting
+  static Future<({bool sent, Duration gap})> deliverMediaChunkPatiently({
+    required bool Function() slow,
+    required Future<void> Function() yieldToText,
+    required Future<bool> Function() routeBack,
+    required Future<({bool sent, Duration gap})> Function(Duration gap) deliver,
+    required Duration gap,
+  }) async {
+    if (slow()) await yieldToText();
+    final first = await deliver(gap);
+    if (first.sent || !slow()) return first;
+    if (!await routeBack()) return first;
+    // A text queued while the route was down goes before the chunk too.
+    if (slow()) await yieldToText();
+    return deliver(first.gap);
+  }
+
+  /// Wait — up to [max] — for a road to [canonicalId] to be there again.
+  ///
+  /// Woken by the relay pool's state changes, not by polling: a dropout on
+  /// EDGE ends when a socket opens, and that is exactly what the pool reports.
+  /// [relayOnly] for a transfer committed to the relay, which a Bluetooth link
+  /// to somebody else does not help. Returns whether the route is there.
+  Future<bool> _awaitMediaRouteBack(
+    String canonicalId, {
+    required Duration max,
+    bool relayOnly = false,
+  }) async {
+    final client = _relayClient;
+    bool hasRoute() {
+      if (_disposed) return false;
+      if (!relayOnly) return _hasMediaRoute(canonicalId);
+      final npub =
+          _ref.read(knownPeersControllerProvider)[canonicalId]?.nostrPubkey;
+      return client != null &&
+          client.isConnected &&
+          npub != null &&
+          npub.length == 32;
+    }
+
+    if (hasRoute()) return true;
+    if (_disposed || client == null) return false;
+    // Rate-limited inside: asking on every refused chunk must not pin the
+    // pool's reconnect backoff at its floor. See [wakeRelays].
+    wakeRelays();
+    // Disposal ends the wait too; the answer is then "no route".
+    await awaitRoute(
+      hasRoute: () => _disposed || hasRoute(),
+      changes: client.stateChanges,
+      max: max,
+    );
+    return hasRoute();
+  }
+
+  /// [_awaitMediaRouteBack] without the service: true as soon as [hasRoute]
+  /// holds, checked on each event of [changes]; false after [max], or when
+  /// [changes] ends without it.
+  @visibleForTesting
+  static Future<bool> awaitRoute({
+    required bool Function() hasRoute,
+    required Stream<Object?> changes,
+    required Duration max,
+  }) async {
+    if (hasRoute()) return true;
+    final done = Completer<bool>();
+    void finish() {
+      if (!done.isCompleted) done.complete(hasRoute());
+    }
+
+    // A subscription and a timer rather than `firstWhere(...).timeout(max)`:
+    // a timeout leaves the subscription listening, and after a five-minute
+    // wait that ended without a route it would sit on the pool's stream until
+    // some later change happened to satisfy it.
+    final sub = changes.listen(
+      (_) {
+        if (hasRoute()) finish();
+      },
+      // The stream closed — the pool was disposed.
+      onDone: finish,
+    );
+    final timer = Timer(max, finish);
+    try {
+      return await done.future;
+    } finally {
+      timer.cancel();
+      await sub.cancel();
+    }
+  }
+
+  /// Let texts on their way over the relay go before the next chunk, for at
+  /// most [max].
+  ///
+  /// On EDGE the uplink is a few KB/s and a chunk is seconds of it; a sentence
+  /// sent while a file goes up used to queue behind every chunk the file had
+  /// left. Waits only for a text actually being published — a `sendText` on
+  /// the relay road or an outbox flush ([_textRelayInFlight]). One merely
+  /// sitting in the outbox ([textWaitingForRelay]'s other half) is not moving,
+  /// and a file held for it would only stand still beside it, for [max] on
+  /// every chunk.
+  Future<void> _yieldToText({required Duration max}) {
+    return awaitTextsAhead(
+      textAhead: () => !_disposed && _textRelayInFlight > 0,
+      textLeft: () => (_textLeftRelaySignal ??= Completer<void>()).future,
+      max: max,
+    );
+  }
+
+  /// [_yieldToText] without the service: while [textAhead] holds, wait for
+  /// the next [textLeft] and look again — never past [max] in all.
+  @visibleForTesting
+  static Future<void> awaitTextsAhead({
+    required bool Function() textAhead,
+    required Future<void> Function() textLeft,
+    required Duration max,
+  }) async {
+    if (!textAhead()) return;
+    final waited = Stopwatch()..start();
+    while (textAhead()) {
+      final left = max - waited.elapsed;
+      if (left <= Duration.zero) return;
+      try {
+        await textLeft().timeout(left);
+      } on TimeoutException {
+        return;
+      }
+    }
   }
 
   Future<bool> _deliverMediaFrame({
