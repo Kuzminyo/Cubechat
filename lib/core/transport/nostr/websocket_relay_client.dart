@@ -7,6 +7,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../util/cost_meter.dart';
 import '../../util/debug_log.dart';
+import 'link_quality.dart';
 import 'nostr_event.dart';
 import 'nostr_relay_protocol.dart';
 import 'nostr_transport.dart';
@@ -52,7 +53,11 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     void Function(List<String> ids)? onSeenIds,
     Duration? publishAckTimeout,
     Duration? probeTimeout,
-  })  : _authSigner = authSigner,
+    LinkQualityMeter? linkQuality,
+    this.anchorUrl,
+  })  : _linkQuality = linkQuality ?? LinkQualityMeter(),
+        _ownsLinkQuality = linkQuality == null,
+        _authSigner = authSigner,
         _probeTimeout = probeTimeout ?? defaultProbeTimeout,
         _mediaSubscriptionsEnabled = subscribeToMedia,
         _mediaOnlyUrls = mediaRelayUrls.toSet().difference(<String>{
@@ -83,7 +88,8 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
           RelayLane.location: locationRelayUrls.toSet(),
         }),
         _lanePrimary = Map.unmodifiable(<RelayLane, String>{
-          if (mediaPrimaryUrl != null && mediaRelayUrls.contains(mediaPrimaryUrl))
+          if (mediaPrimaryUrl != null &&
+              mediaRelayUrls.contains(mediaPrimaryUrl))
             RelayLane.media: mediaPrimaryUrl,
         }),
         _connect = connect ?? WebSocketChannel.connect,
@@ -121,6 +127,26 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   static const int _seenCapacity = 2048;
 
   final List<String> _urls;
+
+  /// How fast the relays have been answering — what every wait below is
+  /// stretched by. Built here when nobody hands one in, and then disposed
+  /// with the pool; an injected one belongs to whoever injected it.
+  final LinkQualityMeter _linkQuality;
+  final bool _ownsLinkQuality;
+
+  /// Our own relay, the one socket a slow link keeps no matter what. Only
+  /// held here for now.
+  final String? anchorUrl;
+
+  /// True while the relays are answering like EDGE — see [LinkQualityMeter].
+  bool get isSlow => _linkQuality.isSlow;
+
+  /// Emits only when [isSlow] changes.
+  Stream<bool> get slowChanges => _linkQuality.changes;
+
+  /// One line for the debug log: the median `OK` and the last connect time.
+  String describeLink() => _linkQuality.describe();
+
   final NostrEventSigner? _authSigner;
   final Future<bool> Function(NostrEvent) _verifyInbound;
   Future<void> _verificationTail = Future<void>.value();
@@ -295,9 +321,21 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// A live relay answers a REQ with its `EOSE` in a round trip — a few
   /// hundred milliseconds on a mobile link. Two seconds leaves room for a slow
   /// one, and a wrong verdict costs one reconnect, not a message.
+  ///
+  /// It is a floor now, not the wait itself: [_currentProbeTimeout] stretches
+  /// it by what [_linkQuality] has measured. On EDGE a round trip is already
+  /// 0.5-1 s before queueing behind an upload, so a live socket answered past
+  /// 2 s, was torn down, and its replacement paid a fresh TLS handshake over
+  /// the same link — then went quiet the same way: silence, probe, reopen, in
+  /// a loop. The "wrong verdict costs one reconnect" above is only true when
+  /// the verdict is rare. On a good link nothing has stretched, and this is
+  /// still the whole wait.
   static const Duration defaultProbeTimeout = Duration(seconds: 2);
 
   final Duration _probeTimeout;
+
+  Duration get _currentProbeTimeout =>
+      _linkQuality.probeTimeout(floor: _probeTimeout);
 
   /// How long a publish waits for a socket reopened after a failed probe
   /// before it sends again without it.
@@ -310,12 +348,35 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// that a send never visibly hangs behind one that has gone quiet. Silence is
   /// reported as silence rather than as refusal — the event has most likely
   /// been stored, we just did not hear so.
+  ///
+  /// A floor now, not a ceiling: the wait is
+  /// [LinkQualityMeter.ackTimeout] over this, about four times the median
+  /// `OK` once any has been measured. On EDGE the median sits past 2 s on its
+  /// own (0.5-1 s a round trip, plus queueing behind whatever else is on the
+  /// uplink), so a fixed 2 s called most healthy publishes silent and sent
+  /// each into the probe-and-reopen loop described at [defaultProbeTimeout].
+  /// Where relays answer in a few hundred milliseconds, the stretch stays
+  /// under this and 2 s is still the wait.
   static const Duration defaultPublishAckTimeout = Duration(seconds: 2);
 
   final Duration _publishAckTimeout;
 
   /// Publishes still waiting for their `OK`, keyed by event id.
   final Map<String, _PendingPublish> _pending = {};
+
+  /// Publishes that ran out of time recently, by event id: when they went
+  /// out and which relays still owe them an answer.
+  ///
+  /// A late `OK` is still the best measurement there is. Dropped, the meter
+  /// would only ever see the answers that beat the deadline, so on EDGE the
+  /// median could never climb past the wait it is meant to stretch — the
+  /// slower the link, the less of it got measured.
+  final Map<String, ({DateTime sentAt, Set<String> owed})> _timedOut = {};
+
+  /// Room for a run of file chunks timing out back to back; the oldest is
+  /// forgotten first, and an `OK` that arrives after that has stopped being a
+  /// timing worth waiting by.
+  static const int _timedOutCapacity = 64;
 
   @override
   Future<PublishReceipt> publish(
@@ -395,10 +456,16 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     // a relay answers a duplicate id with `OK`, and the frame inside carries a
     // msgId the recipient already dedups on. Waiting costs the sender a few
     // seconds; not sending costs the message.
+    //
+    // On a slow link quiet is not dead, so the probe waits as long as the
+    // measured link needs (see [defaultProbeTimeout]) rather than calling a
+    // crawling socket dead and paying a new TLS handshake to replace it. A
+    // socket that misses even the stretched probe is reopened as before.
     if (id != null && receipt.accepted == 0 && receipt.rejected == 0) {
       final before = targets.length;
+      final probeTimeout = _currentProbeTimeout;
       final alive = await Future.wait([
-        for (final c in targets) c.probe(timeout: _probeTimeout),
+        for (final c in targets) c.probe(timeout: probeTimeout),
       ]);
       final revived = alive.where((a) => !a).length;
       if (revived > 0 && !_disposed) {
@@ -442,34 +509,65 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     String? id,
     String payload,
   ) async {
-    var sent = 0;
+    final sentAt = DateTime.now();
+    final sentTo = <String>[];
     for (final c in targets) {
-      if (c.send(payload)) sent++;
+      if (c.send(payload)) sentTo.add(c.url);
     }
-    if (sent == 0) {
+    if (sentTo.isEmpty) {
       throw StateError('every relay write failed');
     }
 
     // An unsigned event has no id to match an OK against; nothing downstream
     // should be publishing one, but reporting the writes beats hanging.
     if (id == null) {
-      return PublishReceipt(sentTo: sent, accepted: 0, rejected: 0);
+      return PublishReceipt(sentTo: sentTo.length, accepted: 0, rejected: 0);
     }
 
-    final pending = _PendingPublish(sentTo: sent);
+    final pending = _PendingPublish(urls: sentTo, sentAt: sentAt);
     // A relay that answers the same id twice, or an id we are already waiting
     // on (a re-publish), resolves the earlier wait rather than colliding.
     _pending.remove(id)?.settle();
     _pending[id] = pending;
 
-    final receipt = await pending.wait(_publishAckTimeout);
+    final receipt = await pending.wait(
+      _linkQuality.ackTimeout(floor: _publishAckTimeout),
+    );
     if (identical(_pending[id], pending)) _pending.remove(id);
+    if (pending.timedOut && !_disposed) {
+      final owed = pending.unanswered;
+      if (owed.isNotEmpty) {
+        _timedOut.remove(id);
+        _timedOut[id] = (sentAt: sentAt, owed: owed);
+        while (_timedOut.length > _timedOutCapacity) {
+          _timedOut.remove(_timedOut.keys.first);
+        }
+        for (final url in owed) {
+          _linkQuality.recordSilence(url);
+        }
+      }
+    }
     return receipt;
   }
 
-  /// Route an `OK` back to whoever is waiting on that event id.
-  void _onOk(String eventId, bool accepted, String message) {
-    _pending[eventId]?.record(accepted: accepted, message: message);
+  /// Route an `OK` back to whoever is waiting on that event id, and time it.
+  ///
+  /// Only acceptances are timed: the meter's median is "how long until an
+  /// event is stored", and a refusal can come back before the relay did any
+  /// of that work.
+  void _onOk(String url, String eventId, bool accepted, String message) {
+    final now = DateTime.now();
+    final pending = _pending[eventId];
+    if (pending != null && !pending.isSettled) {
+      if (accepted) _linkQuality.recordAck(url, now.difference(pending.sentAt));
+      pending.record(url: url, accepted: accepted, message: message);
+      return;
+    }
+    // Late: the publish already gave up on this relay. See [_timedOut].
+    final late = _timedOut[eventId];
+    if (late == null || !late.owed.remove(url)) return;
+    if (late.owed.isEmpty) _timedOut.remove(eventId);
+    if (accepted) _linkQuality.recordAck(url, now.difference(late.sentAt));
   }
 
   /// How long a relay that refused us for rate is left alone. A little over
@@ -543,12 +641,14 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
       p.settle();
     }
     _pending.clear();
+    _timedOut.clear();
     for (final c in _conns.values) {
       await c.close();
     }
     _conns.clear();
     await _inbound?.close();
     await _stateController.close();
+    if (_ownsLinkQuality) _linkQuality.dispose();
   }
 
   // ---------------------------------------------------------------- internals
@@ -648,17 +748,39 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
 /// One in-flight publish, collecting `OK`s until every relay has answered or
 /// the deadline passes.
 class _PendingPublish {
-  _PendingPublish({required this.sentTo});
+  _PendingPublish({required this.urls, required this.sentAt});
 
-  final int sentTo;
+  /// The relays that took the write.
+  final List<String> urls;
+
+  /// When it went out, for timing each `OK`.
+  final DateTime sentAt;
+
+  int get sentTo => urls.length;
   final _completer = Completer<PublishReceipt>();
   final List<String> _rejections = [];
+  final Set<String> _answered = <String>{};
   int _accepted = 0;
   int _rejected = 0;
   Timer? _deadline;
+  bool _timedOut = false;
 
-  void record({required bool accepted, required String message}) {
+  /// Settled by the deadline rather than by the answers.
+  bool get timedOut => _timedOut;
+
+  bool get isSettled => _completer.isCompleted;
+
+  /// Relays among [urls] that have said nothing yet.
+  Set<String> get unanswered =>
+      urls.where((u) => !_answered.contains(u)).toSet();
+
+  void record({
+    required String url,
+    required bool accepted,
+    required String message,
+  }) {
     if (_completer.isCompleted) return;
+    _answered.add(url);
     if (accepted) {
       _accepted++;
     } else {
@@ -679,7 +801,10 @@ class _PendingPublish {
   }
 
   Future<PublishReceipt> wait(Duration timeout) {
-    _deadline = Timer(timeout, settle);
+    _deadline = Timer(timeout, () {
+      if (!_completer.isCompleted) _timedOut = true;
+      settle();
+    });
     return _completer.future;
   }
 
@@ -730,7 +855,7 @@ class _RelayConnection {
   void wake() {
     if (_closed) return;
     if (_connected) {
-      unawaited(probe(timeout: _pool._probeTimeout));
+      unawaited(probe(timeout: _pool._currentProbeTimeout));
       return;
     }
     _reopenNow();
@@ -821,6 +946,7 @@ class _RelayConnection {
     _retryTimer?.cancel();
     _pool._setState(url, RelayState.connecting);
     WebSocketChannel? channel;
+    final handshake = Stopwatch()..start();
     try {
       channel = _connectOrThrow();
       _channel = channel;
@@ -839,6 +965,9 @@ class _RelayConnection {
       // after its socket was torn down and replaced used to report the
       // replacement connected — or, failing late, tear the replacement down.
       if (_closed || !identical(channel, _channel)) return;
+      // DNS, TCP and TLS together: several round trips, so on EDGE this
+      // alone says the link is slow before a single publish has been timed.
+      _pool._linkQuality.recordConnect(url, handshake.elapsed);
       // Writable is not subscribed: kind 1059 reads may require NIP-42 AUTH.
       // A CLOSED response below records that distinction and AUTH retries REQ.
       _connected = true;
@@ -969,7 +1098,7 @@ class _RelayConnection {
             _pool._noteRateLimited(url);
           }
         }
-        _pool._onOk(eventId, accepted, message);
+        _pool._onOk(url, eventId, accepted, message);
       case RelayAuth(:final challenge):
         unawaited(_authenticate(challenge));
       case RelayClosed(:final subscriptionId, :final message):

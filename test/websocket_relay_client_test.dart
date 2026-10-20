@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -35,6 +36,11 @@ class _FakeRelayServer {
   /// rate-limiting, which is the refusal that was silently counted as delivery.
   String refusalMessage = 'rate-limited: you are noting too much';
 
+  /// How long every answer (`OK`, `EVENT`, `EOSE`, …) is held before it goes
+  /// out — an EDGE link, where the relay is alive and simply far away. Zero
+  /// answers at once, exactly as before this existed.
+  Duration answerDelay = Duration.zero;
+
   /// Sockets accepted so far.
   int connections = 0;
   int activeConnections = 0;
@@ -63,6 +69,22 @@ class _FakeRelayServer {
       final challenge = 'socket-${DateTime.now().microsecondsSinceEpoch}';
       String? authenticatedKey;
       if (relay.requireAuth) ws.add(jsonEncode(['AUTH', challenge]));
+      void answer(String text) {
+        final delay = relay.answerDelay;
+        if (delay == Duration.zero) {
+          ws.add(text);
+          return;
+        }
+        unawaited(
+          Future<void>.delayed(delay, () {
+            // The socket may have closed while the answer was on its way.
+            try {
+              ws.add(text);
+            } catch (_) {}
+          }),
+        );
+      }
+
       ws.listen(
         (data) async {
           if (socketNo < relay._deafBelow) return;
@@ -96,7 +118,7 @@ class _FakeRelayServer {
                     signature: unhex(event.sig!),
                   );
               if (valid) authenticatedKey = event.pubkey;
-              ws.add(
+              answer(
                 jsonEncode([
                   'OK',
                   event.id,
@@ -107,14 +129,14 @@ class _FakeRelayServer {
             case 'EVENT':
               final ev = (msg[1] as Map).cast<String, dynamic>();
               relay.received.add(ev);
-              final answer = relay.okAnswer;
-              if (answer != null) {
-                ws.add(
+              final ok = relay.okAnswer;
+              if (ok != null) {
+                answer(
                   jsonEncode([
                     'OK',
                     ev['id'],
-                    answer,
-                    answer ? '' : relay.refusalMessage,
+                    ok,
+                    ok ? '' : relay.refusalMessage,
                   ]),
                 );
               }
@@ -124,7 +146,7 @@ class _FakeRelayServer {
               final filter = (msg[2] as Map).cast<String, dynamic>();
               if (relay.requireAuth &&
                   (filter['#p'] as List?)?.contains(authenticatedKey) != true) {
-                ws.add(
+                answer(
                   jsonEncode([
                     'CLOSED',
                     subId,
@@ -134,9 +156,9 @@ class _FakeRelayServer {
                 break;
               }
               for (final ev in relay._toReplay) {
-                ws.add(jsonEncode(['EVENT', subId, ev]));
+                answer(jsonEncode(['EVENT', subId, ev]));
               }
-              ws.add(jsonEncode(['EOSE', subId]));
+              answer(jsonEncode(['EOSE', subId]));
           }
         },
         onDone: () => relay.activeConnections--,
@@ -699,6 +721,95 @@ void main() {
         WebSocketNostrRelayClient.isRateLimit('blocked: not on the whitelist'),
         isFalse,
       );
+    });
+  });
+
+  group('slow link', () {
+    // EDGE: the relay is alive, a round trip is long. The pool used to give an
+    // `OK` 2 s and a probe 2 s, so a socket answering at 2.4 s was taken for
+    // dead and reopened — a fresh TLS handshake over the same crawling link.
+    // Here 300 ms plays the 2 s floor and 1200 ms plays the 2.4 s answer.
+    const floor = Duration(milliseconds: 300);
+    const lateAnswer = Duration(milliseconds: 1200);
+
+    Future<({_FakeRelayServer relay, WebSocketNostrRelayClient client})>
+        slowPool() async {
+      final relay = await _FakeRelayServer.start();
+      addTearDown(relay.stop);
+      // probeTimeout is left at the 2 s default: the probe's answer lands at
+      // 1200 ms, so a silent publish finds the socket alive.
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [relay.url],
+        publishAckTimeout: floor,
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await _until(() => client.isConnected, reason: 'connect');
+      relay.answerDelay = lateAnswer;
+      return (relay: relay, client: client);
+    }
+
+    Future<PublishReceipt> send(WebSocketNostrRelayClient client, String to) =>
+        NostrTransport(signer: signer, relay: client)
+            .sendFrame(recipientNpubHex: to * 32, frameBytes: frame);
+
+    test(
+        'a relay that answers late is measured, and the next publish waits '
+        'for it', () async {
+      final p = await slowPool();
+      final first = await send(p.client, 'ab');
+      expect(first.silent, 1, reason: 'nothing came back inside 300 ms');
+      // Its OK arrived at 1200 ms — after the deadline, while the probe was
+      // still waiting — and that late answer is the sample: the next publish
+      // waits about four times it instead of giving up at the floor again.
+      final watch = Stopwatch()..start();
+      final second = await send(p.client, 'cd');
+      expect(second.isAccepted, isTrue);
+      expect(watch.elapsed, greaterThanOrEqualTo(lateAnswer));
+      expect(p.relay.connections, 1);
+    });
+
+    // Two publishes out before either late answer is back: a text and its
+    // receipt, say. Both run out of time, and two silences in a row is the
+    // link, not one relay — slow. The late OKs then become the samples.
+    Future<List<PublishReceipt>> twoSilencesThenOne(
+      WebSocketNostrRelayClient client,
+    ) async {
+      final quiet = await Future.wait([send(client, 'ab'), send(client, 'cd')]);
+      expect(quiet.map((r) => r.silent), [1, 1]);
+      expect(client.isSlow, isTrue);
+      return [...quiet, await send(client, 'ef')];
+    }
+
+    test('two silent publishes make the link slow, and the next still lands',
+        () async {
+      final p = await slowPool();
+      final watch = Stopwatch()..start();
+      final receipts = await twoSilencesThenOne(p.client);
+      expect(receipts.last.isAccepted, isTrue);
+      expect(watch.elapsed, greaterThanOrEqualTo(lateAnswer * 2));
+    });
+
+    test('a slow relay is not torn down and reopened', () async {
+      final p = await slowPool();
+      await twoSilencesThenOne(p.client);
+      expect(p.relay.connections, 1);
+    });
+
+    test('on a fast link the floor still holds', () async {
+      final relay = await _FakeRelayServer.start();
+      addTearDown(relay.stop);
+      final client = WebSocketNostrRelayClient(
+        relayUrls: [relay.url],
+        publishAckTimeout: const Duration(seconds: 2),
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await _until(() => client.isConnected, reason: 'connect');
+      final receipt = await send(client, 'ab');
+      expect(receipt.isAccepted, isTrue);
+      expect(client.isSlow, isFalse);
+      expect(relay.connections, 1);
     });
   });
 
