@@ -548,6 +548,17 @@ class MessagingService {
 
   /// How long we keep waiting for a manifest or for the missing
   /// chunks before garbage-collecting the half-finished transfer.
+  ///
+  /// For a pending manifest, five minutes since the last *new* chunk of its
+  /// transfer, not since the manifest: each one restarts the wait (see
+  /// [_noteChunkProgress]). Until 2026-10-20 it ran from the manifest alone, so
+  /// every transfer longer than five minutes — any file of a few megabytes on
+  /// EDGE — was thrown away however steadily it was arriving: mid-way, every
+  /// chunk after dropped as "no signed manifest" (a forward-secret one losing
+  /// its key with it, [_mediaKeys]), or at the finish line as "drop assembled
+  /// file: manifest expired". Receivers already installed still count from
+  /// the manifest, which is why a sender never waits past it
+  /// ([_oldReceiverFileWindow]).
   static const Duration _manifestTtl = Duration(minutes: 5);
   static const int _maxPendingMediaManifests = 64;
 
@@ -766,6 +777,58 @@ class MessagingService {
     }
     _gcMediaBuffers();
   }
+
+  /// Feed one decrypted media chunk body to the receive path, as the inbound
+  /// dispatch does once a frame is opened.
+  @visibleForTesting
+  Future<void> debugIngestMediaChunk(
+    InnerPayloadType type,
+    Uint8List chunkBytes, {
+    required Uint8List senderPub,
+  }) {
+    switch (type) {
+      case InnerPayloadType.imageChunk:
+        return _ingestImageChunk(
+          peerId: _nostrPeerId,
+          senderPub: senderPub,
+          chunkBytes: chunkBytes,
+        );
+      case InnerPayloadType.audioChunk:
+        return _ingestAudioChunk(
+          peerId: _nostrPeerId,
+          senderPub: senderPub,
+          chunkBytes: chunkBytes,
+        );
+      case InnerPayloadType.fileChunk:
+        return _ingestFileChunk(
+          peerId: _nostrPeerId,
+          senderPub: senderPub,
+          chunkBytes: chunkBytes,
+        );
+      default:
+        throw ArgumentError.value(type, 'type', 'not a media chunk');
+    }
+  }
+
+  /// Stands in for the reassembler [_files] would make in the platform's temp
+  /// directory, which tests have no plugin for.
+  @visibleForTesting
+  void debugUseFileReassembler(FileReassembler files) =>
+      _fileReassembler = files;
+
+  @visibleForTesting
+  Set<String> get debugFileSendsInFlight => _fileSendsInFlight;
+
+  @visibleForTesting
+  Future<void> debugHandleMediaRequest(
+    Uint8List mediaId, {
+    required Uint8List senderPub,
+  }) =>
+      _handleMediaRequest(
+        peerId: _nostrPeerId,
+        senderPub: senderPub,
+        body: mediaId,
+      );
 
   @visibleForTesting
   void debugMediaInboxResumed() => _mediaInboxResumed();
@@ -2302,6 +2365,17 @@ class MessagingService {
 
     final transferId = _hexOf(fileId);
     final transfers = _ref.read(fileTransferControllerProvider.notifier);
+    // A re-send: how many chunks the first slicing of this id made, read off
+    // the persisted row before [register] writes 0 over it. It outlives a
+    // restart of this phone, which [_relaySlicedSlow] does not — see
+    // [relaySliceSlow].
+    int? previousTotal;
+    if (reuseMediaId != null) {
+      await transfers.loaded;
+      previousTotal = _ref
+          .read(fileTransferControllerProvider)[transferId]
+          ?.totalUnits;
+    }
     transfers.register(
       FileTransferTask(
         id: transferId,
@@ -2337,13 +2411,22 @@ class MessagingService {
     // Not awaited: the baseline is read off the UI thread while the send gets
     // going, and [_logSendCpu] waits for it at the end.
     final cpu = CpuProbe.instance.openSpan();
+    // Taken out in the `finally` below. See [_handleMediaRequest].
+    _fileSendsInFlight.add(transferId);
     try {
       final tid = session?.peerId;
       final direct = tid != null ? _clients[tid] : null;
       // Decided once for the whole transfer, here — see
       // [kRelaySlowMediaChunkData]. A re-send under the same id takes the
-      // first slicing's answer; see [_relaySlicedSlow].
-      final slow = _relaySlicedSlow[transferId] ?? isSlowNetwork;
+      // first slicing's answer, so the receiver's half-built copy still fits.
+      final slow = relaySliceSlow(
+        size: size,
+        maxChunks: FileChunk.maxChunks,
+        ceiling: FileChunk.maxDataBytes,
+        slowNow: isSlowNetwork,
+        previousTotal: previousTotal,
+        slicedSlowBefore: _relaySlicedSlow[transferId],
+      );
       var chunkData = _mediaChunkData(direct,
           relayOnly: relayOnly, ceiling: FileChunk.maxDataBytes);
       if (relayOnly) {
@@ -2422,6 +2505,18 @@ class MessagingService {
         senderIdentityPub: fs?.identityPub,
         senderEphemeralPub: fs?.ephemeralPub,
       );
+      // What a receiver on an older build counts its patience from — see
+      // [_oldReceiverFileWindow].
+      final manifestSentAt = DateTime.now();
+      // Paused or cancelled in the transfer centre, or the row gone: a chunk
+      // waiting out a dropout must not go out for a file nobody wants now.
+      bool fileWanted() {
+        final status =
+            _ref.read(fileTransferControllerProvider)[transferId]?.status;
+        return status != null &&
+            status != FileTransferStatus.canceled &&
+            status != FileTransferStatus.paused;
+      }
 
       final handle = await stored.open();
       // Grows the moment the far end pushes back, and never shrinks again for
@@ -2480,9 +2575,22 @@ class MessagingService {
             relayOnly: relayOnly,
             directOnly: directOnly,
             gap: gap,
+            stillWanted: fileWanted,
+            oldReceiverWindow: _oldReceiverFileWindow,
+            manifestSentAt: manifestSentAt,
           );
           gap = delivery.gap;
           if (!delivery.sent) {
+            // Paused or cancelled while this chunk was out: back to the top
+            // for this same chunk, where a pause waits to be resumed and a
+            // cancel stops. Never "failed" over the user's own choice — a
+            // failed row offers Retry, which re-sent a file they had
+            // cancelled.
+            if (!fileWanted()) {
+              await handle.setPosition(i * chunkData);
+              i--;
+              continue;
+            }
             throw const MediaRouteUnavailable();
           }
           // Whole percent, not every chunk. The transfer map is watched by
@@ -2534,13 +2642,20 @@ class MessagingService {
       if (chatId != canonicalId) {
         messages.updateStatus(chatId, msg.id, MessageStatus.failed);
       }
-      transfers.setStatus(
-        transferId,
-        FileTransferStatus.failed,
-        error: e.toString(),
-      );
+      // A pause or a cancel is the user's word on this transfer, and outranks
+      // whatever failed underneath it.
+      final now = _ref.read(fileTransferControllerProvider)[transferId]?.status;
+      if (now != FileTransferStatus.canceled &&
+          now != FileTransferStatus.paused) {
+        transfers.setStatus(
+          transferId,
+          FileTransferStatus.failed,
+          error: e.toString(),
+        );
+      }
       rethrow;
     } finally {
+      _fileSendsInFlight.remove(transferId);
       _ref.read(mediaSendProgressProvider.notifier).clear(msg.id);
       if (announces) _endSendingMedia(canonicalId, sending);
       unawaited(_logSendCpu(cpu, safe));
@@ -2818,6 +2933,8 @@ class MessagingService {
         DebugLog.instance.log(
             'CRYPTO', 'sendImage: forward-secret (X3DH) media to $canonicalId');
       }
+      // See [_oldReceiverImageWindow].
+      final manifestSentAt = DateTime.now();
       var imgGap = Duration.zero;
       for (var i = 0; i < total; i++) {
         _throwIfCancelled(msg.id);
@@ -2857,9 +2974,15 @@ class MessagingService {
           canonicalId: canonicalId,
           relayOnly: relayOnly,
           gap: imgGap,
+          stillWanted: () => !_cancelledSends.contains(msg.id),
+          oldReceiverWindow: _oldReceiverImageWindow,
+          manifestSentAt: manifestSentAt,
         );
         imgGap = delivery.gap;
         if (!delivery.sent) {
+          // Taken back while the chunk was out: a cancel, not a dropped link
+          // — no "link dropped" for a photo the user withdrew.
+          _throwIfCancelled(msg.id);
           throw const MediaRouteUnavailable();
         }
         // One number for the ring on the bubble. Quantised inside the
@@ -3108,6 +3231,8 @@ class MessagingService {
         DebugLog.instance.log(
             'CRYPTO', 'sendAudio: forward-secret (X3DH) media to $canonicalId');
       }
+      // See [_oldReceiverAudioWindow].
+      final manifestSentAt = DateTime.now();
       var audGap = Duration.zero;
       for (var i = 0; i < total; i++) {
         _throwIfCancelled(msg.id);
@@ -3152,9 +3277,14 @@ class MessagingService {
           canonicalId: canonicalId,
           relayOnly: relayOnly,
           gap: audGap,
+          stillWanted: () => !_cancelledSends.contains(msg.id),
+          oldReceiverWindow: _oldReceiverAudioWindow,
+          manifestSentAt: manifestSentAt,
         );
         audGap = delivery.gap;
         if (!delivery.sent) {
+          // Taken back while the chunk was out — see the photo path.
+          _throwIfCancelled(msg.id);
           throw const MediaRouteUnavailable();
         }
         // Same ring the photo bubble draws — a voice note over Bluetooth is
@@ -4757,6 +4887,21 @@ class MessagingService {
   }) async {
     if (body.length != ImageChunk.idLen) return;
     final wireId = TransportEnvelope.hashHex(body);
+    // Already on its way: the original send is still going — on a slow link,
+    // most likely waiting out a dropout on one chunk, which is exactly when the
+    // receiver's stall check asks ([_checkStalledMedia], twice at most). Each
+    // answer used to be a whole second upload beside the first, from chunk
+    // zero — three times the file on an EDGE uplink — and its `register`
+    // reset the transfer row under the one still running. If chunks are still
+    // missing once the original ends, the receiver's next stall tick asks
+    // again and finds nothing in flight.
+    if (_fileSendsInFlight.contains(_hexOf(body))) {
+      DebugLog.instance.log(
+        'FILE',
+        'media request for $wireId ignored — already on its way',
+      );
+      return;
+    }
     final chatId = senderPub != null ? _hexOf(senderPub) : peerId;
     final messages = _ref.read(messagesControllerProvider)[chatId] ?? const [];
     Message? mine;
@@ -8099,6 +8244,10 @@ class MessagingService {
           'drop audio chunk from $peerId: manifest metadata mismatch for $key');
       return;
     }
+    _noteChunkProgress(
+      pending,
+      isNew: !_audioReassembler.has(chunk.audioId, chunk.seq),
+    );
     final done = _audioReassembler.ingest(chunk);
     if (done == null) return;
     await _finalizeMedia(
@@ -8203,6 +8352,10 @@ class MessagingService {
           'drop image chunk from $peerId: manifest metadata mismatch for $key');
       return;
     }
+    _noteChunkProgress(
+      pending,
+      isNew: !_imageReassembler.has(chunk.imageId, chunk.seq),
+    );
     final done = _imageReassembler.ingest(chunk);
     if (done == null) return;
     await _finalizeMedia(
@@ -8247,6 +8400,7 @@ class MessagingService {
     }
 
     final files = await _files();
+    _noteChunkProgress(pending, isNew: !files.has(chunk.fileId, chunk.seq));
     final done = await files.ingest(chunk);
     if (done == null) {
       final completed = (files.progressOf(chunk.fileId) * chunk.total).round();
@@ -8888,6 +9042,18 @@ class MessagingService {
             '(${_pendingFsChunks.length} transfers left)',
       );
     }
+  }
+
+  /// A chunk that passed its manifest's checks: when it is news, the transfer
+  /// is moving and its manifest's five minutes start again — see
+  /// [_manifestTtl]. The manifest's [_mediaKeys] entry lives as long as the
+  /// manifest does, so a forward-secret transfer keeps its key with it.
+  ///
+  /// Before the reassembler takes the chunk, not after: the last one completes
+  /// the transfer, and the completion runs [_gcMediaBuffers] before it takes
+  /// the manifest.
+  void _noteChunkProgress(_ManifestEntry pending, {required bool isNew}) {
+    if (isNew) pending.arrivedAt = DateTime.now();
   }
 
   void _gcMediaBuffers() {
@@ -9996,6 +10162,11 @@ class MessagingService {
     }
     if (cancelQueued(chatId: chatId, message: message)) return true;
     _cancelledSends.add(message.id);
+    // A chunk of it waiting out a dropout stops waiting — see
+    // [_awaitMediaRouteBack].
+    final takenBack = _sendTakenBackSignal;
+    _sendTakenBackSignal = null;
+    takenBack?.complete();
     final wireId = message.wireId;
     if (wireId != null) {
       final transfers = _ref.read(fileTransferControllerProvider);
@@ -10363,18 +10534,54 @@ class MessagingService {
     return (sent: false, gap: next);
   }
 
-  /// How long a chunk on a slow link waits for its road to come back before
+  /// The most a chunk on a slow link waits for its road to come back before
   /// the transfer is given up.
   ///
   /// A retry of a file is a new transfer: [retryFileTransfer] calls [sendFile]
   /// again, under a new id, from chunk zero — there is no resume on the wire.
   /// On EDGE the link drops for tens of seconds at a time, and each drop used
   /// to throw away everything sent so far. Waiting inside the transfer keeps
-  /// the same id and the same chunk, so what has gone up stays up. Five
-  /// minutes rides out a lift or a train through a cutting, and is half the
-  /// ten a receiver keeps a silent transfer ([FileReassembler.staleAfter]), so
-  /// the chunk the wait ends on still has somewhere to land.
+  /// the same id and the same chunk, so what has gone up stays up; five
+  /// minutes rides out a lift or a train through a cutting.
+  ///
+  /// The wait is cut shorter per transfer by the receivers already in the
+  /// field — see [_oldReceiverFileWindow] and its neighbours, and
+  /// [slowChunkPatienceLeft]. A receiver on this build counts its patience
+  /// from the last chunk ([FileReassembler.staleAfter], [_manifestTtl]) and
+  /// would wait longer; an older one throws the transfer away on a fixed clock
+  /// from its start, and a wait past that turns a failure the sender sees into
+  /// a loss nobody does.
   static const Duration _slowChunkPatience = Duration(minutes: 5);
+
+  /// How long a receiver on a build from before 2026-10-20 keeps a photo:
+  /// [ImageReassembler.staleAfter], two minutes from its first chunk. The
+  /// manifest's five minutes ([_manifestTtl]) end later, so this is the one
+  /// that bites.
+  static const Duration _oldReceiverImageWindow = Duration(minutes: 2);
+
+  /// The same for a voice note: [AudioReassembler.staleAfter] and the
+  /// manifest's [_manifestTtl], both five minutes from the start.
+  static const Duration _oldReceiverAudioWindow = Duration(minutes: 5);
+
+  /// The same for a file: [_manifestTtl], five minutes from the manifest's
+  /// arrival, never refreshed on those builds. Their [FileReassembler] would
+  /// keep the bytes for ten, but the manifest the finished file is checked
+  /// against is gone by then ("drop assembled file: manifest expired").
+  static const Duration _oldReceiverFileWindow = Duration(minutes: 5);
+
+  /// How long a chunk may still wait out a dropout: what an older receiver's
+  /// [oldReceiverWindow] has left [sinceManifest] went out, never more than
+  /// [_slowChunkPatience], never less than zero. Zero means fail at once, as a
+  /// fast link does — a failure the user sees and can send again.
+  @visibleForTesting
+  static Duration slowChunkPatienceLeft({
+    required Duration oldReceiverWindow,
+    required Duration sinceManifest,
+  }) {
+    final left = oldReceiverWindow - sinceManifest;
+    if (left <= Duration.zero) return Duration.zero;
+    return left > _slowChunkPatience ? _slowChunkPatience : left;
+  }
 
   /// The longest one chunk on a slow link stands aside for texts — see
   /// [_yieldToText]. A text on EDGE takes a few seconds; this only bounds a
@@ -10386,52 +10593,75 @@ class MessagingService {
   /// A receiver that stalls asks for the file again under the *same* id
   /// ([_handleMediaRequest]), and its half-built copy is still waiting. Sliced
   /// again at the other size, the re-send changes the chunk count under that
-  /// id and the receiver drops the transfer for good — see
-  /// [kRelaySlowMediaChunkData]. So a re-send takes the size the first slicing
-  /// took. Held for the session only: one bool per file sent.
+  /// id and the receiver drops the transfer for good — see [relaySliceSlow],
+  /// which reads the persisted row first. This is its fallback for the
+  /// session: one bool per file sent.
   final Map<String, bool> _relaySlicedSlow = {};
+
+  /// Outgoing files whose chunks are leaving right now, by transfer id. See
+  /// [_handleMediaRequest] for why a request for one of these is not answered.
+  final Set<String> _fileSendsInFlight = <String>{};
 
   /// Signalled each time a text leaves the relay road ([_textLeftRelay]), so
   /// a chunk standing aside for it ([_yieldToText]) wakes then and not on a
   /// timer. Replaced after each signal.
   Completer<void>? _textLeftRelaySignal;
 
+  /// Signalled when the user takes a send back ([cancelSending]), so a chunk
+  /// waiting out a dropout for it ([_awaitMediaRouteBack]) stops waiting.
+  /// Replaced after each signal.
+  Completer<void>? _sendTakenBackSignal;
+
   /// One chunk of a transfer, delivered the way the link allows.
   ///
   /// On a fast link exactly [_deliverMediaFrameRetrying], once. On a slow one
   /// ([isSlowNetwork]) the chunk first lets any text on the relay go ahead of
-  /// it, and a chunk that could not be delivered waits — up to
-  /// [_slowChunkPatience] — for the route to come back and is then tried once
-  /// more, the same chunk of the same transfer, before the transfer fails.
+  /// it, and a chunk that could not be delivered waits for the route to come
+  /// back — for what [oldReceiverWindow] has left since [manifestSentAt], at
+  /// most [_slowChunkPatience] — and is then tried once more, the same chunk
+  /// of the same transfer, before the transfer fails. Not while [stillWanted]
+  /// says the user has paused or taken the send back: then it neither waits
+  /// nor goes again, and the caller decides what that means.
   Future<({bool sent, Duration gap})> _deliverMediaChunk({
     required Uint8List frameBytes,
     required ChatSession? session,
     required String canonicalId,
     required bool relayOnly,
     required Duration gap,
+    required bool Function() stillWanted,
+    required Duration oldReceiverWindow,
+    required DateTime manifestSentAt,
     bool directOnly = false,
   }) {
     return deliverMediaChunkPatiently(
       // AirDrop is the person in reach or nobody; the relay's pace says
       // nothing about it.
       slow: () => !directOnly && !_disposed && isSlowNetwork,
+      stillWanted: () => !_disposed && stillWanted(),
+      patienceLeft: () => slowChunkPatienceLeft(
+        oldReceiverWindow: oldReceiverWindow,
+        sinceManifest: DateTime.now().difference(manifestSentAt),
+      ),
       yieldToText: () => _yieldToText(max: _textYieldMax),
-      routeBack: () async {
+      routeBack: (max) async {
         DebugLog.instance.log(
           'FILE',
           'chunk to $canonicalId refused on a slow link — waiting up to '
-              '${_slowChunkPatience.inMinutes} min for the route',
+              '${max.inSeconds} s for the route',
         );
         final back = await _awaitMediaRouteBack(
           canonicalId,
-          max: _slowChunkPatience,
+          max: max,
           relayOnly: relayOnly,
+          stillWanted: stillWanted,
         );
         DebugLog.instance.log(
           'FILE',
-          back
-              ? 'route to $canonicalId back — same chunk again'
-              : 'route to $canonicalId did not come back',
+          !stillWanted()
+              ? 'send to $canonicalId paused or taken back while it waited'
+              : back
+                  ? 'route to $canonicalId back — same chunk again'
+                  : 'route to $canonicalId did not come back',
         );
         return back;
       },
@@ -10452,21 +10682,29 @@ class MessagingService {
   ///
   /// [slow] is asked twice — before the chunk and after a refusal — because the
   /// link can turn either way while a chunk is out. Only the chunk *size* is
-  /// fixed for the transfer; how patient to be is not.
+  /// fixed for the transfer; how patient to be is not. [stillWanted] is asked
+  /// before the wait and after it: a chunk of a send the user has paused or
+  /// taken back never goes out again from here.
   @visibleForTesting
   static Future<({bool sent, Duration gap})> deliverMediaChunkPatiently({
     required bool Function() slow,
+    required bool Function() stillWanted,
+    required Duration Function() patienceLeft,
     required Future<void> Function() yieldToText,
-    required Future<bool> Function() routeBack,
+    required Future<bool> Function(Duration max) routeBack,
     required Future<({bool sent, Duration gap})> Function(Duration gap) deliver,
     required Duration gap,
   }) async {
     if (slow()) await yieldToText();
     final first = await deliver(gap);
-    if (first.sent || !slow()) return first;
-    if (!await routeBack()) return first;
+    if (first.sent || !slow() || !stillWanted()) return first;
+    final max = patienceLeft();
+    if (max <= Duration.zero) return first;
+    if (!await routeBack(max)) return first;
+    if (!stillWanted()) return first;
     // A text queued while the route was down goes before the chunk too.
     if (slow()) await yieldToText();
+    if (!stillWanted()) return first;
     return deliver(first.gap);
   }
 
@@ -10474,12 +10712,16 @@ class MessagingService {
   ///
   /// Woken by the relay pool's state changes, not by polling: a dropout on
   /// EDGE ends when a socket opens, and that is exactly what the pool reports.
-  /// [relayOnly] for a transfer committed to the relay, which a Bluetooth link
-  /// to somebody else does not help. Returns whether the route is there.
+  /// Woken too when the transfer centre changes or a send is taken back, so a
+  /// pause or a cancel ends the wait when [stillWanted] stops holding rather
+  /// than minutes later. [relayOnly] for a transfer committed to the relay,
+  /// which a Bluetooth link to somebody else does not help. Returns whether
+  /// the route is there.
   Future<bool> _awaitMediaRouteBack(
     String canonicalId, {
     required Duration max,
     bool relayOnly = false,
+    bool Function()? stillWanted,
   }) async {
     final client = _relayClient;
     bool hasRoute() {
@@ -10493,17 +10735,43 @@ class MessagingService {
           npub.length == 32;
     }
 
+    bool wanted() => stillWanted == null || stillWanted();
+
     if (hasRoute()) return true;
-    if (_disposed || client == null) return false;
+    if (_disposed || client == null || !wanted()) return false;
     // Rate-limited inside: asking on every refused chunk must not pin the
     // pool's reconnect backoff at its floor. See [wakeRelays].
     wakeRelays();
-    // Disposal ends the wait too; the answer is then "no route".
-    await awaitRoute(
-      hasRoute: () => _disposed || hasRoute(),
-      changes: client.stateChanges,
-      max: max,
+    final wake = StreamController<Object?>.broadcast();
+    void poke([Object? _]) {
+      if (!wake.isClosed) wake.add(null);
+    }
+
+    final relaySub = client.stateChanges.listen(
+      poke,
+      // The pool is gone: no route is coming.
+      onDone: () {
+        if (!wake.isClosed) unawaited(wake.close());
+      },
     );
+    final transfersSub = _ref.listen<Map<String, FileTransferTask>>(
+      fileTransferControllerProvider,
+      (_, __) => poke(),
+    );
+    unawaited((_sendTakenBackSignal ??= Completer<void>()).future.then(poke));
+    try {
+      // Disposal, a pause or a cancel ends the wait too; the answer is then
+      // decided below.
+      await awaitRoute(
+        hasRoute: () => _disposed || !wanted() || hasRoute(),
+        changes: wake.stream,
+        max: max,
+      );
+    } finally {
+      await relaySub.cancel();
+      transfersSub.close();
+      if (!wake.isClosed) await wake.close();
+    }
     return hasRoute();
   }
 

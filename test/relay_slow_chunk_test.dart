@@ -63,15 +63,35 @@ void main() {
     ({bool sent, Duration gap}) ok(Duration g) => (sent: true, gap: g);
     ({bool sent, Duration gap}) refused(Duration g) => (sent: false, gap: g);
 
+    Future<({bool sent, Duration gap})> deliverChunk({
+      bool slow = true,
+      bool Function()? stillWanted,
+      Duration patienceLeft = const Duration(minutes: 5),
+      Future<void> Function()? yieldToText,
+      Future<bool> Function(Duration max)? routeBack,
+      required Future<({bool sent, Duration gap})> Function(Duration gap)
+          deliver,
+      Duration gap = Duration.zero,
+    }) =>
+        MessagingService.deliverMediaChunkPatiently(
+          slow: () => slow,
+          stillWanted: stillWanted ?? () => true,
+          patienceLeft: () => patienceLeft,
+          yieldToText: yieldToText ?? () async {},
+          routeBack: routeBack ?? (_) async => true,
+          deliver: deliver,
+          gap: gap,
+        );
+
     test('a fast link neither yields nor waits — a refusal fails as before',
         () async {
       var yields = 0;
       var waits = 0;
       var attempts = 0;
-      final r = await MessagingService.deliverMediaChunkPatiently(
-        slow: () => false,
+      final r = await deliverChunk(
+        slow: false,
         yieldToText: () async => yields++,
-        routeBack: () async {
+        routeBack: (_) async {
           waits++;
           return true;
         },
@@ -79,7 +99,6 @@ void main() {
           attempts++;
           return refused(gap);
         },
-        gap: Duration.zero,
       );
       expect(r.sent, isFalse);
       expect((yields, waits, attempts), (0, 0, 1));
@@ -87,15 +106,12 @@ void main() {
 
     test('a slow link lets a text go first', () async {
       final order = <String>[];
-      final r = await MessagingService.deliverMediaChunkPatiently(
-        slow: () => true,
+      final r = await deliverChunk(
         yieldToText: () async => order.add('yield'),
-        routeBack: () async => true,
         deliver: (gap) async {
           order.add('chunk');
           return ok(gap);
         },
-        gap: Duration.zero,
       );
       expect(r.sent, isTrue);
       expect(order, ['yield', 'chunk']);
@@ -104,10 +120,8 @@ void main() {
     test('a dropout is waited out and the same chunk is tried again', () async {
       var attempts = 0;
       var waits = 0;
-      final r = await MessagingService.deliverMediaChunkPatiently(
-        slow: () => true,
-        yieldToText: () async {},
-        routeBack: () async {
+      final r = await deliverChunk(
+        routeBack: (_) async {
           waits++;
           return true;
         },
@@ -121,18 +135,46 @@ void main() {
       expect(r.gap, const Duration(milliseconds: 20));
     });
 
-    test('a route that never comes back fails the chunk without a retry',
-        () async {
+    test('the wait is only as long as the patience left', () async {
+      Duration? asked;
+      await deliverChunk(
+        patienceLeft: const Duration(seconds: 40),
+        routeBack: (max) async {
+          asked = max;
+          return false;
+        },
+        deliver: (gap) async => refused(gap),
+      );
+      expect(asked, const Duration(seconds: 40));
+    });
+
+    test('no patience left fails at once, as on a fast link', () async {
+      var waits = 0;
       var attempts = 0;
-      final r = await MessagingService.deliverMediaChunkPatiently(
-        slow: () => true,
-        yieldToText: () async {},
-        routeBack: () async => false,
+      final r = await deliverChunk(
+        patienceLeft: Duration.zero,
+        routeBack: (_) async {
+          waits++;
+          return true;
+        },
         deliver: (gap) async {
           attempts++;
           return refused(gap);
         },
-        gap: Duration.zero,
+      );
+      expect(r.sent, isFalse);
+      expect((waits, attempts), (0, 1));
+    });
+
+    test('a route that never comes back fails the chunk without a retry',
+        () async {
+      var attempts = 0;
+      final r = await deliverChunk(
+        routeBack: (_) async => false,
+        deliver: (gap) async {
+          attempts++;
+          return refused(gap);
+        },
       );
       expect(r.sent, isFalse);
       expect(attempts, 1);
@@ -140,18 +182,158 @@ void main() {
 
     test('a retry after the wait that fails too fails the chunk', () async {
       var attempts = 0;
-      final r = await MessagingService.deliverMediaChunkPatiently(
-        slow: () => true,
-        yieldToText: () async {},
-        routeBack: () async => true,
+      final r = await deliverChunk(
         deliver: (gap) async {
           attempts++;
           return refused(gap);
         },
-        gap: Duration.zero,
       );
       expect(r.sent, isFalse);
       expect(attempts, 2);
+    });
+
+    test('a send taken back during the wait is not sent again', () async {
+      var wanted = true;
+      var attempts = 0;
+      final r = await deliverChunk(
+        stillWanted: () => wanted,
+        routeBack: (_) async {
+          wanted = false; // cancelled or paused while waiting
+          return true;
+        },
+        deliver: (gap) async {
+          attempts++;
+          return refused(gap);
+        },
+      );
+      expect(r.sent, isFalse);
+      expect(attempts, 1);
+    });
+
+    test('a send already taken back does not wait at all', () async {
+      var waits = 0;
+      await deliverChunk(
+        stillWanted: () => false,
+        routeBack: (_) async {
+          waits++;
+          return true;
+        },
+        deliver: (gap) async => refused(gap),
+      );
+      expect(waits, 0);
+    });
+  });
+
+  group('patience against receivers already installed', () {
+    test('what is left of the old receiver window, never more than five min',
+        () {
+      expect(
+        MessagingService.slowChunkPatienceLeft(
+          oldReceiverWindow: const Duration(minutes: 2),
+          sinceManifest: const Duration(seconds: 30),
+        ),
+        const Duration(seconds: 90),
+      );
+      expect(
+        MessagingService.slowChunkPatienceLeft(
+          oldReceiverWindow: const Duration(minutes: 30),
+          sinceManifest: Duration.zero,
+        ),
+        const Duration(minutes: 5),
+      );
+    });
+
+    test('a transfer older than the window has none left', () {
+      expect(
+        MessagingService.slowChunkPatienceLeft(
+          oldReceiverWindow: const Duration(minutes: 5),
+          sinceManifest: const Duration(minutes: 6),
+        ),
+        Duration.zero,
+      );
+    });
+  });
+
+  group('a re-send under the same id', () {
+    // The stride invariant where it matters: the receiver holds half of the
+    // first slicing, so the re-send must number the same chunks whatever the
+    // link says now. Pinned at the helper sendFile calls, because driving
+    // sendFile itself needs a relay, a session and a file on disk.
+    int totalFor(int size, {required bool slow}) {
+      final data = relayFileChunkData(
+        size: size,
+        maxChunks: FileChunk.maxChunks,
+        ceiling: FileChunk.maxDataBytes,
+        slow: slow,
+      );
+      return (size + data - 1) ~/ data;
+    }
+
+    const sizes = [
+      1,
+      20 * 1024,
+      70 * 1024,
+      3 * 1024 * 1024,
+      200 * 1024 * 1024,
+      MessagingService.maxFileBytesRelay,
+    ];
+
+    for (final firstSlow in [true, false]) {
+      test(
+          'sliced ${firstSlow ? 'slow' : 'fast'}, re-sent on a '
+          '${firstSlow ? 'fast' : 'slow'} link: the same total', () {
+        for (final size in sizes) {
+          final first = totalFor(size, slow: firstSlow);
+          // After a restart: only the persisted row's total is known.
+          final again = relaySliceSlow(
+            size: size,
+            maxChunks: FileChunk.maxChunks,
+            ceiling: FileChunk.maxDataBytes,
+            slowNow: !firstSlow,
+            previousTotal: first,
+          );
+          expect(totalFor(size, slow: again), first, reason: 'size $size');
+          // In the same session, without a row: what was remembered.
+          final remembered = relaySliceSlow(
+            size: size,
+            maxChunks: FileChunk.maxChunks,
+            ceiling: FileChunk.maxDataBytes,
+            slowNow: !firstSlow,
+            slicedSlowBefore: firstSlow,
+          );
+          expect(totalFor(size, slow: remembered), first, reason: 'size $size');
+        }
+      });
+    }
+
+    test('a first send takes the link as it is now', () {
+      for (final slowNow in [true, false]) {
+        expect(
+          relaySliceSlow(
+            size: 3 * 1024 * 1024,
+            maxChunks: FileChunk.maxChunks,
+            ceiling: FileChunk.maxDataBytes,
+            slowNow: slowNow,
+          ),
+          slowNow,
+        );
+      }
+    });
+
+    test('a total no relay slicing gives falls back to what was remembered',
+        () {
+      // 4 KiB Bluetooth chunks: 768 of them for 3 MiB.
+      expect(
+        relaySliceSlow(
+          size: 3 * 1024 * 1024,
+          maxChunks: FileChunk.maxChunks,
+          ceiling: FileChunk.maxDataBytes,
+          slowNow: true,
+          previousTotal: 768,
+          slicedSlowBefore: false,
+        ),
+        isFalse,
+      );
     });
   });
 

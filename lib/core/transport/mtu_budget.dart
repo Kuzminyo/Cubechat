@@ -100,11 +100,11 @@ const int kRelayMediaChunkData = 63 * 1024;
 /// (`WebSocketNostrRelayClient.isSlow`).
 ///
 /// On EDGE a phone gets about 3–5 KB/s up. A 63 KiB chunk is ~87 KB of event,
-/// which is 20–30 s on that link — longer than the 15 s ceiling on how long the
-/// pool waits for an `OK` (`LinkQualityMeter.ackTimeout`), so the chunk was counted lost while it was still going
-/// up, retried, and lost again. 16 KiB is ~22 KB of event, 5–7 s there: inside
-/// the wait, and a text queued behind a chunk waits seconds rather than half a
-/// minute.
+/// which is 20–30 s on that link — longer than the 15 s ceiling on how long
+/// the pool waits for an `OK` (`LinkQualityMeter.ackTimeout`), so the chunk
+/// was counted lost while it was still going up, retried, and lost again.
+/// 16 KiB is ~22 KB of event, 5–7 s there: inside the wait, and a text queued
+/// behind a chunk waits seconds rather than half a minute.
 ///
 /// Nothing on the wire changes. A receiver takes a chunk of any size as long as
 /// it is the same size all through one transfer (`FileReassembler` writes at
@@ -147,6 +147,46 @@ int relayFileChunkData({
   if (needed <= base) return base;
   final fast = relayMediaChunkData(ceiling: ceiling);
   return needed > fast ? fast : needed;
+}
+
+/// Whether to slice a relay file at the slow size, for a send that may be a
+/// re-send under an id the receiver already holds half of.
+///
+/// A receiver that stalls asks for the file again under the *same* id, and its
+/// half-built copy fixes the chunk count — a re-send sliced at the other size
+/// changes `total` under that id and the receiver drops the transfer for good
+/// (`FileReassembler`, "total changed mid-transfer"). So, in order:
+///
+/// 1. [previousTotal], the chunk count the first slicing recorded on the
+///    persisted transfer row: whichever size reproduces it. Survives a
+///    restart of the sender, which [slicedSlowBefore] does not.
+/// 2. [slicedSlowBefore], what this session remembers deciding.
+/// 3. [slowNow], for a transfer sliced for the first time.
+bool relaySliceSlow({
+  required int size,
+  required int maxChunks,
+  required int ceiling,
+  required bool slowNow,
+  int? previousTotal,
+  bool? slicedSlowBefore,
+}) {
+  int totalFor({required bool slow}) {
+    final data = relayFileChunkData(
+      size: size,
+      maxChunks: maxChunks,
+      ceiling: ceiling,
+      slow: slow,
+    );
+    return (size + data - 1) ~/ data;
+  }
+
+  if (previousTotal != null && previousTotal > 0) {
+    if (totalFor(slow: slowNow) == previousTotal) return slowNow;
+    if (totalFor(slow: !slowNow) == previousTotal) return !slowNow;
+    // Neither: the first slicing was not a relay one (a Bluetooth transfer
+    // sizes its chunks for the fragmenter). Nothing here can reproduce it.
+  }
+  return slicedSlowBefore ?? slowNow;
 }
 
 /// Fragments one media chunk may occupy, well under the protocol's

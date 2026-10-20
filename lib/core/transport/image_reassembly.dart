@@ -23,8 +23,8 @@ class _PendingImage {
   bool get isComplete => chunks.length == total;
   int get byteCount => chunks.values.fold<int>(0, (s, c) => s + c.length);
 
-  void touch() {
-    lastTouched = DateTime.now();
+  void touch(DateTime at) {
+    lastTouched = at;
   }
 
   Uint8List assemble() {
@@ -47,12 +47,28 @@ class ImageReassembler {
     this.staleAfter = const Duration(minutes: 2),
     this.maxPendingTransfers = 32,
     this.maxBufferedBytes = 4 * 1024 * 1024,
-  });
+    DateTime Function()? clock,
+  }) : _now = clock ?? DateTime.now;
 
+  /// A photo no new chunk has reached in this long is dropped.
+  ///
+  /// Counted from the last new chunk since 2026-10-20; from the first before
+  /// that. On EDGE a sender waits out a dropout on the same chunk, and a photo
+  /// whose chunks were still coming was thrown away two minutes after it
+  /// began. Receivers on older builds still count from the start — which is
+  /// why the sender never waits past it (`_oldReceiverImageWindow` in
+  /// `MessagingService`).
   final Duration staleAfter;
   final int maxPendingTransfers;
   final int maxBufferedBytes;
   final Map<String, _PendingImage> _pending = {};
+
+  /// Where "now" comes from; injected so expiry is testable in no time.
+  final DateTime Function() _now;
+
+  /// Whether chunk [seq] of [imageId] is already held.
+  bool has(Uint8List imageId, int seq) =>
+      _pending[_keyOf(imageId)]?.chunks.containsKey(seq) ?? false;
 
   ({Uint8List bytes, String mime, Uint8List imageId})? ingest(
       ImageChunk chunk) {
@@ -68,7 +84,7 @@ class ImageReassembler {
       entry = _PendingImage(
         total: chunk.total,
         mime: chunk.mime,
-        startedAt: DateTime.now(),
+        startedAt: _now(),
       );
       _pending[key] = entry;
     }
@@ -84,8 +100,10 @@ class ImageReassembler {
       _pending.remove(key);
       return null;
     }
+    // Only a chunk that is news keeps the transfer alive — a sequence replayed
+    // forever must not hold a buffer past [staleAfter].
+    if (!entry.chunks.containsKey(chunk.seq)) entry.touch(_now());
     entry.chunks[chunk.seq] = chunk.data;
-    entry.touch();
 
     final n = entry.chunks.length;
     if (n == 1 || n == entry.total || n % 25 == 0) {
@@ -116,8 +134,8 @@ class ImageReassembler {
       _pending.values.fold<int>(0, (s, p) => s + p.byteCount);
 
   void _gc() {
-    final now = DateTime.now();
-    _pending.removeWhere((_, p) => now.difference(p.startedAt) > staleAfter);
+    final now = _now();
+    _pending.removeWhere((_, p) => now.difference(p.lastTouched) > staleAfter);
   }
 
   void _evictUntilTransferSlotAvailable() {
@@ -191,8 +209,8 @@ class _PendingAudio {
   bool get isComplete => chunks.length == total;
   int get byteCount => chunks.values.fold<int>(0, (s, c) => s + c.length);
 
-  void touch() {
-    lastTouched = DateTime.now();
+  void touch(DateTime at) {
+    lastTouched = at;
   }
 
   Uint8List assemble() {
@@ -212,12 +230,24 @@ class AudioReassembler {
     this.staleAfter = const Duration(minutes: 5),
     this.maxPendingTransfers = 32,
     this.maxBufferedBytes = 4 * 1024 * 1024,
-  });
+    DateTime Function()? clock,
+  }) : _now = clock ?? DateTime.now;
 
+  /// A voice note no new chunk has reached in this long is dropped — from the
+  /// last new chunk, as for a photo ([ImageReassembler.staleAfter]); older
+  /// receivers count from the first (`_oldReceiverAudioWindow` in
+  /// `MessagingService`).
   final Duration staleAfter;
   final int maxPendingTransfers;
   final int maxBufferedBytes;
   final Map<String, _PendingAudio> _pending = {};
+
+  /// Where "now" comes from; injected so expiry is testable in no time.
+  final DateTime Function() _now;
+
+  /// Whether chunk [seq] of [audioId] is already held.
+  bool has(Uint8List audioId, int seq) =>
+      _pending[_keyOf(audioId)]?.chunks.containsKey(seq) ?? false;
 
   ({Uint8List bytes, String mime, int durationMs, Uint8List audioId})? ingest(
       AudioChunk chunk) {
@@ -234,7 +264,7 @@ class AudioReassembler {
         total: chunk.total,
         mime: chunk.mime,
         durationMs: chunk.durationMs,
-        startedAt: DateTime.now(),
+        startedAt: _now(),
       );
       _pending[key] = entry;
     }
@@ -251,8 +281,10 @@ class AudioReassembler {
       _pending.remove(key);
       return null;
     }
+    // Only a chunk that is news keeps the transfer alive — a sequence replayed
+    // forever must not hold a buffer past [staleAfter].
+    if (!entry.chunks.containsKey(chunk.seq)) entry.touch(_now());
     entry.chunks[chunk.seq] = chunk.data;
-    entry.touch();
 
     final n = entry.chunks.length;
     if (n == 1 || n == entry.total || n % 25 == 0) {
@@ -288,8 +320,8 @@ class AudioReassembler {
       _pending.values.fold<int>(0, (s, p) => s + p.byteCount);
 
   void _gc() {
-    final now = DateTime.now();
-    _pending.removeWhere((_, p) => now.difference(p.startedAt) > staleAfter);
+    final now = _now();
+    _pending.removeWhere((_, p) => now.difference(p.lastTouched) > staleAfter);
   }
 
   void _evictUntilTransferSlotAvailable() {

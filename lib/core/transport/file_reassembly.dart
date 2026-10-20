@@ -120,9 +120,11 @@ class FileReassembler {
   /// of a few megabytes could not arrive at all. A transfer that is moving is
   /// alive; one silent for this long is not.
   ///
-  /// Older receivers still count from the start, so to a phone on an older
-  /// build a file sent over a crawling link is still capped at roughly what
-  /// ten minutes carries.
+  /// Older receivers still count from the start — and before this ran out,
+  /// their signed manifest did, five minutes after it arrived
+  /// (`MessagingService._manifestTtl`, refreshed by each new chunk only since
+  /// the same change). To a phone on an older build a file sent over a
+  /// crawling link is capped at roughly what five minutes carries.
   final Duration staleAfter;
 
   /// Concurrent transfers per reassembler. Low on purpose — a file is a
@@ -158,6 +160,10 @@ class FileReassembler {
   final Map<String, DateTime> _dropped = <String, DateTime>{};
 
   int get pendingCount => _pending.length;
+
+  /// Whether chunk [seq] of [fileId] is already held.
+  bool has(Uint8List fileId, int seq) =>
+      _pending[_keyOf(fileId)]?.have.contains(seq) ?? false;
 
   int get bytesBuffered =>
       _pending.values.fold<int>(0, (s, p) => s + p.bytesOnDisk);
