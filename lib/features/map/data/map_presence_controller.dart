@@ -432,7 +432,20 @@ class MapPresenceController extends Notifier<int> {
     // itself so the answer can fail to reach anybody is the whole cost this
     // guard exists to avoid — and a send that succeeds from a stale fix is
     // what un-parks it.
-    if (!_beaconIsLanding) return;
+    //
+    // The stale fix has to be *sent*, though, and it was not: this returned
+    // here with nothing, the position above is taken only while it is under a
+    // minute old, and a parked phone has no GPS to keep it that young. So
+    // three bad rounds — two minutes of one bar, a lift, a relay slow to say
+    // OK — stopped the pin until the app was restarted. Reported 2026-10-20
+    // as "гео иногда тупо не передаётся, хотя все разрешения есть";
+    // `map_presence_park_test` holds it. The old position goes out for one
+    // round, and the GPS that a landing restarts corrects it within seconds.
+    if (!_beaconIsLanding) {
+      final last = ref.read(lastLocationFixProvider)?.fix;
+      if (last != null) await _publish(last, force: force);
+      return;
+    }
     // And parked separately when the phone cannot find *itself*.
     //
     // [_beaconIsLanding] answers "is anybody receiving this", which is a

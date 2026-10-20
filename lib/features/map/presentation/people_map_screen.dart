@@ -338,7 +338,15 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
       if (fix != null) _me = fix;
     });
     if (fix != null) {
-      unawaited(ref.read(mapPresenceControllerProvider.notifier).pokeNow());
+      // Handed over, not just announced. A bare poke made the beacon look for
+      // a position of its own, and a beacon parked for want of a road has no
+      // GPS running to find one — so opening the map found where you were and
+      // still sent nobody anything. See `map_presence_park_test`.
+      unawaited(
+        ref.read(mapPresenceControllerProvider.notifier).pokeNow(
+              offered: StampedLocationFix(fix, DateTime.now()),
+            ),
+      );
     }
     if (fix != null && (recenter || !_centered)) {
       final point = LatLng(fix.latitude, fix.longitude);
