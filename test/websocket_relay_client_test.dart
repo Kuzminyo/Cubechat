@@ -1123,9 +1123,8 @@ void main() {
 
     test('slow mode entered while our relay is still connecting keeps it',
         () async {
-      // A cold start over EDGE: every socket handshakes at once, the first to
-      // finish takes past 5 s and makes the link slow, and ours is still
-      // connecting. It is the relay every peer listens on, so it stays.
+      // A cold start over EDGE: every socket handshakes at once, two of them
+      // take past 5 s and make the link slow, and ours is still connecting. It is the relay every peer listens on, so it stays.
       anchor.holdUpgrades();
       await startPool(connected: 3);
       expect(client.states[anchor.url], RelayState.connecting);

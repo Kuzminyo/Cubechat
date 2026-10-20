@@ -168,7 +168,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   /// keeps is the least that still delivers:
   ///
   /// - ours ([anchorUrl]), always. Still connecting counts — on a cold start
-  ///   over EDGE every socket handshakes at once, the first past 5 s makes
+  ///   over EDGE every socket handshakes at once, the second past 5 s makes
   ///   the link slow, and ours is usually still mid-handshake. Judged by
   ///   "open right now" it was closed for the whole slow spell, which on EDGE
   ///   can be all day. Down, it reconnects on its own backoff;
@@ -1229,8 +1229,14 @@ class _RelayConnection {
       // replacement connected — or, failing late, tear the replacement down.
       if (_closed || !identical(channel, _channel)) return;
       // DNS, TCP and TLS together: several round trips, so on EDGE this
-      // alone says the link is slow before a single publish has been timed.
-      _pool._linkQuality.recordConnect(url, handshake.elapsed);
+      // says the link is slow before a single publish has been timed — once
+      // a second relay agrees, or when it is ours. See
+      // [LinkQualityMeter.recordConnect].
+      _pool._linkQuality.recordConnect(
+        url,
+        handshake.elapsed,
+        anchor: url == _pool.anchorUrl,
+      );
       // Writable is not subscribed: kind 1059 reads may require NIP-42 AUTH.
       // A CLOSED response below records that distinction and AUTH retries REQ.
       _connected = true;

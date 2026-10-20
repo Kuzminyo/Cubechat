@@ -19,7 +19,8 @@ import 'dart:async';
 class LinkQualityMeter {
   /// [clock] is injected so the dwell below can be tested without waiting;
   /// production leaves it null and gets [DateTime.now].
-  LinkQualityMeter({DateTime Function()? clock}) : _clock = clock ?? DateTime.now;
+  LinkQualityMeter({DateTime Function()? clock})
+      : _clock = clock ?? DateTime.now;
 
   final DateTime Function() _clock;
 
@@ -39,11 +40,35 @@ class LinkQualityMeter {
   /// the app wakes up is a cold radio, not a bad network.
   static const int _minSamplesForMedian = 3;
 
-  /// A single socket needing more than this to connect is slow on its own.
-  /// A TLS handshake is several round trips, so on EDGE it lands at 3-8 s;
-  /// five seconds is where a good network never goes, and waiting for a
-  /// second sample would cost another handshake of exactly this length.
+  /// A socket needing more than this to connect was slow. A TLS handshake is
+  /// several round trips, so on EDGE it lands at 3-8 s; five seconds is where
+  /// a good network rarely goes.
+  ///
+  /// Rarely, not never, so one is not enough on its own — see [recordConnect].
+  /// Until 2026-10-20 it was: the time covers DNS, TCP, TLS and the relay's
+  /// own upgrade, for every socket the pool opens (public media, location,
+  /// and relays `relay_settings_controller.dart` describes answering badly on
+  /// phones while fine from a desktop). One sluggish relay, or nine
+  /// handshakes at once on an iOS resume over middling LTE, put a good network
+  /// into slow mode for 30 s or more — six sockets closed, presence at 150 s,
+  /// a photo sent as economy.
   static const Duration _slowConnect = Duration(seconds: 5);
+
+  /// How close together two slow connects must land to corroborate each
+  /// other. On an EDGE cold start every socket handshakes at once and several
+  /// pass 5 s within seconds of each other; a minute is long enough to catch
+  /// that, short enough that two unrelated sluggish relays an hour apart never
+  /// add up to "the link".
+  static const Duration _connectWindow = Duration(seconds: 60);
+
+  /// Connects that finish this soon after slow mode ends are not evidence.
+  /// Leaving reopens every socket the slow spell let go — six handshakes at
+  /// once — and on a link oscillating between EDGE and 3G any one of them
+  /// past 5 s used to put the phone straight back: six TLS handshakes a
+  /// cycle, on a phone where heat has been a measured problem three times.
+  /// A minute covers that burst and its first reconnects; a link that really
+  /// is slow again still enters by its `OK`s and silences.
+  static const Duration _exitGrace = Duration(seconds: 60);
 
   /// Publishes that no relay answered, back to back, before silence alone
   /// counts as slow. One is a relay having a bad moment; two in a row across
@@ -97,9 +122,15 @@ class LinkQualityMeter {
   final Map<String, List<Duration>> _perUrl = <String, List<Duration>>{};
 
   Duration? _lastConnect;
+
+  /// Slow connects inside [_connectWindow], by relay, with when they landed.
+  final Map<String, DateTime> _slowConnects = <String, DateTime>{};
   int _silenceRun = 0;
   bool _slow = false;
   DateTime? _slowSince;
+
+  /// When slow mode last ended, for [_exitGrace].
+  DateTime? _fastSince;
   bool _disposed = false;
 
   final StreamController<bool> _changes = StreamController<bool>.broadcast();
@@ -131,10 +162,23 @@ class LinkQualityMeter {
     }
   }
 
-  /// A socket to [url] finished connecting after [elapsed].
-  void recordConnect(String url, Duration elapsed) {
+  /// A socket to [url] finished connecting after [elapsed]. [anchor] is our
+  /// own relay — the one socket a slow link always keeps.
+  ///
+  /// A slow connect enters slow mode only when something corroborates it:
+  /// a second relay connecting slowly inside [_connectWindow], or the slow
+  /// one being ours. Ours is a single, known relay on our own machine, so its
+  /// handshake crawling is the link, not a stranger's server having a bad
+  /// minute. Nothing counts inside [_exitGrace] after leaving slow mode.
+  void recordConnect(String url, Duration elapsed, {bool anchor = false}) {
     _lastConnect = elapsed;
-    if (!_slow && elapsed > _slowConnect) _setSlow(true);
+    if (_slow || elapsed <= _slowConnect) return;
+    final now = _clock();
+    final left = _fastSince;
+    if (left != null && now.difference(left) < _exitGrace) return;
+    _slowConnects[url] = now;
+    _slowConnects.removeWhere((_, at) => now.difference(at) > _connectWindow);
+    if (anchor || _slowConnects.length >= 2) _setSlow(true);
   }
 
   /// A publish went out and no relay answered it in time. Counted pool-wide:
@@ -148,7 +192,8 @@ class LinkQualityMeter {
   /// How long the pool should wait for a relay's `OK`, never below [floor].
   Duration ackTimeout({required Duration floor}) {
     final median = _median(_acks);
-    if (median == null) return _slow ? _atLeast(floor, _ackSlowNoSamples) : floor;
+    if (median == null)
+      return _slow ? _atLeast(floor, _ackSlowNoSamples) : floor;
     return _clamp(median * _ackMedianFactor, floor, _ackCeiling);
   }
 
@@ -201,6 +246,9 @@ class LinkQualityMeter {
     if (_slow == value) return;
     _slow = value;
     _slowSince = value ? _clock() : null;
+    _fastSince = value ? null : _clock();
+    // A spell's evidence is spent on it; the next one gathers its own.
+    _slowConnects.clear();
     if (!_disposed) _changes.add(value);
   }
 

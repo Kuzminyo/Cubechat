@@ -66,11 +66,91 @@ void main() {
     m.dispose();
   });
 
-  test('a five-second connect makes it slow', () {
+  test('one slow public handshake beside fast acks does not enter', () {
+    // A sluggish public relay, or nine handshakes at once on an iOS resume
+    // over middling LTE: one connect past 5 s is not the link.
+    final m = LinkQualityMeter();
+    for (var i = 0; i < 3; i++) {
+      m.recordAck('ours', fastAck);
+    }
+    m.recordConnect('nostr.mom', const Duration(seconds: 6));
+    expect(m.isSlow, isFalse);
+    m.dispose();
+  });
+
+  test('two slow connects from two relays make it slow', () {
     final m = LinkQualityMeter();
     m.recordConnect('a', const Duration(milliseconds: 4900));
-    expect(m.isSlow, isFalse);
+    m.recordConnect('b', const Duration(milliseconds: 4900));
+    expect(m.isSlow, isFalse, reason: 'under 5 s is not slow');
     m.recordConnect('a', const Duration(milliseconds: 5100));
+    expect(m.isSlow, isFalse, reason: 'one slow connect is not corroborated');
+    m.recordConnect('b', const Duration(milliseconds: 5100));
+    expect(m.isSlow, isTrue);
+    m.dispose();
+  });
+
+  test('one relay reconnecting slowly twice is still one witness', () {
+    final m = LinkQualityMeter();
+    m.recordConnect('a', const Duration(seconds: 6));
+    m.recordConnect('a', const Duration(seconds: 6));
+    expect(m.isSlow, isFalse);
+    m.dispose();
+  });
+
+  test('slow connects a minute apart do not corroborate each other', () {
+    var now = DateTime(2026, 10, 20, 12);
+    final m = LinkQualityMeter(clock: () => now);
+    m.recordConnect('a', const Duration(seconds: 6));
+    now = now.add(const Duration(seconds: 61));
+    m.recordConnect('b', const Duration(seconds: 6));
+    expect(m.isSlow, isFalse);
+    m.dispose();
+  });
+
+  test('a slow connect of our own relay makes it slow on its own', () {
+    final m = LinkQualityMeter();
+    m.recordConnect('ours', const Duration(seconds: 6), anchor: true);
+    expect(m.isSlow, isTrue);
+    m.dispose();
+  });
+
+  test('leaving slow mode then one slow reconnect does not re-enter', () {
+    var now = DateTime(2026, 10, 20, 12);
+    final m = LinkQualityMeter(clock: () => now);
+    m.recordSilence('a');
+    m.recordSilence('b');
+    expect(m.isSlow, isTrue);
+    now = now.add(const Duration(seconds: 31));
+    for (var i = 0; i < 4; i++) {
+      m.recordAck('a', fastAck);
+    }
+    expect(m.isSlow, isFalse);
+    // The exit reopens every let-go socket at once; one of them is slow.
+    now = now.add(const Duration(seconds: 5));
+    m.recordConnect('a', const Duration(seconds: 6));
+    expect(m.isSlow, isFalse);
+    m.dispose();
+  });
+
+  test('inside the minute after leaving, no connect counts at all', () {
+    var now = DateTime(2026, 10, 20, 12);
+    final m = LinkQualityMeter(clock: () => now);
+    m.recordSilence('a');
+    m.recordSilence('b');
+    now = now.add(const Duration(seconds: 31));
+    for (var i = 0; i < 4; i++) {
+      m.recordAck('a', fastAck);
+    }
+    expect(m.isSlow, isFalse);
+    now = now.add(const Duration(seconds: 5));
+    m.recordConnect('a', const Duration(seconds: 6));
+    m.recordConnect('b', const Duration(seconds: 6));
+    m.recordConnect('ours', const Duration(seconds: 6), anchor: true);
+    expect(m.isSlow, isFalse);
+    // Past the minute, connects are evidence again.
+    now = now.add(const Duration(seconds: 60));
+    m.recordConnect('ours', const Duration(seconds: 6), anchor: true);
     expect(m.isSlow, isTrue);
     m.dispose();
   });
