@@ -221,7 +221,6 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
                   const _FramePanel(),
                   const _TransitionPanel(),
                   const _WakePanel(),
-                  const _RadioSpikePanel(),
                   Expanded(
                     child: _buildLog(context, t, entries),
                   ),
@@ -230,7 +229,6 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
             : Column(
                 children: [
                   _intro(t, entries),
-                  const _RadioSpikePanel(),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 8, 12, 0),
                     child: Row(
@@ -424,19 +422,39 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     // screen full of log lines asked it thirty-odd times for the same answer.
     final line = AppTypography.mono(size: 11.5, color: AppColors.textOnGlass);
 
+    // The stage-0 radio spike panel is the first row of the scrolling log, not
+    // a fixed block above it: a fixed block overflowed the developer layout.
     return entries.isEmpty
-        ? Center(
-            child: Text(
-              'No log entries yet.\nTrigger a connection and come back.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
-            ),
+        ? ListView(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
+            children: [
+              const _RadioSpikePanel(),
+              Padding(
+                padding: const EdgeInsets.only(top: 40),
+                child: Center(
+                  child: Text(
+                    'No log entries yet.\nTrigger a connection and come back.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppColors.textOnGlassDim,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           )
         : ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
-            itemCount: entries.length,
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
+            itemCount: entries.length + 1,
             itemBuilder: (_, i) {
-              final e = entries[i];
+              if (i == 0) {
+                return const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: _RadioSpikePanel(),
+                );
+              }
+              final e = entries[i - 1];
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 3),
                 child: Text(
@@ -805,7 +823,6 @@ class _RadioSpikePanel extends StatelessWidget {
         ].take(8).toList();
         return Container(
           width: double.infinity,
-          margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: AppColors.glass(0.06),
