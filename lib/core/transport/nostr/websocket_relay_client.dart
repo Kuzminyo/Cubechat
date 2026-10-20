@@ -92,6 +92,15 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
               mediaRelayUrls.contains(mediaPrimaryUrl))
             RelayLane.media: mediaPrimaryUrl,
         }),
+        // No conversation lane means conversation goes to every relay the
+        // caller named — see [_lanes] — so those are the ones it can keep.
+        _conversationUrls = List.unmodifiable(
+          <String>{
+            ...(conversationRelayUrls.isNotEmpty
+                ? conversationRelayUrls
+                : relayUrls),
+          }.toList(),
+        ),
         _connect = connect ?? WebSocketChannel.connect,
         _watermark = sinceSeconds,
         _onWatermark = onWatermark,
@@ -108,6 +117,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
       _states[url] = RelayState.idle;
     }
     if (seenIds != null) _seenIds.addAll(seenIds);
+    _slowSub = _linkQuality.changes.listen(_applySlowMode);
   }
 
   /// Longest gap between reconnect attempts. Backoff doubles from 2 s up to
@@ -134,9 +144,33 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   final LinkQualityMeter _linkQuality;
   final bool _ownsLinkQuality;
 
-  /// Our own relay, the one socket a slow link keeps no matter what. Only
-  /// held here for now.
+  /// Our own relay, the conversation socket a slow link keeps while it is up.
+  /// See [_slowKeep].
   final String? anchorUrl;
+
+  /// Where conversation traffic goes, in the caller's order.
+  final List<String> _conversationUrls;
+
+  /// The only relays with a socket while the link is slow; null otherwise.
+  ///
+  /// The default lists open nine sockets — four conversation relays (three
+  /// public and ours), three media, two location — and on EDGE they share one
+  /// uplink of a few KB/s: every REQ, every probe, every reconnect handshake
+  /// and every copy of a publish queues behind the others. What a slow link
+  /// keeps is the least that still delivers:
+  ///
+  /// - ours ([anchorUrl]), if it is up — every build with lanes listens there;
+  /// - one public conversation relay beside it, the fastest measured, because
+  ///   a peer on an older build may not listen on ours;
+  /// - two public ones when ours is down, so text never loses its road;
+  /// - our media relay, so a file keeps the one road its chunks take anyway.
+  ///
+  /// Location and the public media fallbacks wait for the link to recover. A
+  /// map beacon is sent again every 45 s; missing a few of them is the price
+  /// of the text getting through.
+  Set<String>? _slowKeep;
+
+  StreamSubscription<bool>? _slowSub;
 
   /// True while the relays are answering like EDGE — see [LinkQualityMeter].
   bool get isSlow => _linkQuality.isSlow;
@@ -243,10 +277,19 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
 
   /// Open every configured relay. Returns immediately; sockets come up in the
   /// background and [stateChanges] reports progress.
+  ///
+  /// While the link is slow only [_slowKeep] is opened; leaving slow mode
+  /// calls this again for the rest.
   void start() {
     if (_disposed) return;
+    if (_linkQuality.isSlow && _slowKeep == null) {
+      // A meter that was already slow when this pool was built.
+      _slowKeep = _chooseSlowKeep();
+    }
+    final keep = _slowKeep;
     for (final url in _urls) {
       if (_conns.containsKey(url)) continue;
+      if (keep != null && !keep.contains(url)) continue;
       final conn = _RelayConnection(url, this);
       _conns[url] = conn;
       unawaited(conn.open());
@@ -308,11 +351,83 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   void wake() {
     if (_disposed) return;
     // start() first, so a relay added while we were away gets a connection at
-    // all rather than only the existing ones being poked.
+    // all rather than only the existing ones being poked. On a slow link that
+    // is only [_slowKeep]: the rest have no connection here to wake.
     start();
     for (final conn in _conns.values) {
       conn.wake();
     }
+  }
+
+  /// Close every socket outside [_slowKeep] when the link turns slow; open
+  /// them all again when it recovers.
+  ///
+  /// Closed on purpose, which is not a failure: no backoff, no reconnect
+  /// timer, no silence for the meter, and the relay shows idle rather than
+  /// failed. The connection is dropped from the pool, so neither [start],
+  /// [wake] nor a retry timer can bring it back while the link is slow. On the
+  /// way out [start] opens it fresh, and its REQ asks from the watermark, so
+  /// what it held for us meanwhile still arrives.
+  void _applySlowMode(bool slow) {
+    if (_disposed) return;
+    if (!slow) {
+      if (_slowKeep == null) return;
+      _slowKeep = null;
+      DebugLog.instance.log(
+        'NOSTR',
+        'link fast again (${describeLink()}) — reopening every relay',
+      );
+      start();
+      return;
+    }
+    final keep = _slowKeep = _chooseSlowKeep();
+    final letGo = _conns.keys.where((u) => !keep.contains(u)).toList();
+    DebugLog.instance.log(
+      'NOSTR',
+      'link slow (${describeLink()}) — keeping ${keep.join(', ')}; '
+          'closing ${letGo.length} other socket(s) until it recovers',
+    );
+    for (final url in letGo) {
+      final conn = _conns.remove(url)!;
+      unawaited(conn.close());
+      _forgetOwed(url);
+    }
+    // A kept relay that had no connection yet gets one.
+    start();
+  }
+
+  /// See [_slowKeep]. Never empty while any relay is configured: if the rule
+  /// finds nothing to keep, everything is kept, because no socket at all is
+  /// worse than too many.
+  Set<String> _chooseSlowKeep() {
+    bool isOpen(String url) => _conns[url]?.isOpen ?? false;
+    final anyOpen = _conns.values.any((c) => c.isOpen);
+    final anchor = anchorUrl;
+    // Before anything has connected "open" says nothing, so ours is assumed.
+    final keepAnchor = anchor != null &&
+        _conversationUrls.contains(anchor) &&
+        (isOpen(anchor) || !anyOpen);
+    final public = _conversationUrls.where((u) => u != anchor).toList();
+    final wanted = keepAnchor ? 1 : 2;
+    final picked = <String>[];
+    // Open ones first, the fastest measured before the rest; then, if too few
+    // are up, ones that are down — a relay reconnecting is still a road, and
+    // keeping none would leave peers on older builds with no way to hear us.
+    for (final pool in [public.where(isOpen).toList(), public]) {
+      final rest = pool.where((u) => !picked.contains(u)).toList();
+      while (picked.length < wanted && rest.isNotEmpty) {
+        final next = _linkQuality.fastestOf(rest) ?? rest.first;
+        picked.add(next);
+        rest.remove(next);
+      }
+    }
+    final mediaPrimary = _lanePrimary[RelayLane.media];
+    final keep = <String>{
+      if (keepAnchor) anchor,
+      ...picked,
+      if (mediaPrimary != null) mediaPrimary,
+    };
+    return keep.isEmpty ? _urls.toSet() : keep;
   }
 
   /// How long a socket that looks open has to answer a probe before it is
@@ -681,6 +796,8 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     _seenFlush = null;
     if (pendingFlush) _onSeenIds?.call(_seenIds.toList(growable: false));
     _disposed = true;
+    await _slowSub?.cancel();
+    _slowSub = null;
     // Settle anything still waiting, or its caller is left on a future that
     // can never complete now the sockets are going away.
     for (final p in _pending.values) {

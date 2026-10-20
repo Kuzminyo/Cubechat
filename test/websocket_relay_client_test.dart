@@ -53,6 +53,17 @@ class _FakeRelayServer {
 
   void silenceOpenSockets() => _deafBelow = connections;
 
+  final List<WebSocket> _sockets = [];
+
+  /// Close every socket from the relay's side — a relay that dropped us, so
+  /// the client is left waiting on its reconnect timer. The relay itself stays
+  /// up and accepts the next connection.
+  Future<void> dropSockets() async {
+    for (final ws in List.of(_sockets)) {
+      await ws.close();
+    }
+  }
+
   String get url => 'ws://localhost:${_server.port}';
 
   static Future<_FakeRelayServer> start() async {
@@ -65,6 +76,7 @@ class _FakeRelayServer {
         return;
       }
       final ws = await WebSocketTransformer.upgrade(req);
+      relay._sockets.add(ws);
       final socketNo = relay.connections++;
       relay.activeConnections++;
       final challenge = 'socket-${DateTime.now().microsecondsSinceEpoch}';
@@ -162,7 +174,10 @@ class _FakeRelayServer {
               answer(jsonEncode(['EOSE', subId]));
           }
         },
-        onDone: () => relay.activeConnections--,
+        onDone: () {
+          relay.activeConnections--;
+          relay._sockets.remove(ws);
+        },
       );
     });
     return relay;
@@ -938,6 +953,171 @@ void main() {
         expect(sample, greaterThanOrEqualTo(own));
         expect(sample, lessThan(own * 1.5));
       });
+    });
+  });
+
+  group('slow mode keeps three sockets', () {
+    // On EDGE every open socket shares one thin uplink: its REQ, its probes,
+    // its share of every publish. The pool keeps ours, one public conversation
+    // relay for peers on older builds, and our media relay; the rest wait.
+    late _FakeRelayServer anchor;
+    late _FakeRelayServer pubA;
+    late _FakeRelayServer pubB;
+    late _FakeRelayServer geo;
+    late DateTime now;
+    late LinkQualityMeter meter;
+    late WebSocketNostrRelayClient client;
+
+    const fast = Duration(milliseconds: 100);
+
+    Set<String> openUrls(WebSocketNostrRelayClient c) => {
+          for (final e in c.states.entries)
+            if (e.value == RelayState.connected) e.key,
+        };
+
+    setUp(() async {
+      anchor = await _FakeRelayServer.start();
+      pubA = await _FakeRelayServer.start();
+      pubB = await _FakeRelayServer.start();
+      geo = await _FakeRelayServer.start();
+      addTearDown(anchor.stop);
+      addTearDown(pubA.stop);
+      addTearDown(pubB.stop);
+      addTearDown(geo.stop);
+      now = DateTime.utc(2026, 10, 20, 12);
+      meter = LinkQualityMeter(clock: () => now);
+      addTearDown(meter.dispose);
+    });
+
+    Future<void> startPool({
+      int? sinceSeconds,
+      List<String> media = const [],
+      String? mediaPrimary,
+    }) async {
+      client = WebSocketNostrRelayClient(
+        relayUrls: const [],
+        conversationRelayUrls: [anchor.url, pubA.url, pubB.url],
+        mediaRelayUrls: media,
+        mediaPrimaryUrl: mediaPrimary,
+        locationRelayUrls: [geo.url],
+        anchorUrl: anchor.url,
+        linkQuality: meter,
+        sinceSeconds: sinceSeconds,
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await _until(
+        () => openUrls(client).length == 4 + media.length,
+        reason: 'every relay connected',
+      );
+    }
+
+    /// pubA has answered fastest; then two publishes nobody answered.
+    void goSlow() {
+      meter.recordAck(pubA.url, fast);
+      meter.recordAck(pubB.url, const Duration(milliseconds: 900));
+      meter.recordSilence(pubA.url);
+      meter.recordSilence(pubB.url);
+      expect(client.isSlow, isTrue);
+    }
+
+    /// Past the 30 s dwell, four fast answers in a row.
+    void goFast() {
+      now = now.add(const Duration(seconds: 31));
+      for (var i = 0; i < 4; i++) {
+        meter.recordAck(anchor.url, fast);
+      }
+      expect(client.isSlow, isFalse);
+    }
+
+    test('slow mode keeps one public conversation relay beside ours', () async {
+      await startPool();
+      goSlow();
+      await _until(
+        () => geo.activeConnections == 0 && pubB.activeConnections == 0,
+        reason: 'the rest let go',
+      );
+      expect(openUrls(client), {anchor.url, pubA.url});
+      // Let go on purpose: idle, not a failure.
+      expect(client.states[geo.url], RelayState.idle);
+      expect(client.states[pubB.url], RelayState.idle);
+    });
+
+    test('without our relay slow mode keeps the two fastest public ones',
+        () async {
+      await startPool();
+      final anchorUrl = anchor.url; // unreadable once the server is stopped
+      // Stopping the server leaves upgraded sockets alone; drop them too.
+      await anchor.stop();
+      await anchor.dropSockets();
+      await _until(
+        () => client.states[anchorUrl] != RelayState.connected,
+        reason: 'our relay down',
+      );
+      goSlow();
+      await _until(() => geo.activeConnections == 0, reason: 'geo let go');
+      expect(openUrls(client), {pubA.url, pubB.url});
+    });
+
+    test('a wake in slow mode does not reopen what was let go', () async {
+      await startPool();
+      // geo dropped us just before: its reconnect timer is already running.
+      await geo.dropSockets();
+      await _until(
+        () => client.states[geo.url] == RelayState.failed,
+        reason: 'geo down, retry scheduled',
+      );
+      goSlow();
+      await _until(() => pubB.activeConnections == 0, reason: 'pubB let go');
+      client.wake();
+      client.start();
+      // Past the first reconnect backoff (2 s), so the timer has had its turn.
+      await Future<void>.delayed(const Duration(milliseconds: 2500));
+      expect(geo.activeConnections, 0);
+      expect(geo.connections, 1);
+      expect(pubB.connections, 1);
+      expect(openUrls(client), {anchor.url, pubA.url});
+    });
+
+    test('leaving slow mode opens every relay again', () async {
+      const stored = 1770000000;
+      await startPool(sinceSeconds: stored);
+      NostrTransport(signer: signer, relay: client)
+          .inboundFrames()
+          .listen((_) {});
+      await _until(() => geo.reqs.length == 1, reason: 'geo subscribed');
+      goSlow();
+      await _until(() => geo.activeConnections == 0, reason: 'geo let go');
+      goFast();
+      await _until(
+        () => geo.activeConnections == 1 && openUrls(client).length == 4,
+        reason: 'every relay back',
+      );
+      // And it asks from where it left off, not for everything.
+      await _until(() => geo.reqs.length == 2, reason: 'geo subscribed again');
+      final req = jsonDecode(geo.reqs.last) as List<dynamic>;
+      expect(
+        (req[2] as Map).cast<String, dynamic>()['since'],
+        stored - 600,
+      );
+    });
+
+    test('slow mode keeps our media relay and lets the public media ones go',
+        () async {
+      final ourMedia = await _FakeRelayServer.start();
+      final pubMedia = await _FakeRelayServer.start();
+      addTearDown(ourMedia.stop);
+      addTearDown(pubMedia.stop);
+      await startPool(
+        media: [ourMedia.url, pubMedia.url],
+        mediaPrimary: ourMedia.url,
+      );
+      goSlow();
+      await _until(
+        () => pubMedia.activeConnections == 0 && geo.activeConnections == 0,
+        reason: 'public media and geo let go',
+      );
+      expect(openUrls(client), {anchor.url, pubA.url, ourMedia.url});
     });
   });
 

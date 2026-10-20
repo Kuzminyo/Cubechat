@@ -988,6 +988,9 @@ class MessagingService {
           ...settings.urls,
           RelaySettings.meetingPointUrl,
         }.toList(),
+        // The conversation socket a slow link keeps while it is up — see
+        // [WebSocketNostrRelayClient._slowKeep].
+        anchorUrl: RelaySettings.meetingPointUrl,
         authSigner: signer,
         // Subscribed to like any other — see [RelayLane]. Only *publishing* is
         // split, so a chunk or a beacon never lands somewhere the recipient is
