@@ -53,4 +53,21 @@ void main() {
       contains('[RADIO-SPIKE] incoming -> ok'),
     );
   });
+
+  test('incoming clamps a long peer name to 32 characters', () async {
+    final calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      return 'ok';
+    });
+
+    await RadioSpike.instance.incoming('a' * 100);
+    // 40 emoji are 80 UTF-16 units; the clamp counts characters, never
+    // splitting a surrogate pair.
+    await RadioSpike.instance.incoming('\u{1F600}' * 40);
+
+    expect(calls[0].arguments, 'a' * 32);
+    expect(calls[1].arguments, '\u{1F600}' * 32);
+  });
 }

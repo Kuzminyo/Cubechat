@@ -793,6 +793,9 @@ class _RadioSpikePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Touching the singleton installs its native `log` handler, so lines the
+    // native side wrote at launch are not dropped.
+    RadioSpike.instance;
     return ListenableBuilder(
       listenable: DebugLog.instance,
       builder: (context, _) {

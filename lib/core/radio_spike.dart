@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'util/debug_log.dart';
@@ -40,7 +41,17 @@ class RadioSpike {
 
   /// Makes [fromName] the active remote participant, which is what should
   /// activate the channel's audio session.
-  Future<String> incoming(String fromName) => _invoke('incoming', fromName);
+  ///
+  /// The name is a peer's own display name, so it is clamped to [maxNameLength]
+  /// characters (code points, never mid-pair) before it reaches the system UI.
+  Future<String> incoming(String fromName) =>
+      _invoke('incoming', clampName(fromName));
+
+  static const maxNameLength = 32;
+
+  @visibleForTesting
+  static String clampName(String name) =>
+      String.fromCharCodes(name.runes.take(maxNameLength));
 
   Future<String> leave() => _invoke('leave', null);
 

@@ -1010,7 +1010,20 @@ final class CubechatRadioSpike: NSObject, PTChannelManagerDelegate, PTChannelRes
     case "incoming":
       let name = (call.arguments as? String) ?? "cubechat"
       let uuid = channelUUID
-      Task {
+      // The session defaults to soloAmbient, which the silent switch mutes and
+      // which does not play from a locked app; a play() on it can still
+      // return true. Ask for playAndRecord before the system activates it.
+      do {
+        try AVAudioSession.sharedInstance().setCategory(
+          .playAndRecord,
+          mode: .default,
+          options: [.defaultToSpeaker, .allowBluetooth]
+        )
+      } catch {
+        log("setCategory error: \(error)")
+      }
+      // On the main actor so `result` is answered on the platform thread.
+      Task { @MainActor in
         do {
           try await manager.setActiveRemoteParticipant(
             PTParticipant(name: name, image: nil),
@@ -1074,9 +1087,24 @@ final class CubechatRadioSpike: NSObject, PTChannelManagerDelegate, PTChannelRes
     } catch {
       line += ", player error: \(error)"
     }
+    line += ", category=\(audioSession.category.rawValue)"
     line += ", secondaryAudioShouldBeSilencedHint=\(audioSession.secondaryAudioShouldBeSilencedHint)"
     line += ", outputVolume=\(audioSession.outputVolume)"
     log(line)
+    // Clear the participant once the 2 s tone is over, or a second marker
+    // gets "ok" without a new didActivate.
+    let uuid = channelUUID
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+      guard let self, let manager = self.manager else { return }
+      Task { @MainActor in
+        do {
+          try await manager.setActiveRemoteParticipant(nil, channelUUID: uuid)
+          self.log("participant cleared")
+        } catch {
+          self.log("participant clear error: \(error)")
+        }
+      }
+    }
   }
 
   func channelManager(
