@@ -12,6 +12,7 @@ import '../../../../core/widgets/glass_toast.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../../peers/data/contact_aliases_controller.dart';
 import '../../../peers/data/known_peers_controller.dart';
+import '../../../profile/data/relay_settings_controller.dart';
 import '../../data/send_queue.dart';
 import '../../domain/message_preview.dart';
 
@@ -30,6 +31,10 @@ class SendQueueEntry extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final count = ref.watch(sendQueueProvider.select((q) => q.length));
     if (count == 0) return const SizedBox.shrink();
+    // On a crawling link (EDGE) these are not waiting for a road, they are going
+    // down a slow one — say so. Same row, same place; only the words change, and
+    // only while something is queued (no standing banner).
+    final slow = ref.watch(slowNetworkProvider);
     final t = AppLocalizations.of(context);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
@@ -49,7 +54,9 @@ class SendQueueEntry extends ConsumerWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  t.sendQueueCount(count),
+                  slow
+                      ? t.sendQueueSlowNetwork(count)
+                      : t.sendQueueCount(count),
                   style: AppTypography.rowTitle,
                 ),
               ),
@@ -67,8 +74,7 @@ class SendQueueEntry extends ConsumerWidget {
 
 /// What is waiting, for whom, and the two things a person can do about it:
 /// push it along now, or take one back before it leaves.
-Future<void> showSendQueueSheet(BuildContext context) =>
-    showGlassSheet<void>(
+Future<void> showSendQueueSheet(BuildContext context) => showGlassSheet<void>(
       context: context,
       builder: (_) => const _SendQueueSheet(),
     );
@@ -169,7 +175,9 @@ class _SendQueueSheet extends ConsumerWidget {
                                   );
                               showGlassToast(
                                 context,
-                                taken ? t.sendQueueCancelled : t.sendQueueTooLate,
+                                taken
+                                    ? t.sendQueueCancelled
+                                    : t.sendQueueTooLate,
                               );
                             },
                           ),

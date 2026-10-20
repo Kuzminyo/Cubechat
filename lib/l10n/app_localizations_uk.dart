@@ -639,6 +639,19 @@ class AppLocalizationsUk extends AppLocalizations {
   }
 
   @override
+  String sendQueueSlowNetwork(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'Повільна мережа — надсилаємо $count повідомлення',
+      many: 'Повільна мережа — надсилаємо $count повідомлень',
+      few: 'Повільна мережа — надсилаємо $count повідомлення',
+      one: 'Повільна мережа — надсилаємо 1 повідомлення',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get sendQueueTitle => 'Чекають на відправку';
 
   @override

@@ -1202,6 +1202,12 @@ abstract class AppLocalizations {
   /// **'{count, plural, =1{1 message waiting for a connection} other{{count} messages waiting for a connection}}'**
   String sendQueueCount(int count);
 
+  /// No description provided for @sendQueueSlowNetwork.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{Slow network — sending 1 message} other{Slow network — sending {count} messages}}'**
+  String sendQueueSlowNetwork(int count);
+
   /// No description provided for @sendQueueTitle.
   ///
   /// In en, this message translates to:

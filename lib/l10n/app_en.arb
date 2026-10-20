@@ -336,6 +336,14 @@
       }
     }
   },
+  "sendQueueSlowNetwork": "{count, plural, =1{Slow network — sending 1 message} other{Slow network — sending {count} messages}}",
+  "@sendQueueSlowNetwork": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "sendQueueTitle": "Waiting to send",
   "sendQueueHint": "These go by themselves the moment there is a road — Bluetooth nearby or the internet. Nothing needs pressing.",
   "sendQueueRetry": "Try now",
