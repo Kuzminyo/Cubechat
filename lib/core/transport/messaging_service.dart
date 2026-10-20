@@ -1186,6 +1186,7 @@ class MessagingService {
         // Same shutdown race as the state listener above: the pool's timers
         // can deliver after disposal, and reading a provider then throws.
         if (_disposed) return;
+        _slowSince = slow ? DateTime.now() : null;
         _ref.read(slowNetworkProvider.notifier).publish(slow);
         DebugLog.instance.log(
           'NET',
@@ -3797,8 +3798,12 @@ class MessagingService {
   /// leave by this road (`_publishOverNostr` answers "no npub"), survives a
   /// restart through [_remintQueued], and would otherwise hold presence and
   /// receipts back for the whole slow spell.
-  bool get textWaitingForRelay {
-    if (_textRelayInFlight > 0) return true;
+  bool get textWaitingForRelay =>
+      _textRelayInFlight > 0 || _relayTextQueued;
+
+  /// The outbox holds a text that can go by relay — its recipient has a
+  /// 32-byte Nostr key on file. See [textWaitingForRelay].
+  bool get _relayTextQueued {
     if (_outbox.isEmpty) return false;
     final peers = _ref.read(knownPeersControllerProvider);
     return _outbox.values
@@ -10313,6 +10318,19 @@ class MessagingService {
   @visibleForTesting
   Future<void> debugRemintQueued() => _remintQueued();
 
+  /// Stand a relay pool in for the one [_startNostr] would build, with none
+  /// of its listeners: no socket coming up flushes anything, so whatever does
+  /// is the code under test.
+  @visibleForTesting
+  void debugUseRelay(WebSocketNostrRelayClient client, NostrTransport nostr) {
+    _relayClient = client;
+    _nostr = nostr;
+  }
+
+  /// One tick of the presence timer, without waiting [presenceHeartbeat].
+  @visibleForTesting
+  void debugPresenceTick() => _onPresenceTick();
+
   /// How long a send waits for a relay socket to open: 1.5 s on a fast link,
   /// 8 s on a slow one.
   ///
@@ -11324,22 +11342,43 @@ class MessagingService {
   /// not pass through here and are never held back.
   void _startPresenceTimer() {
     _presenceTimer?.cancel();
-    _presenceTimer = Timer.periodic(presenceHeartbeat, (_) {
-      if (_disposed) return;
-      // A receipt sweep a slow link held back gets its next chance on the
-      // same clock, so its cap is reached even when no text finishes.
-      _offerDeferredReadReceipts();
-      final slow = isSlowNetwork;
-      if (!heartbeatDue(
-        slow: slow,
-        textWaiting: slow && textWaitingForRelay,
-        lastHeartbeat: _lastOnlineBeaconAt,
-        now: DateTime.now(),
-      )) {
-        return;
-      }
-      unawaited(announcePresence(online: true));
-    });
+    _presenceTimer =
+        Timer.periodic(presenceHeartbeat, (_) => _onPresenceTick());
+  }
+
+  void _onPresenceTick() {
+    if (_disposed) return;
+    // A receipt sweep a slow link held back gets its next chance on the
+    // same clock, so its cap is reached even when no text finishes.
+    _offerDeferredReadReceipts();
+    final slow = isSlowNetwork;
+    // A text queued on a slow link is offered to the relay again on this
+    // clock. The outbox is otherwise carried only when a relay socket comes
+    // up, and on a slow link nothing comes up: the probe is stretched, the
+    // socket answers it, nothing is reopened — so a text that missed the
+    // stretched ack deadline sat under "Slow network — sending 1 message"
+    // with no tick until something happened to reconnect, while the relay
+    // had most likely stored it (its late `OK` even reaches the meter). Every
+    // 25 s, and only while slow and something can go: the flush guards
+    // against running twice and stops after three failures, and publishing
+    // one again costs a duplicate write the recipient drops on msgId. On a
+    // fast link a missed ack still fails the probe and reopens the socket,
+    // and that relay-up carries the outbox as it always did.
+    if (slow && _relayTextQueued) unawaited(_flushOutboxOverRelay());
+    final now = DateTime.now();
+    // Set on the pool's transition; caught here too for a pool that was
+    // already slow when this service first looked.
+    _slowSince = slow ? (_slowSince ?? now) : null;
+    if (!heartbeatDue(
+      slow: slow,
+      textWaiting: slow && textWaitingForRelay,
+      lastHeartbeat: _lastOnlineBeaconAt,
+      now: now,
+      slowSince: _slowSince,
+    )) {
+      return;
+    }
+    unawaited(announcePresence(online: true));
   }
 
   /// When an "online" beacon last actually went out — a heartbeat or an
@@ -11351,6 +11390,10 @@ class MessagingService {
   /// same trap the note above `_lastPresenceAt`'s update describes.
   DateTime? get _lastOnlineBeaconAt =>
       _lastPresenceOnline == true ? _lastPresenceAt : null;
+
+  /// When the relay pool last called the link slow; null while it is fast.
+  /// What [heartbeatDue]'s cap counts from when no beacon has gone out yet.
+  DateTime? _slowSince;
 
   /// The heartbeat cadence on a slow link.
   ///
@@ -11374,16 +11417,24 @@ class MessagingService {
   /// the gap, 300 s. Past that the beat goes anyway: an outbox that keeps
   /// failing to drain must not show this phone offline to everybody for the
   /// whole slow spell.
+  ///
+  /// With no "online" beacon sent yet, the 300 s count from [slowSince], when
+  /// slow mode began. Until 2026-10-20 that case held the beat with no limit
+  /// at all: on an EDGE cold start the arriving beacon can find no socket, a
+  /// text that will not drain is then common (the outbox is re-offered every
+  /// tick but may keep missing), and the phone showed offline to everybody
+  /// for as long as the link stayed slow. Null [slowSince] holds, as before.
   static bool heartbeatDue({
     required bool slow,
     required bool textWaiting,
     required DateTime? lastHeartbeat,
     required DateTime now,
+    DateTime? slowSince,
   }) {
     if (!slow) return true;
     if (textWaiting) {
-      return lastHeartbeat != null &&
-          now.difference(lastHeartbeat) >= _slowHeartbeatGap * 2;
+      final from = lastHeartbeat ?? slowSince;
+      return from != null && now.difference(from) >= _slowHeartbeatGap * 2;
     }
     return lastHeartbeat == null ||
         now.difference(lastHeartbeat) >= _slowHeartbeatGap;

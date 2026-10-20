@@ -80,9 +80,29 @@ void main() {
         textWaiting: true,
         lastHeartbeat: null,
         now: now,
+        slowSince: now,
       ),
       isFalse,
     );
+  });
+
+  test(
+      'with no beacon sent yet, a waiting text holds the heartbeat for at most '
+      '300 s from slow-mode entry', () {
+    // An EDGE cold start: the arriving beacon found no socket, so there is no
+    // last heartbeat to count from. Without a limit this phone showed offline
+    // to everyone for the whole slow spell while the outbox would not drain.
+    bool due(int slowForSeconds) => MessagingService.heartbeatDue(
+          slow: true,
+          textWaiting: true,
+          lastHeartbeat: null,
+          now: now,
+          slowSince: now.subtract(Duration(seconds: slowForSeconds)),
+        );
+    expect(due(0), isFalse);
+    expect(due(299), isFalse);
+    expect(due(300), isTrue);
+    expect(due(900), isTrue);
   });
 
   test('a waiting text holds a slow heartbeat back for at most 300 s', () {
