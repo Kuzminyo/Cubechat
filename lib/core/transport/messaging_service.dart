@@ -53,9 +53,11 @@ import '../../features/airdrop/presentation/airdrop_navigation.dart';
 import '../../features/profile/data/media_download_settings_controller.dart';
 import '../../features/profile/data/privacy_settings_controller.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
+import '../../features/radio/data/radio_inbound.dart';
 import '../ble/ble_constants.dart';
 import '../ble/ble_peripheral.dart';
 import '../crypto/channel_crypto.dart';
+import '../crypto/radio_crypto.dart';
 import '../crypto/file_digest.dart';
 import '../crypto/fs_message.dart';
 import '../crypto/identity_service.dart';
@@ -80,6 +82,7 @@ import 'call_signal.dart';
 import 'direct_write.dart';
 import 'nearby_offer.dart';
 import 'own_device_notice.dart';
+import 'radio_chunk.dart';
 import 'control_delivery.dart';
 import 'chat_session.dart';
 import 'chat_session_manager.dart';
@@ -323,6 +326,29 @@ class MessagingService {
   /// the (v0x02) [MediaManifest], which is sent first. See [MediaFsCipher].
   static const int _cipherX3dhMedia = 0x04;
 
+  /// Walkie-talkie group chunk: the body is `[radioTag:8][RadioCrypto blob]`,
+  /// a broadcast sealed under a radio group's key. See [RadioCrypto].
+  ///
+  /// The same shape as [_cipherChannel] and deliberately not the same byte.
+  /// A 0x03 frame is a room frame, and every member of a room carries each
+  /// room frame it receives on to its contacts over Nostr
+  /// ([_relayChannelFrameOverNostr]) and keeps it for a neighbour who turns
+  /// up later ([_rememberChannelFrame]). Both are right for a post and ruinous
+  /// for voice: three chunks a second, from every listener, published to every
+  /// contact's relay. A byte of its own means a build that knows radio never
+  /// takes that path, and an older one sees an unknown cipher: it still
+  /// forwards the broadcast for the mesh (that happens before the cipher is
+  /// read) and then drops it.
+  static const int _cipherRadio = 0x05;
+
+  /// Hop budget for a radio frame. Voice is for the people within reach of
+  /// the mesh, not seven hops out: every relayed broadcast waits a random
+  /// 10-220 ms before going on (`relay_policy.dart`), so each hop adds jitter
+  /// to a chunk that is worthless 5 s late, and a flood of three frames a
+  /// second costs `fanout ^ hops`. Applied with `min` against [_meshTtl], so a
+  /// dense corner can still lower it and nothing ever raises it.
+  static const int _radioTtl = 3;
+
   /// Cap on FS chunks we'll hold for a single transfer whose manifest hasn't
   /// arrived yet — bounds memory against a peer that streams chunks and never
   /// sends the manifest.
@@ -371,6 +397,12 @@ class MessagingService {
 
   /// AirDrop offers and answers as they arrive — see `features/airdrop`.
   Stream<NearbyInbound> get nearbyInbound => _nearbyInbound.stream;
+
+  final _radioInbound = StreamController<RadioInbound>.broadcast();
+
+  /// Walkie-talkie chunks as they arrive, opened and verified — see
+  /// `features/radio`. Handed on through [radioInboundProvider].
+  Stream<RadioInbound> get radioInbound => _radioInbound.stream;
 
   /// Set by the AirDrop controller for as long as it lives. Asked about every
   /// incoming file manifest, and handed every AirDrop file once it is whole.
@@ -7114,8 +7146,12 @@ class MessagingService {
           // it names nobody who could answer it.
           break;
         case InnerPayloadType.radioChunk:
-          // Deliberate drop for now: Task 5 (radio transport) wires this to
-          // the radio inbound stream.
+          // Not valid inside a text room, so dropped. A group's voice travels
+          // under its own cipher tag and its own key ([_cipherRadio],
+          // [_handleRadioGroupBody]); one sealed under a room's key would be
+          // carried on over Nostr and kept for late neighbours like any room
+          // frame, which is exactly what voice must never be. Nothing this
+          // build sends looks like this.
           break;
       }
     } catch (e) {
@@ -7312,6 +7348,321 @@ class MessagingService {
     await c?.dispose();
     _ref.read(chatSessionManagerProvider.notifier).drop(peerId);
   }
+
+  // -------------------- walkie-talkie --------------------
+
+  /// When each radio group last said its frames would not open: tag hex ->
+  /// moment. Only tags we hold a key for reach it, so it is as long as the
+  /// list of groups and no longer.
+  final _radioFailLoggedAt = <String, DateTime>{};
+
+  /// The hop budget for a radio frame minted now: [_radioTtl], or less where
+  /// the mesh is dense. Never more — see [TransportEnvelope.ttlForLinkCount].
+  int get _radioTtlNow {
+    final mesh = _meshTtl;
+    return mesh < _radioTtl ? mesh : _radioTtl;
+  }
+
+  /// Send one walkie-talkie chunk to a contact over Bluetooth, and only
+  /// Bluetooth. Returns how many links it went out on; 0 means nobody was in
+  /// reach and the chunk is gone.
+  ///
+  /// **Nothing is kept.** Not in the outbox, not in the store-and-forward
+  /// cache, not on a relay, and no relay is woken for it. A chunk is 300 ms
+  /// of voice and worth nothing after its moment, while each of those holds a
+  /// frame for minutes to an hour and then hands it over as noise — in the
+  /// slot of a message that did need carrying. Nor is it written into the
+  /// conversation. The radio controller says once per press whether anybody
+  /// heard; this says nothing per chunk.
+  ///
+  /// The same envelope as a text on its SealedBox path, without the padding:
+  /// full signature, sealed to the contact's key, addressed to them. Not
+  /// forward-secret — X3DH is a fresh ephemeral and a key agreement per frame,
+  /// three times a second, for voice that is gone 300 ms later.
+  Future<int> sendRadioToContact(String canonicalId, RadioChunk chunk) async {
+    // Before any crypto: with nobody in range this would otherwise be a seal
+    // and a signature three times a second, for nothing.
+    if (!_hasAnyLink) return 0;
+    final manager = _ref.read(chatSessionManagerProvider.notifier);
+    final session = manager.sessionFor(canonicalId) ??
+        _findSessionByPubkeyHex(canonicalId);
+    Uint8List? peerPub;
+    if (session != null && session.isEstablished) {
+      peerPub = session.remoteStaticPublicKey;
+    } else {
+      final known = _ref.read(knownPeersControllerProvider)[canonicalId];
+      if (known != null) {
+        try {
+          peerPub = _hexDecodeBytes(known.pubkeyHex);
+        } catch (_) {
+          // A malformed key on file: nobody to seal to.
+        }
+      }
+    }
+    if (peerPub == null || peerPub.length != 32) return 0;
+
+    final identity = await _ref.read(identityProvider.future);
+    final ttl = _radioTtlNow;
+    final env = await radioDirectEnvelope(
+      chunk: chunk,
+      recipientPub: peerPub,
+      originHash: await _myPubkeyHash(),
+      destHash: await _peerPubkeyHash(peerPub),
+      msgId: TransportEnvelope.newMsgId(initialTtl: ttl),
+      ttl: ttl,
+      signKeyPair: identity.asSignKeyPair(),
+      senderEdPub: identity.signPublicKey,
+    );
+    // Our own copy coming back round the mesh is a duplicate, not a chunk.
+    _dedup.acceptEnvelope(env);
+    final bytes =
+        Frame(type: FrameType.transport, payload: env.encode()).encode();
+
+    // The contact's own link first — one write, and the fewest phones that
+    // see the frame at all — then the mesh. The order sendText uses, with
+    // every failure silent: a log line per chunk would be the whole log.
+    final transportId = session?.peerId;
+    if (transportId != null) {
+      final client = _clients[transportId];
+      if (client != null && client.isConnected) {
+        try {
+          if (await _writeFrameToClient(client, bytes)) return 1;
+        } catch (_) {}
+      }
+      try {
+        if (await _notifyFrameToPeripheral(bytes)) return 1;
+      } catch (_) {}
+    }
+    return _fanoutAllLinks(bytes, excludePeerId: null);
+  }
+
+  /// Send one walkie-talkie chunk to a radio group: a broadcast on every
+  /// Bluetooth link, ttl [_radioTtl]. Returns how many links it went out on.
+  ///
+  /// Mesh only, and kept nowhere, for the reasons on [sendRadioToContact]. In
+  /// particular not through [_broadcastChannelFrame], which is a room's road:
+  /// it remembers the frame for neighbours who arrive later and publishes it
+  /// to every contact's relay.
+  Future<int> sendRadioToGroup(
+    Uint8List key,
+    Uint8List tag,
+    RadioChunk chunk,
+  ) async {
+    if (!_hasAnyLink) return 0;
+    final identity = await _ref.read(identityProvider.future);
+    final ttl = _radioTtlNow;
+    final env = await radioGroupEnvelope(
+      key: key,
+      tag: tag,
+      chunk: chunk,
+      originHash: await _myPubkeyHash(),
+      msgId: TransportEnvelope.newMsgId(initialTtl: ttl),
+      ttl: ttl,
+      signKeyPair: identity.asSignKeyPair(),
+      senderEdPub: identity.signPublicKey,
+    );
+    _dedup.acceptEnvelope(env);
+    return _fanoutAllLinks(
+      Frame(type: FrameType.transport, payload: env.encode()).encode(),
+      excludePeerId: null,
+    );
+  }
+
+  /// The envelope [sendRadioToContact] puts on the air. Static, and given its
+  /// keys rather than reading ours, so a test can play the other phone.
+  static Future<TransportEnvelope> radioDirectEnvelope({
+    required RadioChunk chunk,
+    required Uint8List recipientPub,
+    required Uint8List originHash,
+    required Uint8List destHash,
+    required Uint8List msgId,
+    required int ttl,
+    required SimpleKeyPairData signKeyPair,
+    required Uint8List senderEdPub,
+  }) async {
+    final signed = await SignedPayload.wrap(
+      inner: packInnerPayload(InnerPayloadType.radioChunk, chunk.encode()),
+      context: SignedPayload.contextBytes(
+        originPubkeyHash: originHash,
+        destPubkeyHash: destHash,
+        msgId: msgId,
+      ),
+      signKeyPair: signKeyPair,
+      senderEdPub: senderEdPub,
+    );
+    return TransportEnvelope(
+      originPubkeyHash: originHash,
+      destPubkeyHash: destHash,
+      msgId: msgId,
+      ttl: ttl,
+      body: _tagBody(
+        _cipherSealedBox,
+        await SealedBox.seal(signed, recipientPub),
+      ),
+    );
+  }
+
+  /// The envelope [sendRadioToGroup] puts on the air:
+  /// `[_cipherRadio][tag:8][RadioCrypto.seal(key, signedPayload)]`, addressed
+  /// to nobody. Static for the same reason as [radioDirectEnvelope].
+  ///
+  /// The full signature (with the signer's Ed25519 key in it), as a room post
+  /// has: members of a group need not know each other, and the compact form
+  /// can only be checked by somebody who already holds the key.
+  static Future<TransportEnvelope> radioGroupEnvelope({
+    required Uint8List key,
+    required Uint8List tag,
+    required RadioChunk chunk,
+    required Uint8List originHash,
+    required Uint8List msgId,
+    required int ttl,
+    required SimpleKeyPairData signKeyPair,
+    required Uint8List senderEdPub,
+  }) async {
+    if (tag.length != RadioCrypto.tagLen) {
+      throw ArgumentError.value(tag.length, 'tag', 'must be 8 bytes');
+    }
+    final broadcast = TransportEnvelope.broadcastDest();
+    final signed = await SignedPayload.wrap(
+      inner: packInnerPayload(InnerPayloadType.radioChunk, chunk.encode()),
+      context: SignedPayload.contextBytes(
+        originPubkeyHash: originHash,
+        destPubkeyHash: broadcast,
+        msgId: msgId,
+      ),
+      signKeyPair: signKeyPair,
+      senderEdPub: senderEdPub,
+    );
+    final sealed = await RadioCrypto.seal(key, signed);
+    final radioBody = Uint8List(RadioCrypto.tagLen + sealed.length)
+      ..setRange(0, RadioCrypto.tagLen, tag)
+      ..setRange(RadioCrypto.tagLen, RadioCrypto.tagLen + sealed.length, sealed);
+    return TransportEnvelope(
+      originPubkeyHash: originHash,
+      destPubkeyHash: broadcast,
+      msgId: msgId,
+      ttl: ttl,
+      body: _tagBody(_cipherRadio, radioBody),
+    );
+  }
+
+  /// Open an inbound radio group frame and hand the chunk on.
+  ///
+  /// By the time this runs the frame has been dedup-checked and, if it had
+  /// hops left, already forwarded by [_handleTransportFrame] — so a group we
+  /// are not in costs one map lookup and returns without a word. Twenty
+  /// strangers' chunks a second must not be twenty lines of log a second.
+  ///
+  /// A group we are in that does not open (somebody typed the wrong password,
+  /// or forged our tag) says so once a minute per group, not once per chunk.
+  Future<void> _handleRadioGroupBody({
+    required TransportEnvelope env,
+    required String peerId,
+    required Uint8List radioBody,
+  }) async {
+    // A group frame is a broadcast and travels by Bluetooth only. Addressed
+    // to somebody, or arriving from the relay, it is nothing we sent.
+    if (!env.isBroadcast || peerId == _nostrPeerId) return;
+    if (radioBody.length < RadioCrypto.tagLen) return;
+    final tagBytes =
+        Uint8List.fromList(radioBody.sublist(0, RadioCrypto.tagLen));
+    final tagHex = _hexOf(tagBytes);
+    final key = _ref.read(radioGroupKeysProvider)[tagHex];
+    if (key == null) return; // not our group: forwarded only
+
+    // Our own chunk reflected back by a neighbour.
+    if (_bytesEqual(env.originPubkeyHash, await _myPubkeyHash())) return;
+
+    final RadioChunk chunk;
+    final Uint8List senderEdPub;
+    try {
+      final plain = await RadioCrypto.open(
+        key,
+        Uint8List.fromList(radioBody.sublist(RadioCrypto.tagLen)),
+      );
+      // Throws on anything not carrying the full signature, as a room does:
+      // a group frame with no author is not one we play.
+      final verified = await SignedPayload.verify(
+        wire: plain,
+        context: SignedPayload.contextBytes(
+          originPubkeyHash: env.originPubkeyHash,
+          destPubkeyHash: env.destPubkeyHash,
+          msgId: env.msgId,
+        ),
+        expectedEdPub: await _expectedEdPubFor(env.originPubkeyHash),
+      );
+      // The replay window, checked here rather than through
+      // [_plausibleClock] / [_pastReplayWindow], which log every refusal: a
+      // phone with a wrong clock would otherwise write a line per chunk. The
+      // player's own 5 s rule is far stricter; this only stops a frame from
+      // last week being taken as signed now.
+      final skewMs =
+          DateTime.now().millisecondsSinceEpoch - verified.timestampMs;
+      if (skewMs < -_replayMaxFutureMs || skewMs > _replayMaxAgeMs) {
+        throw FormatException('signed ${skewMs ~/ 1000}s away from now');
+      }
+      final unpacked = unpackInnerPayload(verified.inner);
+      if (unpacked.type != InnerPayloadType.radioChunk) {
+        throw FormatException('carries ${unpacked.type.name}, not voice');
+      }
+      chunk = RadioChunk.decode(unpacked.body);
+      senderEdPub = verified.senderEdPub;
+    } catch (e) {
+      _noteRadioGroupFailure(tagHex, e);
+      return;
+    }
+
+    // Named by the signature, never by the envelope: the origin hash is a
+    // plaintext field, and a stranger may sign under a known contact's origin
+    // while that contact's signing key is not yet on file. A contact found by
+    // their signing key gets their canonical id; anybody else the fingerprint
+    // a room's roster would give them.
+    final fingerprint = _hexOf(senderEdPub).substring(0, 16);
+    final contact = _knownPeerBySignKey(senderEdPub);
+    if (contact != null &&
+        _ref
+            .read(knownPeersControllerProvider.notifier)
+            .isBlocked(contact.pubkeyHex)) {
+      return;
+    }
+    if (_ref.read(banListProvider).isBannedFingerprint(fingerprint)) return;
+    if (_radioInbound.isClosed) return;
+    _radioInbound.add(
+      RadioInbound(
+        senderId: contact?.pubkeyHex ?? fingerprint,
+        groupTag: tagBytes,
+        chunk: chunk,
+      ),
+    );
+  }
+
+  void _noteRadioGroupFailure(String tagHex, Object error) {
+    final now = DateTime.now();
+    final last = _radioFailLoggedAt[tagHex];
+    if (last != null && now.difference(last) < const Duration(minutes: 1)) {
+      return;
+    }
+    _radioFailLoggedAt[tagHex] = now;
+    DebugLog.instance.log(
+      'RADIO',
+      'drop group ${tagHex.substring(0, 6)} chunk: $error '
+          '(wrong password?) - said at most once a minute',
+    );
+  }
+
+  /// Hand [frameBytes] to the inbound path as if a Bluetooth link had just
+  /// delivered it.
+  @visibleForTesting
+  Future<void> debugReceiveFrame(String peerId, Uint8List frameBytes) =>
+      _handleInboundBytes(peerId, frameBytes);
+
+  /// Frames held in the store-and-forward cache, for anybody.
+  @visibleForTesting
+  int get debugHeldFrameCount => _store.size;
+
+  /// Frames waiting in the outbox for a relay.
+  @visibleForTesting
+  int get debugOutboxSize => _outbox.length;
 
   // -------------------- inbound dispatch --------------------
 
@@ -7560,6 +7911,18 @@ class MessagingService {
           env: env,
           peerId: peerId,
           channelBody: cipherBody,
+        );
+        return;
+      }
+
+      // A walkie-talkie group chunk. Already forwarded above if it had hops
+      // left, like any broadcast, so a phone outside the group still carries
+      // it for the members beyond.
+      if (cipher == _cipherRadio) {
+        await _handleRadioGroupBody(
+          env: env,
+          peerId: peerId,
+          radioBody: cipherBody,
         );
         return;
       }
@@ -8272,9 +8635,31 @@ class MessagingService {
           }
 
         case InnerPayloadType.radioChunk:
-          // Deliberate drop for now: Task 5 (radio transport) wires this to
-          // the radio inbound stream.
-          break;
+          // Walkie-talkie, 1:1. Signed and sealed to us like a text, handed on
+          // without being filed anywhere: voice is played or lost, never kept.
+          //
+          // Not from the relay: nothing sends radio there (see
+          // [sendRadioToContact]), so a chunk that arrives that way was put
+          // there by somebody else, and arrives too late to play anyway. And
+          // not without a sender we can name, because the player picks the
+          // contact's chunks out by that name.
+          if (peerId == _nostrPeerId || senderPub == null) break;
+          final RadioChunk radio;
+          try {
+            radio = RadioChunk.decode(unpacked.body);
+          } on FormatException {
+            // Silent: at three chunks a second a line each would be the log.
+            break;
+          }
+          if (!_radioInbound.isClosed) {
+            _radioInbound.add(
+              RadioInbound(
+                senderId: _hexOf(senderPub),
+                groupTag: null,
+                chunk: radio,
+              ),
+            );
+          }
       }
     } catch (e, st) {
       DebugLog.instance.log('NOISE', 'SealedBox open FAILED for $peerId: $e');
@@ -13597,6 +13982,7 @@ class MessagingService {
     await _callSignals.close();
     await _ownDeviceNotices.close();
     await _nearbyInbound.close();
+    await _radioInbound.close();
   }
 }
 
