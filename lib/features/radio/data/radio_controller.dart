@@ -20,8 +20,13 @@ import 'radio_ports.dart';
 export '../domain/radio_floor.dart' show FloorState, Idle, Listening, Talking;
 export '../models/radio_channel.dart';
 
-/// Why the last press of the button did not start a transmission.
+/// Why the last press of the button did not start a transmission, or why the
+/// radio ended one the button had not.
 enum RadioBlockedReason {
+  /// The press reached [RadioController.maxPress] and was ended for the user:
+  /// a missed pointer-up must not leave the microphone on for ever.
+  tooLong,
+
   /// Somebody else holds the channel.
   busy,
 
@@ -117,6 +122,13 @@ class RadioController extends Notifier<RadioState> {
   /// instead keeps the radio from piling up in front of everybody's text.
   static const int maxQueuedSends = 4;
 
+  /// Longest press. A walkie-talkie turn is seconds; a minute is far past
+  /// anything said on purpose, and its only job is to bound the case where the
+  /// screen never saw the finger lift - otherwise the microphone records, and
+  /// the channel stays taken for everyone, until the app is killed. 200
+  /// chunks at 300 ms.
+  static const Duration maxPress = Duration(seconds: 60);
+
   static const int _sampleRate = PlatformRadioAudio.sampleRate;
   static const int _frameSamples = 960;
 
@@ -181,10 +193,21 @@ class RadioController extends Notifier<RadioState> {
     _closed.clear();
     _silentTouched = false;
 
-    final sub = ref.read(radioInboundProvider).listen(_onInbound);
+    // Listened, not read once: the stream belongs to MessagingService, and
+    // an Emergency Wipe (or a restore) builds a new one. Subscribed once, the
+    // radio stayed on the old, closed stream and heard nothing until restart.
+    StreamSubscription<RadioInbound>? sub;
+    ref.listen<Stream<RadioInbound>>(
+      radioInboundProvider,
+      (_, stream) {
+        unawaited(sub?.cancel());
+        sub = stream.listen(_onInbound);
+      },
+      fireImmediately: true,
+    );
     ref.onDispose(() {
       _disposed = true;
-      unawaited(sub.cancel());
+      unawaited(sub?.cancel());
       _teardown();
     });
     unawaited(_loading = _load(generation));
@@ -373,6 +396,12 @@ class RadioController extends Notifier<RadioState> {
     );
     _press = press;
     state = state.copyWith(floor: floor.state, blockedReason: () => null);
+    // A timer, not a check on each piece of PCM: a microphone that stalls
+    // must not hold the channel either.
+    press.cap = Timer(
+      maxPress,
+      () => unawaited(_endPress(press, sendLast: true, tooLong: true)),
+    );
 
     final stream = await _mic.open();
     if (stream == null) {
@@ -463,10 +492,17 @@ class RadioController extends Notifier<RadioState> {
     _Press press, {
     required bool sendLast,
     bool lost = false,
+    bool tooLong = false,
   }) async {
     if (press.over) return;
     press.over = true;
     press.lost = lost;
+    press.cap?.cancel();
+    if (tooLong && !_disposed) {
+      state = state.copyWith(
+        blockedReason: () => RadioBlockedReason.tooLong,
+      );
+    }
     if (identical(_press, press)) _press = null;
     final heldMs = _clock().millisecondsSinceEpoch - press.framer.startedAtMs;
     // A press that never got a sample in is not a transmission: nobody has
@@ -497,6 +533,7 @@ class RadioController extends Notifier<RadioState> {
     if (press.links == 0) note.write(', nobody in reach');
     if (press.dropped > 0) note.write(', ${press.dropped} dropped behind');
     if (lost) note.write(', channel taken');
+    if (tooLong) note.write(', cut at ${maxPress.inSeconds} s');
     DebugLog.instance.log('RADIO', note.toString());
   }
 
@@ -551,6 +588,9 @@ class RadioController extends Notifier<RadioState> {
     final floor = _floor;
     final buffer = _buffer;
     if (floor == null || buffer == null) return;
+    // Before the call check: the floor must still free itself after its tail
+    // while a call is up, or the screen reads "busy" for the whole call.
+    floor.tick();
     if (_callBusy()) {
       final press = _press;
       if (press != null) unawaited(_endPress(press, sendLast: true));
@@ -558,7 +598,6 @@ class RadioController extends Notifier<RadioState> {
       _syncFloor();
       return;
     }
-    floor.tick();
     final heard = _heard;
     if (heard != null) {
       final frames = buffer.drain();
@@ -623,7 +662,8 @@ class RadioController extends Notifier<RadioState> {
     final from = _playEnd != null && _playEnd!.isAfter(now) ? _playEnd! : now;
     _playEnd = from.add(
       Duration(
-          microseconds: total * Duration.microsecondsPerSecond ~/ _sampleRate),
+        microseconds: total * Duration.microsecondsPerSecond ~/ _sampleRate,
+      ),
     );
     _audioDo(() => _sink.write(pcm));
   }
@@ -705,6 +745,7 @@ class RadioController extends Notifier<RadioState> {
     _stopTimer = null;
     final press = _press;
     _press = null;
+    press?.cap?.cancel();
     if (press != null && !press.over) {
       press.over = true;
       unawaited(press.sub?.cancel());
@@ -715,7 +756,10 @@ class RadioController extends Notifier<RadioState> {
     _heard = null;
     if (_speakerOpen) {
       _speakerOpen = false;
-      unawaited(_sink.stop());
+      // Through the chain: a start or write still queued in it would
+      // otherwise run after this stop and reopen the player with nobody left
+      // to close it.
+      _audioDo(_sink.stop);
     }
   }
 
@@ -758,6 +802,9 @@ class _Press {
   final Future<int> Function(RadioChunk) send;
 
   StreamSubscription<Uint8List>? sub;
+
+  /// Ends the press at [RadioController.maxPress].
+  Timer? cap;
   bool micOpen = false;
   bool fed = false;
   bool over = false;

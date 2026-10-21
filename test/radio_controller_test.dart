@@ -129,6 +129,14 @@ class _MemoryStore implements RadioGroupStore {
   Future<void> savePlayInSilentMode(bool value) async => silent = value;
 }
 
+/// Stands in for MessagingService, which owns the inbound stream: each build
+/// hands out a new one, as the real service does when it is rebuilt.
+final _fakeService = Provider<StreamController<RadioInbound>>((ref) {
+  final c = StreamController<RadioInbound>.broadcast(sync: true);
+  ref.onDispose(() => unawaited(c.close()));
+  return c;
+});
+
 /// Everything around the controller, faked, inside one fakeAsync zone.
 class _Rig {
   _Rig(this.async) {
@@ -136,7 +144,9 @@ class _Rig {
     sink = _FakeSink(now);
     container = ProviderContainer(
       overrides: [
-        radioInboundProvider.overrideWithValue(inbound.stream),
+        radioInboundProvider.overrideWith(
+          (ref) => ref.watch(_fakeService).stream,
+        ),
         radioSenderProvider.overrideWithValue(sender),
         radioMicrophoneProvider.overrideWithValue(mic),
         radioCodecProvider.overrideWithValue(_FakeCodec()),
@@ -151,7 +161,20 @@ class _Rig {
   }
 
   final FakeAsync async;
-  final inbound = StreamController<RadioInbound>.broadcast(sync: true);
+
+  /// The current service's inbound stream - a new one after [restartService].
+  StreamController<RadioInbound> get inbound => container.read(_fakeService);
+
+  /// What an Emergency Wipe does to the real transport: invalidates it, and
+  /// whoever reads it next gets a new service with a new stream.
+  void restartService() {
+    final old = inbound;
+    container.invalidate(_fakeService);
+    expect(identical(inbound, old), isFalse);
+    // Riverpod refreshes a listened dependent on its scheduler's next turn.
+    async.elapse(Duration.zero);
+  }
+
   final mic = _FakeMic();
   final store = _MemoryStore();
   late final _FakeSender sender;
@@ -215,8 +238,12 @@ Uint8List _pcm(int ms, {int value = 7}) {
 Uint8List _txId(int fill) =>
     Uint8List(RadioChunk.idLen)..fillRange(0, 16, fill);
 
-RadioChunk _chunk(Uint8List tx, int seq, int startedAtMs,
-        {bool last = false}) =>
+RadioChunk _chunk(
+  Uint8List tx,
+  int seq,
+  int startedAtMs, {
+  bool last = false,
+}) =>
     RadioChunk(
       transmissionId: tx,
       seq: seq,
@@ -387,9 +414,70 @@ void main() {
         rig.dispose();
       });
     });
+
+    test('a press held past a minute is ended for the user', () {
+      final log = _captureRadioLog();
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        rig.ctl.select(rig.join('#patrol'));
+        expect(rig.press(), isTrue);
+        // 59.9 s of speech: still recording.
+        for (var i = 0; i < 599; i++) {
+          rig.mic.emit(_pcm(100));
+          async.elapse(const Duration(milliseconds: 100));
+        }
+        expect(rig.mic.closes, 0);
+        expect(rig.state.floor, isA<Talking>());
+        // The finger never lifts; at 60 s the radio lets go itself.
+        rig.mic.emit(_pcm(100));
+        async.elapse(const Duration(milliseconds: 100));
+        expect(rig.mic.closes, 1);
+        expect(rig.state.floor, isA<Idle>());
+        expect(rig.state.blockedReason, RadioBlockedReason.tooLong);
+        expect(rig.sender.sent.last.chunk.isLast, isTrue);
+
+        for (var i = 0; i < 10; i++) {
+          rig.mic.emit(_pcm(100));
+          async.elapse(const Duration(milliseconds: 100));
+        }
+        expect(rig.sender.sent.length, lessThanOrEqualTo(201));
+        // A late release is harmless.
+        rig.release();
+        expect(rig.sender.sent.length, lessThanOrEqualTo(201));
+        rig.dispose();
+      });
+      expect(log, ['[RADIO] sent 201 chunks in 60.0 s, cut at 60 s']);
+    });
   });
 
   group('listening', () {
+    test('a rebuilt messaging service is still heard', () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final g = rig.join('#patrol');
+        rig.ctl.select(g);
+        rig.restartService();
+        rig.hear('bob', g, _chunk(_txId(9), 0, rig.nowMs, last: true));
+        async.elapse(const Duration(seconds: 2));
+        expect(rig.sink.frameMarks, [for (var f = 0; f < 15; f++) f]);
+        rig.dispose();
+      });
+    });
+
+    test('a call does not keep the floor busy after the speaker stops', () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final g = rig.join('#patrol');
+        rig.ctl.select(g);
+        rig.hear('bob', g, _chunk(_txId(9), 0, rig.nowMs));
+        expect(rig.state.floor, isA<Listening>());
+        rig.callBusy = true;
+        async.elapse(const Duration(seconds: 2));
+        expect(rig.state.floor, isA<Idle>());
+        rig.dispose();
+      });
+    });
+
     test('inbound chunks of the active channel reach the audio sink in order',
         () {
       final log = _captureRadioLog();
@@ -478,7 +566,9 @@ void main() {
         rig.hear('carol', g, _chunk(tx2, 0, start2, last: true));
         async.elapse(const Duration(seconds: 2));
         expect(
-            rig.sink.frameMarks.sublist(30), [for (var f = 0; f < 15; f++) f]);
+          rig.sink.frameMarks.sublist(30),
+          [for (var f = 0; f < 15; f++) f],
+        );
         // The speaker is started afresh for each transmission.
         expect(rig.sink.events.where((e) => e.what == 'start').length, 2);
         rig.dispose();
@@ -592,7 +682,9 @@ void main() {
       final relaunched = fresh();
       await relaunched.read(radioControllerProvider.notifier).loaded;
       expect(
-          relaunched.read(radioControllerProvider).playInSilentMode, isFalse);
+        relaunched.read(radioControllerProvider).playInSilentMode,
+        isFalse,
+      );
     });
   });
 }
