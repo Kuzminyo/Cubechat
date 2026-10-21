@@ -90,9 +90,13 @@ void main() {
       expect(() => _chunk(frameCount: 0).encode(), throwsArgumentError);
       expect(() => _chunk(frameCount: 51).encode(), throwsArgumentError);
       expect(
-          RadioChunk.decode(_chunk(frameCount: 50).encode()).frames.length, 50);
+        RadioChunk.decode(_chunk(frameCount: 50).encode()).frames.length,
+        50,
+      );
       expect(
-          RadioChunk.decode(_chunk(frameCount: 1).encode()).frames.length, 1);
+        RadioChunk.decode(_chunk(frameCount: 1).encode()).frames.length,
+        1,
+      );
 
       // A hand-built blob that claims zero or 51 frames is refused on decode.
       final zero = _chunk(frameCount: 1).encode().sublist(0, 29);
@@ -118,6 +122,17 @@ void main() {
       );
       expect(() => _chunk(seq: 65536).encode(), throwsArgumentError);
       expect(() => _chunk(seq: -1).encode(), throwsArgumentError);
+    });
+
+    test('a negative start time throws on encode', () {
+      expect(() => _chunk(startedAtMs: -1).encode(), throwsArgumentError);
+    });
+
+    test('a start time of 2^63 or more throws on decode', () {
+      final bytes = _chunk(frameCount: 1).encode();
+      // startedAtMs sits at offset 20..27; 0x80.. reads back negative.
+      bytes[20] = 0x80;
+      expect(() => RadioChunk.decode(bytes), throwsFormatException);
     });
 
     test('a chunk is 300 ms of 20 ms frames', () {

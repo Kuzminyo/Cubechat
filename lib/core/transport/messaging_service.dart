@@ -7113,6 +7113,10 @@ class MessagingService {
           // AirDrop is between two phones in arm's reach; inside a room frame
           // it names nobody who could answer it.
           break;
+        case InnerPayloadType.radioChunk:
+          // Deliberate drop for now: Task 5 (radio transport) wires this to
+          // the radio inbound stream.
+          break;
       }
     } catch (e) {
       DebugLog.instance
@@ -8266,6 +8270,11 @@ class MessagingService {
           } on FormatException catch (e) {
             DebugLog.instance.log('DEVICES', 'drop own-device notice: $e');
           }
+
+        case InnerPayloadType.radioChunk:
+          // Deliberate drop for now: Task 5 (radio transport) wires this to
+          // the radio inbound stream.
+          break;
       }
     } catch (e, st) {
       DebugLog.instance.log('NOISE', 'SealedBox open FAILED for $peerId: $e');
@@ -11184,6 +11193,10 @@ class MessagingService {
         // out comes back with a new one; an old hello only moves "last seen"
         // to the latest moment it carries, never back.
         InnerPayloadType.ownDevice => true,
+        // Voice that arrives after its moment is worse than none: a walkie-
+        // talkie chunk older than the window is dropped, never replayed. The
+        // receiver's own 5 s staleness rule is stricter still.
+        InnerPayloadType.radioChunk => false,
         _ => false,
       };
 

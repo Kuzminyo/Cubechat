@@ -60,6 +60,10 @@ class RadioCrypto {
   }
 
   /// Encrypt [plain] under [key]; returns `[nonce:12][ciphertext][mac:16]`.
+  ///
+  /// The framing is the same as a channel's by design but written out here on
+  /// purpose: it is deliberately independent of `ChannelCrypto`, so changing
+  /// one can never change what the other puts on the wire.
   static Future<Uint8List> seal(Uint8List key, Uint8List plain) async {
     final nonce = _aead.newNonce();
     final box = await _aead.encrypt(

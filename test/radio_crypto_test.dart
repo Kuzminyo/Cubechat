@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:cryptography/cryptography.dart'
+    show SecretBoxAuthenticationError;
 import 'package:cubechat/core/crypto/channel_crypto.dart';
 import 'package:cubechat/core/crypto/radio_crypto.dart';
 import 'package:cubechat/features/channels/models/channel.dart';
@@ -72,7 +74,10 @@ void main() {
       final key = await RadioCrypto.deriveKey('#patrol', 'hunter2');
       final wrong = await RadioCrypto.deriveKey('#patrol', 'hunter3');
       final blob = await RadioCrypto.seal(key, Uint8List.fromList([1, 2, 3]));
-      await expectLater(RadioCrypto.open(wrong, blob), throwsA(anything));
+      await expectLater(
+        RadioCrypto.open(wrong, blob),
+        throwsA(isA<SecretBoxAuthenticationError>()),
+      );
     });
 
     test('tampered blob throws', () async {
@@ -82,7 +87,7 @@ void main() {
         final bad = Uint8List.fromList(blob)..[i] ^= 0x01;
         await expectLater(
           RadioCrypto.open(key, bad),
-          throwsA(anything),
+          throwsA(isA<SecretBoxAuthenticationError>()),
           reason: 'flipped byte $i',
         );
       }

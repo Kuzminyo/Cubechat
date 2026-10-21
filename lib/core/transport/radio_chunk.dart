@@ -71,6 +71,11 @@ class RadioChunk {
     if (seq < 0 || seq > 0xFFFF) {
       throw ArgumentError.value(seq, 'seq', 'must fit in two bytes');
     }
+    if (startedAtMs < 0) {
+      // setUint64 would write it as a huge unsigned number that decode then
+      // rejects; refuse at the source instead.
+      throw ArgumentError.value(startedAtMs, 'startedAtMs', 'must not be < 0');
+    }
     if (frames.isEmpty || frames.length > maxFrames) {
       throw ArgumentError.value(
         frames.length,
@@ -121,6 +126,10 @@ class RadioChunk {
     final seq = bd.getUint16(o);
     o += 2;
     final startedAtMs = bd.getUint64(o);
+    if (startedAtMs < 0) {
+      // A value of 2^63 or more reads back negative in a Dart int.
+      throw const FormatException('radio chunk start time out of range');
+    }
     o += 8;
     final count = bytes[o++];
     if (count < 1 || count > maxFrames) {
