@@ -7,9 +7,7 @@ import 'package:cubechat/features/peers/models/known_peer.dart';
 import 'package:cubechat/features/radio/data/radio_controller.dart';
 import 'package:cubechat/features/radio/presentation/radio_screen.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
-// Flutter 3.35 added a widget called RadioGroup; the radio's own model has the
-// name first, so the widget is the one to step aside.
-import 'package:flutter/material.dart' hide RadioGroup;
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -30,9 +28,9 @@ class _FakeRadio extends RadioController {
   RadioState build() => initial;
 
   @override
-  Future<RadioGroup> joinGroup(String name, String password) async {
+  Future<RadioRoom> joinGroup(String name, String password) async {
     calls.add('join $name|$password');
-    final group = RadioGroup(
+    final group = RadioRoom(
       name: '#$name',
       hasPassword: password.isNotEmpty,
       tagHex: '0123456789abcdef',
@@ -94,7 +92,7 @@ class _NoAliases extends ContactAliasesController {
   Map<String, String> build() => const {};
 }
 
-const _group = RadioGroup(
+const _group = RadioRoom(
   name: '#patrol',
   hasPassword: true,
   tagHex: 'aabbccddeeff0011',
@@ -242,7 +240,7 @@ void main() {
     await tester.pumpAndSettle();
 
     // Joined, then tuned to: one step for the person.
-    expect(fake.calls, ['join patrol|secret', 'select RadioGroup(#patrol)']);
+    expect(fake.calls, ['join patrol|secret', 'select RadioRoom(#patrol)']);
     expect(find.byKey(const ValueKey('radio-join-name')), findsNothing);
     expect(find.text('#patrol'), findsWidgets);
   });
@@ -339,7 +337,66 @@ void main() {
     await tester.tap(find.text('#patrol'));
     await tester.pump();
 
-    expect(fake.calls, ['select RadioGroup(#patrol)']);
+    expect(fake.calls, ['select RadioRoom(#patrol)']);
+  });
+
+  testWidgets('tapping the tuned group again switches the radio off',
+      (tester) async {
+    final fake = await pump(
+      tester,
+      state: const RadioState(groups: [_group], active: _group),
+    );
+
+    // First in the tree is the list's tile; the panel's title comes after.
+    await tester.tap(find.text('#patrol').first);
+    await tester.pump();
+
+    expect(fake.calls, ['select null']);
+    expect(fake.state.active, isNull);
+  });
+
+  testWidgets('the off control un-tunes, and then there is nothing to press',
+      (tester) async {
+    final fake = await pump(
+      tester,
+      state: const RadioState(groups: [_group], active: _group),
+    );
+    expect(find.byTooltip('Вимкнути рацію'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('radio-off')));
+    await tester.pump();
+
+    expect(fake.calls, ['select null']);
+    // The control has done its job and is gone; the panel says to pick again.
+    expect(find.byKey(const ValueKey('radio-off')), findsNothing);
+    expect(find.text('Оберіть групу або контакт'), findsOneWidget);
+
+    // And the button is dead, not merely dim: a press reaches nobody.
+    final gesture = await tester.startGesture(tester.getCenter(button));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    expect(fake.calls, ['select null']);
+  });
+
+  testWidgets('with nothing tuned there is no off control', (tester) async {
+    await pump(tester);
+
+    expect(find.byKey(const ValueKey('radio-off')), findsNothing);
+    expect(find.text('Оберіть групу або контакт'), findsOneWidget);
+  });
+
+  testWidgets('the talk button is named for a screen reader', (tester) async {
+    final semantics = tester.ensureSemantics();
+    await pump(
+      tester,
+      state: const RadioState(groups: [_group], active: _group),
+    );
+
+    final node = tester.getSemantics(button);
+    expect(node.label, 'Затисни й говори');
+    expect(node.flagsCollection.isButton, isTrue);
+    semantics.dispose();
   });
 
   testWidgets('a group can be left from its menu', (tester) async {

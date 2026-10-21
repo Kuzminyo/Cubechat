@@ -4014,4 +4014,7 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get radioBlockedNoChannel => 'Спершу оберіть групу або контакт';
+
+  @override
+  String get radioTurnOff => 'Вимкнути рацію';
 }

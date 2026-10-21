@@ -6871,6 +6871,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Pick a group or a contact first'**
   String get radioBlockedNoChannel;
+
+  /// No description provided for @radioTurnOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn the radio off'**
+  String get radioTurnOff;
 }
 
 class _AppLocalizationsDelegate

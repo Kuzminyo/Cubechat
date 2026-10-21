@@ -1393,5 +1393,6 @@
   "radioBlockedCall": "Триває дзвінок",
   "radioBlockedMicrophone": "Немає доступу до мікрофона",
   "radioBlockedUnavailable": "Рація недоступна на цьому пристрої",
-  "radioBlockedNoChannel": "Спершу оберіть групу або контакт"
+  "radioBlockedNoChannel": "Спершу оберіть групу або контакт",
+  "radioTurnOff": "Вимкнути рацію"
 }

@@ -16,8 +16,8 @@ sealed class RadioChannel {
 /// [tagHex] is its identity: lowercase hex of the 8-byte one-way tag, the same
 /// string `radioGroupKeysProvider` is keyed by. Two joins that derive the same
 /// key are the same group whatever was typed, so equality is on the tag alone.
-class RadioGroup extends RadioChannel {
-  const RadioGroup({
+class RadioRoom extends RadioChannel {
+  const RadioRoom({
     required this.name,
     required this.hasPassword,
     required this.tagHex,
@@ -34,13 +34,13 @@ class RadioGroup extends RadioChannel {
 
   @override
   bool operator ==(Object other) =>
-      other is RadioGroup && other.tagHex == tagHex;
+      other is RadioRoom && other.tagHex == tagHex;
 
   @override
-  int get hashCode => Object.hash(RadioGroup, tagHex);
+  int get hashCode => Object.hash(RadioRoom, tagHex);
 
   @override
-  String toString() => 'RadioGroup($name)';
+  String toString() => 'RadioRoom($name)';
 }
 
 /// One contact, talked to 1:1. [canonicalId] is the hex of their X25519 key,

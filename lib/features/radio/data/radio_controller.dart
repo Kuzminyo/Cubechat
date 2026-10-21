@@ -54,7 +54,7 @@ class RadioState {
   });
 
   /// Groups joined, oldest first.
-  final List<RadioGroup> groups;
+  final List<RadioRoom> groups;
 
   /// What the radio is tuned to. Only this channel is played, and only this
   /// channel's floor is tracked.
@@ -74,7 +74,7 @@ class RadioState {
   bool get talking => floor is Talking;
 
   RadioState copyWith({
-    List<RadioGroup>? groups,
+    List<RadioRoom>? groups,
     RadioChannel? Function()? active,
     FloorState? floor,
     bool? playInSilentMode,
@@ -253,12 +253,12 @@ class RadioController extends Notifier<RadioState> {
   /// Join (or re-join) a group. The name is normalised the way a channel's is,
   /// so "#Patrol " and "patrol" are one group; the password may be empty.
   /// Only the derived key is kept. Throws [ArgumentError] on an empty name.
-  Future<RadioGroup> joinGroup(String name, String password) async {
+  Future<RadioRoom> joinGroup(String name, String password) async {
     final normalized = normalizeChannelName(name);
     if (normalized.isEmpty) throw ArgumentError('radio group name is empty');
     final key = await RadioCrypto.deriveKey(normalized, password);
     final tag = await RadioCrypto.deriveTag(key);
-    final group = RadioGroup(
+    final group = RadioRoom(
       name: normalized,
       hasPassword: password.isNotEmpty,
       tagHex: radioHex(tag),
@@ -284,7 +284,7 @@ class RadioController extends Notifier<RadioState> {
   Future<void> leaveGroup(String tagHex) async {
     if (_stored.remove(tagHex) == null) return;
     final active = state.active;
-    if (active is RadioGroup && active.tagHex == tagHex) select(null);
+    if (active is RadioRoom && active.tagHex == tagHex) select(null);
     _publishKeys();
     state = state.copyWith(groups: _groupList());
     try {
@@ -317,7 +317,7 @@ class RadioController extends Notifier<RadioState> {
     }
   }
 
-  List<RadioGroup> _groupList() =>
+  List<RadioRoom> _groupList() =>
       List.unmodifiable(_stored.values.map((s) => s.group));
 
   /// Hands the keys to the transport, which opens group frames with them.
@@ -343,10 +343,13 @@ class RadioController extends Notifier<RadioState> {
       _floor = null;
       _buffer = null;
     } else {
+      // No ticker yet: a channel sits tuned for the life of the app (the
+      // screen tunes and never un-tunes, so reception keeps working with it
+      // closed), and a timer firing ten times a second for that whole time
+      // is the battery cost this radio promised not to have. [_wake] starts
+      // it when somebody talks and [_tick] puts it away when they stop.
       _floor = RadioFloor(clock: _clock);
-      _buffer = RadioJitterBuffer(clock: _clock);
-      _ticker = Timer.periodic(tickEvery, (_) => _tick());
-    }
+      _buffer = RadioJitterBuffer(clock: _clock);    }
     state = state.copyWith(
       active: () => channel,
       floor: _floor?.state ?? const Idle(),
@@ -395,6 +398,7 @@ class RadioController extends Notifier<RadioState> {
       send: send,
     );
     _press = press;
+    _wake();
     state = state.copyWith(floor: floor.state, blockedReason: () => null);
     // A timer, not a check on each piece of PCM: a microphone that stalls
     // must not hold the channel either.
@@ -441,7 +445,7 @@ class RadioController extends Notifier<RadioState> {
 
   Future<int> Function(RadioChunk)? _sendFor(RadioChannel channel) {
     switch (channel) {
-      case RadioGroup(:final tagHex):
+      case RadioRoom(:final tagHex):
         final key = _stored[tagHex]?.key;
         if (key == null) return null;
         final tag = radioUnhex(tagHex);
@@ -551,6 +555,7 @@ class RadioController extends Notifier<RadioState> {
     if (_closed.any((id) => _sameId(id, chunk.transmissionId))) return;
 
     final accepted = floor.onChunk(m.senderId, chunk);
+    if (accepted || floor.state is! Idle) _wake();
     final press = _press;
     if (press != null && floor.state is Listening) {
       // Out-talked: somebody pressed first. Stop the microphone now; what we
@@ -578,7 +583,7 @@ class RadioController extends Notifier<RadioState> {
   static bool _matches(RadioChannel active, RadioInbound m) {
     final tag = m.groupTag;
     return switch (active) {
-      RadioGroup(:final tagHex) => tag != null && radioHex(tag) == tagHex,
+      RadioRoom(:final tagHex) => tag != null && radioHex(tag) == tagHex,
       RadioContact(:final canonicalId) =>
         tag == null && m.senderId == canonicalId,
     };
@@ -596,6 +601,7 @@ class RadioController extends Notifier<RadioState> {
       if (press != null) unawaited(_endPress(press, sendLast: true));
       _closeHeard(stopNow: true);
       _syncFloor();
+      _sleepIfIdle(floor);
       return;
     }
     final heard = _heard;
@@ -615,6 +621,25 @@ class RadioController extends Notifier<RadioState> {
       }
     }
     _syncFloor();
+    _sleepIfIdle(floor);
+  }
+
+  /// Starts the tick if it is not running. Called when something begins that
+  /// the tick has to carry through: a press, or a chunk that took the floor.
+  void _wake() {
+    if (_disposed || _floor == null) return;
+    _ticker ??= Timer.periodic(tickEvery, (_) => _tick());
+  }
+
+  /// Puts the tick away once there is nothing for it to do: nobody holds the
+  /// floor (its tail has run out), nothing is being heard, nothing is being
+  /// sent. The speaker's own stop is a one-shot timer of its own
+  /// ([_stopTimer]) and does not need this one.
+  void _sleepIfIdle(RadioFloor floor) {
+    if (floor.state is Idle && _heard == null && _press == null) {
+      _ticker?.cancel();
+      _ticker = null;
+    }
   }
 
   void _play(_Heard heard, List<Uint8List?> frames) {

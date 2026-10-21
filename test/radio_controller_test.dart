@@ -188,8 +188,8 @@ class _Rig {
   RadioController get ctl => container.read(radioControllerProvider.notifier);
   RadioState get state => container.read(radioControllerProvider);
 
-  RadioGroup join(String name) {
-    RadioGroup? g;
+  RadioRoom join(String name) {
+    RadioRoom? g;
     ctl.joinGroup(name, '').then((v) => g = v);
     async.flushMicrotasks();
     return g!;
@@ -207,7 +207,7 @@ class _Rig {
     async.flushMicrotasks();
   }
 
-  void hear(String sender, RadioGroup? group, RadioChunk chunk) {
+  void hear(String sender, RadioRoom? group, RadioChunk chunk) {
     inbound.add(
       RadioInbound(
         senderId: sender,
@@ -606,6 +606,97 @@ void main() {
         rig.hear('bob', null, _chunk(_txId(9), 0, rig.nowMs, last: true));
         async.elapse(const Duration(seconds: 2));
         expect(rig.sink.frameMarks, [for (var f = 0; f < 15; f++) f]);
+        rig.dispose();
+      });
+    });
+  });
+
+  // The radio stays tuned for the life of the app, so what it costs while
+  // nobody talks is what it costs for ever: a tick of ten wake-ups a second is
+  // the battery the feature promised not to spend.
+  group('the tick', () {
+    test('a tuned channel with nobody talking runs no timer at all', () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        rig.ctl.select(rig.join('#patrol'));
+        expect(async.periodicTimerCount, 0);
+        async.elapse(const Duration(minutes: 5));
+        expect(async.periodicTimerCount, 0);
+        rig.dispose();
+      });
+    });
+
+    test('a heard transmission starts it and it stops by itself afterwards',
+        () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final g = rig.join('#patrol');
+        rig.ctl.select(g);
+        final tx = _txId(9);
+        final start = rig.nowMs;
+
+        rig.hear('bob', g, _chunk(tx, 0, start));
+        expect(async.periodicTimerCount, 1);
+        async.elapse(const Duration(milliseconds: 300));
+        rig.hear('bob', g, _chunk(tx, 1, start, last: true));
+        expect(async.periodicTimerCount, 1);
+
+        async.elapse(const Duration(seconds: 5));
+        expect(rig.sink.frameMarks, isNotEmpty);
+        expect(rig.state.floor, isA<Idle>());
+        expect(async.periodicTimerCount, 0);
+        rig.dispose();
+      });
+    });
+
+    test('a transmission whose last chunk never comes still lets it stop', () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final g = rig.join('#patrol');
+        rig.ctl.select(g);
+        rig.hear('bob', g, _chunk(_txId(9), 0, rig.nowMs));
+        expect(async.periodicTimerCount, 1);
+        async.elapse(const Duration(seconds: 6));
+        expect(rig.state.floor, isA<Idle>());
+        expect(async.periodicTimerCount, 0);
+        rig.dispose();
+      });
+    });
+
+    test('a press starts it and it stops after the release', () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        rig.ctl.select(rig.join('#patrol'));
+        expect(async.periodicTimerCount, 0);
+
+        expect(rig.press(), isTrue);
+        expect(async.periodicTimerCount, 1);
+        rig.mic.emit(_pcm(100));
+        async.elapse(const Duration(seconds: 2));
+        expect(async.periodicTimerCount, 1, reason: 'still talking');
+
+        rig.release();
+        async.elapse(const Duration(seconds: 2));
+        expect(rig.state.floor, isA<Idle>());
+        expect(async.periodicTimerCount, 0);
+        rig.dispose();
+      });
+    });
+
+    test('a second transmission after the first wakes it again', () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final g = rig.join('#patrol');
+        rig.ctl.select(g);
+        rig.hear('bob', g, _chunk(_txId(9), 0, rig.nowMs, last: true));
+        async.elapse(const Duration(seconds: 4));
+        expect(async.periodicTimerCount, 0);
+
+        rig.hear('bob', g, _chunk(_txId(8), 0, rig.nowMs, last: true));
+        expect(async.periodicTimerCount, 1);
+        async.elapse(const Duration(seconds: 4));
+        expect(async.periodicTimerCount, 0);
+        expect(rig.sink.frameMarks.length, 30);
         rig.dispose();
       });
     });

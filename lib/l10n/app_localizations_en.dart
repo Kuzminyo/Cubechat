@@ -3970,4 +3970,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get radioBlockedNoChannel => 'Pick a group or a contact first';
+
+  @override
+  String get radioTurnOff => 'Turn the radio off';
 }

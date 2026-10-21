@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart' hide RadioGroup;
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/identity/anon_name.dart';
@@ -153,7 +153,10 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
                 children: [
                   if (active is RadioContact) ...[
                     _Label(text: t.radioDirectLabel),
-                    _ContactTile(contact: active),
+                    _ContactTile(
+                      contact: active,
+                      onTap: () => _radio.select(null),
+                    ),
                     const SizedBox(height: 14),
                   ],
                   _Label(text: t.radioGroupsLabel),
@@ -175,7 +178,11 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
                       child: _GroupTile(
                         group: group,
                         selected: group == active,
-                        onTap: () => _radio.select(group),
+                        // The tuned one again is "switch off": the only other
+                        // way out is the button in the talk panel, and a list
+                        // of radios where tapping the lit one does nothing
+                        // reads as stuck.
+                        onTap: () => _radio.select(group == active ? null : group),
                         onLeave: () => unawaited(_radio.leaveGroup(group.tagHex)),
                       ),
                     ),
@@ -217,6 +224,7 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
             _TalkPanel(
               state: state,
               reason: _reason,
+              onOff: () => _radio.select(null),
               onPress: () => unawaited(_press()),
               onRelease: _release,
             ),
@@ -294,7 +302,7 @@ class _GroupTile extends StatelessWidget {
     required this.onLeave,
   });
 
-  final RadioGroup group;
+  final RadioRoom group;
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback onLeave;
@@ -371,16 +379,18 @@ class _GroupTile extends StatelessWidget {
 }
 
 /// The person a chat's radio button tuned to. Not removable - there is nothing
-/// joined - so no menu.
+/// joined - so no menu; tapping it switches the radio off.
 class _ContactTile extends ConsumerWidget {
-  const _ContactTile({required this.contact});
+  const _ContactTile({required this.contact, required this.onTap});
 
   final RadioContact contact;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final name = _peerLabel(ref, contact.canonicalId);
     return GlassCard(
+      onTap: onTap,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       child: Row(
         children: [
@@ -467,12 +477,16 @@ class _TalkPanel extends StatelessWidget {
   const _TalkPanel({
     required this.state,
     required this.reason,
+    required this.onOff,
     required this.onPress,
     required this.onRelease,
   });
 
   final RadioState state;
   final RadioBlockedReason? reason;
+
+  /// Un-tunes the radio. Offered only while something is tuned.
+  final VoidCallback onOff;
   final VoidCallback onPress;
   final VoidCallback onRelease;
 
@@ -489,22 +503,52 @@ class _TalkPanel extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // The off switch sits beside the title, with a blank of its own
+            // width on the other side so the title stays centred. 40 high:
+            // an icon button's target, and the row never changes height
+            // whether or not the switch is there.
             SizedBox(
-              height: 22,
-              child: switch (active) {
-                null => Text(
-                    AppLocalizations.of(context).radioPickChannel,
-                    style: TextStyle(
-                      color: AppColors.textOnGlassDim,
-                      fontSize: 15,
+              height: 40,
+              child: Row(
+                children: [
+                  const SizedBox(width: 40),
+                  Expanded(
+                    child: Center(
+                      child: switch (active) {
+                        null => Text(
+                            AppLocalizations.of(context).radioPickChannel,
+                            style: TextStyle(
+                              color: AppColors.textOnGlassDim,
+                              fontSize: 15,
+                            ),
+                          ),
+                        RadioRoom(:final name) => _ChannelTitle(name),
+                        RadioContact() => Consumer(
+                            builder: (context, ref, _) => _ChannelTitle(
+                              _peerLabel(ref, active.canonicalId),
+                            ),
+                          ),
+                      },
                     ),
                   ),
-                RadioGroup(:final name) => _ChannelTitle(name),
-                RadioContact() => Consumer(
-                    builder: (context, ref, _) =>
-                        _ChannelTitle(_peerLabel(ref, active.canonicalId)),
+                  SizedBox(
+                    width: 40,
+                    child: active == null
+                        ? null
+                        : IconButton(
+                            key: const ValueKey('radio-off'),
+                            tooltip: AppLocalizations.of(context).radioTurnOff,
+                            onPressed: onOff,
+                            padding: EdgeInsets.zero,
+                            iconSize: 22,
+                            icon: Icon(
+                              Icons.power_settings_new_rounded,
+                              color: AppColors.textOnGlassDim,
+                            ),
+                          ),
                   ),
-              },
+                ],
+              ),
             ),
             SizedBox(
               height: 22,
@@ -664,6 +708,10 @@ class _TalkButtonState extends State<_TalkButton>
   }
 
   void _down(PointerDownEvent e) {
+    // Nothing tuned (the radio is off, or was never on): nothing to talk to.
+    // The panel's title says to pick something; a press here would only be
+    // refused with the same sentence.
+    if (widget.state.active == null) return;
     if (_pointer != null) return;
     _pointer = e.pointer;
     widget.onPress();
@@ -684,8 +732,9 @@ class _TalkButtonState extends State<_TalkButton>
         : _heard
             ? t.radioChannelBusy
             : t.radioPushToTalk;
-    // Dim when pressing would be refused anyway; still live, so the press says
-    // why instead of doing nothing.
+    // Dim when pressing would be refused anyway. Busy stays live, so the press
+    // says why instead of doing nothing; with nothing tuned it is dead (see
+    // [_down]).
     final dim = !tuned || _heard;
     final fill = _talking
         ? AppColors.brandPrimary.withValues(alpha: 0.34)
@@ -727,7 +776,14 @@ class _TalkButtonState extends State<_TalkButton>
               ),
             ),
           Semantics(
+            container: true,
             button: true,
+            enabled: tuned,
+            // Always the invitation, not the live label: a reader that said
+            // "Говоріть…" mid-press would be describing the finger, not the
+            // control.
+            label: t.radioPushToTalk,
+            excludeSemantics: true,
             child: Listener(
               key: const ValueKey('radio-talk-button'),
               behavior: HitTestBehavior.opaque,

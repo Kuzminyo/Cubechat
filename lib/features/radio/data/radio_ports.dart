@@ -164,7 +164,7 @@ class StoredRadioGroup {
     required this.joinedAt,
   });
 
-  final RadioGroup group;
+  final RadioRoom group;
 
   /// The 32-byte group key. Kept instead of the password, as a channel's is:
   /// the key is all anyone needs, and the password may be one used elsewhere.
@@ -257,7 +257,7 @@ class HiveRadioGroupStore implements RadioGroupStore {
     final key = radioUnhex(m['keyHex'] as String);
     if (key.length != 32) throw const FormatException('key is not 32 bytes');
     return StoredRadioGroup(
-      group: RadioGroup(
+      group: RadioRoom(
         name: m['name'] as String,
         hasPassword: (m['hasPassword'] as bool?) ?? false,
         tagHex: m['tagHex'] as String,
