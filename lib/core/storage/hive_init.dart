@@ -68,6 +68,12 @@ abstract final class HiveBoxes {
   /// business carrying a few hundred kilobytes of PNG.
   static const stickers = 'cubechat.stickers';
 
+  /// Walkie-talkie groups joined: name and derived key, keyed by tag hex,
+  /// never the password. Encrypted at rest like [channels] and for the same
+  /// reason - the key is what lets you listen. Listed in [all], so a backup
+  /// and a move to a new phone carry it and Emergency Wipe deletes it.
+  static const radioGroups = 'cubechat.radio_groups';
+
   static const all = <String>[
     knownPeers,
     messages,
@@ -82,6 +88,7 @@ abstract final class HiveBoxes {
     channelDescriptions,
     contactAliases,
     stickers,
+    radioGroups,
   ];
 }
 

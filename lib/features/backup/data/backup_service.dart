@@ -36,6 +36,7 @@ import '../../peers/data/presence_controller.dart';
 import '../../profile/data/discovery_settings_controller.dart';
 import '../../profile/data/privacy_settings_controller.dart';
 import '../../profile/data/relay_settings_controller.dart';
+import '../../radio/data/radio_controller.dart';
 import 'backup_codec.dart';
 import 'backup_file_codec.dart';
 import '../../map/data/shared_map_locations_provider.dart';
@@ -521,6 +522,9 @@ class BackupService {
     _ref.invalidate(channelAvatarsControllerProvider);
     _ref.invalidate(channelDescriptionsControllerProvider);
     _ref.invalidate(channelControllerProvider);
+    // Restored groups are in the box; the controller re-reads it and hands
+    // their keys to the transport.
+    _ref.invalidate(radioControllerProvider);
     _ref.invalidate(favoritesControllerProvider);
     _ref.invalidate(channelRosterControllerProvider);
     _ref.invalidate(recentSearchesControllerProvider);

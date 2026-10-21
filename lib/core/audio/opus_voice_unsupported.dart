@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'ogg_opus.dart';
+import 'opus_format.dart';
 export 'opus_format.dart';
 
 /// Where there is no `dart:ffi` — the web build used for interface work —
@@ -22,3 +23,26 @@ class OpusNoteWriter {
 
 Future<Uint8List> decodeOggOpusToWav(Uint8List ogg) async =>
     throw UnsupportedError('Opus needs dart:ffi');
+
+/// The walkie-talkie's codec, refused the same way: the radio controller
+/// catches it and the radio says it is unavailable here. [library] is
+/// `Object?` because `OpusLibrary` is an ffi type the web does not have.
+class OpusVoiceEncoder {
+  OpusVoiceEncoder([Object? library, int bitRate = OpusVoice.bitRate]) {
+    throw UnsupportedError('Opus needs dart:ffi');
+  }
+
+  Uint8List encode(Int16List frame) =>
+      throw UnsupportedError('Opus needs dart:ffi');
+  void dispose() {}
+}
+
+class OpusVoiceDecoder {
+  OpusVoiceDecoder({int channels = OpusVoice.channels, Object? library}) {
+    throw UnsupportedError('Opus needs dart:ffi');
+  }
+
+  Int16List decode(Uint8List packet) =>
+      throw UnsupportedError('Opus needs dart:ffi');
+  void dispose() {}
+}

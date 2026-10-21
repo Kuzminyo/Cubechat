@@ -44,6 +44,8 @@ import '../../features/moderation/data/terms_controller.dart';
 import '../../features/onboarding/data/onboarding_controller.dart';
 import '../../features/peers/data/typing_controller.dart';
 import '../../features/peers/data/presence_controller.dart';
+import '../../features/radio/data/radio_controller.dart';
+import '../../features/radio/data/radio_inbound.dart';
 import 'avatar_controller.dart';
 import '../theme/theme_controller.dart';
 import '../../features/profile/data/app_lock_controller.dart';
@@ -112,6 +114,13 @@ Future<void> emergencyWipe(WidgetRef ref, {bool releaseName = true}) async {
   await ref.read(channelDescriptionsControllerProvider.notifier).clear();
   await ref.read(channelRosterControllerProvider.notifier).clear();
   await ref.read(channelControllerProvider.notifier).clear();
+  // A radio group key is a channel key by another name. Only if the radio was
+  // ever opened - building it here would read the box the wipe is deleting -
+  // but its keys leave the transport's table either way.
+  if (ref.exists(radioControllerProvider)) {
+    await ref.read(radioControllerProvider.notifier).clear();
+  }
+  ref.read(radioGroupKeysProvider.notifier).state = const {};
   await ref.read(favoritesControllerProvider.notifier).clear();
   await ref.read(pinnedChatsControllerProvider.notifier).clear();
   await ref.read(hiddenChatsControllerProvider.notifier).clear();
