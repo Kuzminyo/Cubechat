@@ -1,6 +1,6 @@
 # Cubechat Privacy Policy
 
-**Last updated: 14 October 2026**
+**Last updated: 21 October 2026**
 
 Cubechat is a peer-to-peer messenger. Messages travel directly between phones
 over Bluetooth Low Energy, and optionally through public relays that carry them
@@ -282,6 +282,13 @@ These permissions are used only for what you explicitly do: take a photo to
 send, record a voice message, attach a picture or a document. Nothing is
 captured in the background, and nothing is uploaded anywhere except to the
 conversation you send it to, encrypted.
+
+The **walkie-talkie** uses the microphone only while you hold its button. What
+you say goes, in 300 ms pieces as you speak, only to phones nearby over
+Bluetooth, end-to-end encrypted with the key of the radio group (from its name
+and password) or of the contact you are talking to. It is never sent to a
+server or a relay, never kept in a store-and-forward queue, and never saved on
+your phone or theirs: it is played as it arrives and then gone.
 
 Media you receive is stored inside the app's private container.
 

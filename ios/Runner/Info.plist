@@ -138,9 +138,9 @@
 	<!-- In-app camera: take a photo to send, and record a round video message -->
 	<key>NSCameraUsageDescription</key>
 	<string>Cubechat uses the camera to take photos, record round video messages, and scan contact or channel QR codes.</string>
-	<!-- Voice messages and the sound on a round video message -->
+	<!-- Voice messages, the sound on a round video message, and the walkie-talkie -->
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Cubechat needs the microphone for voice calls, voice messages and round video messages you send in chats.</string>
+	<string>Cubechat needs the microphone for voice calls, voice messages, round video messages, and the walkie-talkie while you hold its button.</string>
 	<!-- Voice notes turned into text. On-device only: the recording never
 	     leaves this phone, and a locale with no local model simply fails. -->
 	<key>NSSpeechRecognitionUsageDescription</key>
