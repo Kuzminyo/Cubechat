@@ -167,6 +167,25 @@ void main() {
     // left to the test's own teardown to stop it.
   });
 
+  testWidgets('the button stays busy while the last sentence still plays',
+      (tester) async {
+    // The floor is free - the last chunk has come - but its sound has not.
+    await pump(
+      tester,
+      state: const RadioState(
+        groups: [_group],
+        active: _group,
+        speakerBusy: true,
+      ),
+    );
+
+    expect(
+      find.descendant(of: button, matching: find.text('Канал зайнятий')),
+      findsOneWidget,
+    );
+    expect(find.text('Затисни й говори'), findsNothing);
+  });
+
   testWidgets('a speaker nobody knows is a short fingerprint, not a blank',
       (tester) async {
     await pump(
@@ -223,7 +242,8 @@ void main() {
     expect(fake.calls.where((c) => c.startsWith('join')), isEmpty);
 
     // A name that normalises to nothing is still no name.
-    await tester.enterText(find.byKey(const ValueKey('radio-join-name')), ' # ');
+    await tester.enterText(
+        find.byKey(const ValueKey('radio-join-name')), ' # ');
     await tester.tap(find.byKey(const ValueKey('radio-join-submit')));
     await tester.pump();
     expect(fake.calls.where((c) => c.startsWith('join')), isEmpty);

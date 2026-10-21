@@ -341,6 +341,34 @@ void main() {
       });
     });
 
+    test('the button stays busy until the last speaker has finished playing',
+        () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final g = rig.join('#patrol');
+        rig.ctl.select(g);
+        // A one-chunk press: the floor is free the moment it arrives.
+        rig.hear('bob', g, _chunk(_txId(9), 0, rig.nowMs, last: true));
+        expect(rig.state.floor, isA<Idle>());
+        expect(rig.state.speakerBusy, isTrue);
+
+        async.elapse(const Duration(milliseconds: 200));
+        expect(rig.sink.written, isNotEmpty);
+        expect(rig.state.speakerBusy, isTrue);
+        expect(rig.press(), isFalse);
+        expect(rig.state.blockedReason, RadioBlockedReason.busy);
+        expect(rig.mic.opens, 0);
+
+        // 300 ms of sound plus the stop margin later the speaker is let go.
+        async.elapse(const Duration(seconds: 1));
+        expect(rig.sink.events.last.what, 'stop');
+        expect(rig.state.speakerBusy, isFalse);
+        expect(rig.press(), isTrue);
+        rig.release();
+        rig.dispose();
+      });
+    });
+
     test('losing a collision stops the recording', () {
       fakeAsync((async) {
         final rig = _Rig(async);
@@ -849,6 +877,16 @@ void main() {
           .leaveGroup(tagHex);
       expect(relaunched.read(radioGroupKeysProvider), isEmpty);
       expect(relaunched.read(radioControllerProvider).groups, isEmpty);
+    });
+
+    test('a wipe puts play-in-silent back to on', () async {
+      final c = fresh();
+      final ctl = c.read(radioControllerProvider.notifier);
+      await ctl.loaded;
+      await ctl.setPlayInSilentMode(false);
+      expect(c.read(radioControllerProvider).playInSilentMode, isFalse);
+      await ctl.clear();
+      expect(c.read(radioControllerProvider).playInSilentMode, isTrue);
     });
 
     test('play-in-silent defaults to on and survives a restart', () async {

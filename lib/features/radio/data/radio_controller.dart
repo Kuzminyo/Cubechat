@@ -51,6 +51,7 @@ class RadioState {
     this.floor = const Idle(),
     this.playInSilentMode = true,
     this.blockedReason,
+    this.speakerBusy = false,
   });
 
   /// Groups joined, oldest first.
@@ -71,6 +72,14 @@ class RadioState {
   /// that works and by [RadioController.select].
   final RadioBlockedReason? blockedReason;
 
+  /// Somebody else's voice is still coming out of the speaker, or about to:
+  /// from the first chunk of a heard transmission until the speaker is let go
+  /// after its last sample. The floor goes Idle the moment the last chunk
+  /// arrives, which is up to half a second before it has played; a press in
+  /// that half second would talk over the end of their sentence, so
+  /// [RadioController.pressToTalk] refuses with `busy` while this is set.
+  final bool speakerBusy;
+
   bool get talking => floor is Talking;
 
   RadioState copyWith({
@@ -79,6 +88,7 @@ class RadioState {
     FloorState? floor,
     bool? playInSilentMode,
     RadioBlockedReason? Function()? blockedReason,
+    bool? speakerBusy,
   }) =>
       RadioState(
         groups: groups ?? this.groups,
@@ -87,6 +97,7 @@ class RadioState {
         playInSilentMode: playInSilentMode ?? this.playInSilentMode,
         blockedReason:
             blockedReason != null ? blockedReason() : this.blockedReason,
+        speakerBusy: speakerBusy ?? this.speakerBusy,
       );
 }
 
@@ -306,12 +317,16 @@ class RadioController extends Notifier<RadioState> {
     }
   }
 
-  /// Forget every group - Emergency Wipe.
+  /// Forget every group, and the switch - Emergency Wipe. The switch goes
+  /// back to its default rather than to whatever the disk says: a wipe leaves
+  /// nothing of this phone's choices behind, and a load still in flight must
+  /// not put the old one back ([_silentTouched]).
   Future<void> clear() async {
     select(null);
     _stored.clear();
     _publishKeys();
-    state = state.copyWith(groups: const []);
+    _silentTouched = true;
+    state = state.copyWith(groups: const [], playInSilentMode: true);
     try {
       await _store.clearGroups();
     } catch (e) {
@@ -355,17 +370,19 @@ class RadioController extends Notifier<RadioState> {
       _floor = null;
       _buffer = null;
     } else {
-      // No ticker yet: a channel sits tuned for the life of the app (the
-      // screen tunes and never un-tunes, so reception keeps working with it
-      // closed), and a timer firing ten times a second for that whole time
-      // is the battery cost this radio promised not to have. [_wake] starts
-      // it when somebody talks and [_tick] puts it away when they stop.
+      // No ticker yet: a channel can sit tuned for hours - reception keeps
+      // working with the screen closed - and a timer firing ten times a
+      // second for that whole time is the battery cost this radio promised
+      // not to have. [_wake] starts it when somebody talks and [_tick] puts
+      // it away when they stop.
       _floor = RadioFloor(clock: _clock);
-      _buffer = RadioJitterBuffer(clock: _clock);    }
+      _buffer = RadioJitterBuffer(clock: _clock);
+    }
     state = state.copyWith(
       active: () => channel,
       floor: _floor?.state ?? const Idle(),
       blockedReason: () => null,
+      speakerBusy: _speakerBusy,
     );
   }
 
@@ -384,6 +401,9 @@ class RadioController extends Notifier<RadioState> {
     final send = _sendFor(active);
     if (send == null) return _refuse(RadioBlockedReason.noChannel);
     if (_callBusy()) return _refuse(RadioBlockedReason.call);
+    // The last speaker's sentence is still playing: the floor is free on
+    // paper, but talking now would cover its end ([RadioState.speakerBusy]).
+    if (_speakerBusy) return _refuse(RadioBlockedReason.busy);
 
     final RadioEncoder encoder;
     try {
@@ -789,6 +809,7 @@ class RadioController extends Notifier<RadioState> {
     _speakerOpen = false;
     _playEnd = null;
     _audioDo(_sink.stop);
+    _syncFloor();
   }
 
   void _audioDo(Future<void> Function() op) {
@@ -797,10 +818,17 @@ class RadioController extends Notifier<RadioState> {
     });
   }
 
+  /// A transmission is being heard, or its sound has not finished playing.
+  bool get _speakerBusy => _heard != null || _speakerOpen;
+
+  /// Publishes the floor and [RadioState.speakerBusy] when either changed.
   void _syncFloor() {
     if (_disposed) return;
     final f = _floor?.state ?? const Idle();
-    if (!_sameFloor(f, state.floor)) state = state.copyWith(floor: f);
+    final busy = _speakerBusy;
+    if (!_sameFloor(f, state.floor) || busy != state.speakerBusy) {
+      state = state.copyWith(floor: f, speakerBusy: busy);
+    }
   }
 
   /// Everything the controller holds open, let go without waiting.

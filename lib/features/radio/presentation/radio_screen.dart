@@ -182,8 +182,10 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
                         // way out is the button in the talk panel, and a list
                         // of radios where tapping the lit one does nothing
                         // reads as stuck.
-                        onTap: () => _radio.select(group == active ? null : group),
-                        onLeave: () => unawaited(_radio.leaveGroup(group.tagHex)),
+                        onTap: () =>
+                            _radio.select(group == active ? null : group),
+                        onLeave: () =>
+                            unawaited(_radio.leaveGroup(group.tagHex)),
                       ),
                     ),
                   const SizedBox(height: 2),
@@ -243,7 +245,8 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
 String _peerLabel(WidgetRef ref, String id) {
   final known = ref.watch(knownPeersControllerProvider.select((r) => r[id]));
   if (known == null) return id.length > 8 ? id.substring(0, 8) : id;
-  final alias = ref.watch(contactAliasesControllerProvider.select((a) => a[id]));
+  final alias =
+      ref.watch(contactAliasesControllerProvider.select((a) => a[id]));
   return contactDisplayName(
     alias: alias,
     rawBroadcastName: known.displayName,
@@ -553,7 +556,11 @@ class _TalkPanel extends StatelessWidget {
             SizedBox(
               height: 22,
               child: Center(
-                child: _StatusLine(floor: floor, reason: reason),
+                child: _StatusLine(
+                  floor: floor,
+                  speakerBusy: state.speakerBusy,
+                  reason: reason,
+                ),
               ),
             ),
             const SizedBox(height: 8),
@@ -586,19 +593,26 @@ class _ChannelTitle extends StatelessWidget {
 /// «Говорить: <ім'я>» while somebody else has the channel, the reason a press
 /// was refused for a moment after it, and nothing the rest of the time.
 class _StatusLine extends ConsumerWidget {
-  const _StatusLine({required this.floor, required this.reason});
+  const _StatusLine({
+    required this.floor,
+    required this.speakerBusy,
+    required this.reason,
+  });
 
   final FloorState floor;
+  final bool speakerBusy;
   final RadioBlockedReason? reason;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppLocalizations.of(context);
     final f = floor;
-    // "Busy" while somebody is heard says what the speaker line already says,
-    // better; the reason is for the refusals nothing else explains.
+    // "Busy" while somebody is heard says what the speaker line and the
+    // button already say, better; the reason is for the refusals nothing else
+    // explains.
+    final heard = f is Listening || speakerBusy;
     final shownReason =
-        reason == RadioBlockedReason.busy && f is Listening ? null : reason;
+        reason == RadioBlockedReason.busy && heard ? null : reason;
     if (shownReason != null) {
       return Text(
         _reasonText(t, shownReason),
@@ -673,7 +687,11 @@ class _TalkButtonState extends State<_TalkButton>
   int? _pointer;
 
   bool get _talking => widget.state.floor is Talking;
-  bool get _heard => widget.state.floor is Listening;
+
+  /// Somebody else holds the channel - or has just let go and the end of
+  /// what they said is still playing, which a press would talk over.
+  bool get _heard =>
+      widget.state.floor is Listening || widget.state.speakerBusy;
 
   @override
   void didChangeDependencies() {
@@ -692,7 +710,8 @@ class _TalkButtonState extends State<_TalkButton>
   /// running on a screen that sits open is a frame scheduled every vsync for
   /// nothing; this one lives for the length of a sentence.
   void _syncPulse() {
-    final wanted = (_talking || _heard) && !MediaQuery.disableAnimationsOf(context);
+    final wanted =
+        (_talking || _heard) && !MediaQuery.disableAnimationsOf(context);
     if (wanted && !_pulse.isAnimating) {
       unawaited(_pulse.repeat());
     } else if (!wanted && _pulse.isAnimating) {
