@@ -85,6 +85,15 @@ class MainApplication : Application() {
             messenger = messenger,
         )
         VideoFramePlugin(messenger)
+        // The walkie-talkie speaker. Here and not in MainActivity beside
+        // OpenFilePlugin: radio plays with the app swiped away, when this
+        // engine is alive and no Activity has ever registered anything on it.
+        // Its own try, so a failure costs the radio and not the engine.
+        try {
+            engine.plugins.add(CubechatRadioAudioPlugin())
+        } catch (e: Throwable) {
+            android.util.Log.e("MainApplication", "radio audio plugin failed", e)
+        }
         ExitRecorder.register(applicationContext, messenger)
         SelfUpdater.register(applicationContext, messenger)
         // Free space where the app keeps files — AirDrop declines an offer that

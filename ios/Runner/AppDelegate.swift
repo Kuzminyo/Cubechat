@@ -20,6 +20,10 @@ import UserNotifications
   private var cpuProbePlugin: CubechatCpuProbePlugin?
   private var pushPlugin: CubechatPushPlugin?
 
+  /// The walkie-talkie speaker. Held for the life of the app so the engine it
+  /// owns is not torn down under a message that is still playing.
+  private var radioAudioPlugin: CubechatRadioAudioPlugin?
+
   /// Channel the background window is driven over. Must match
   /// `IosBackgroundRefresh` on the Dart side.
   private static let refreshChannelName = "cubechat/background_refresh"
@@ -165,6 +169,7 @@ import UserNotifications
       sharePlugin = CubechatSharePlugin(messenger: messenger)
       cpuProbePlugin = CubechatCpuProbePlugin(messenger: messenger)
       pushPlugin = CubechatPushPlugin(messenger: messenger)
+      radioAudioPlugin = CubechatRadioAudioPlugin(messenger: messenger)
       CubechatCallKit.shared.attach(messenger: messenger)
       refreshChannel = FlutterMethodChannel(
         name: AppDelegate.refreshChannelName,
