@@ -326,7 +326,18 @@ enum InnerPayloadType {
   /// 0xFD-0xFF were). A type, not a text URI: machinery between our own
   /// devices has no place in a chat, and an old build dropping it silently is
   /// exactly right — it just does not show up in the list.
-  ownDevice(0xEB);
+  ownDevice(0xEB),
+
+  /// One 300 ms slice of a walkie-talkie transmission: fifteen 20 ms Opus
+  /// frames. See [RadioChunk] in `radio_chunk.dart`.
+  ///
+  /// 0xEC was the lowest byte the wire-protocol script printed as free on
+  /// 2026-10-21 (0xEC-0xEF and 0xFD-0xFF were). A type, not a text URI: it
+  /// is a new chunk stream, a few dozen a second, and nothing that belongs
+  /// in a chat row. An old build drops an unknown inner type silently, which
+  /// is exactly right for radio - a phone that cannot play the voice simply
+  /// hears nothing, and there is no half-delivered message to show.
+  radioChunk(0xEC);
 
   const InnerPayloadType(this.tag);
   final int tag;
