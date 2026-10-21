@@ -269,12 +269,16 @@ void main() {
     );
   }
 
-  void addContact(ProviderContainer c, _Phone p) =>
-      c.read(knownPeersControllerProvider.notifier).upsert(
-            pubkeyHex: p.pubHex,
-            displayName: 'Bob',
-            signPublicKey: p.signPub,
-          );
+  /// [p] as a contact, and - unless [tuned] is false - the radio tuned to
+  /// them, which is the only case in which their pair frames are opened.
+  void addContact(ProviderContainer c, _Phone p, {bool tuned = true}) {
+    c.read(knownPeersControllerProvider.notifier).upsert(
+          pubkeyHex: p.pubHex,
+          displayName: 'Bob',
+          signPublicKey: p.signPub,
+        );
+    if (tuned) c.read(radioPairPeersProvider.notifier).state = {p.pubHex};
+  }
 
   Future<List<RadioInbound>> listen(ProviderContainer c) async {
     final got = <RadioInbound>[];
@@ -283,7 +287,8 @@ void main() {
     return got;
   }
 
-  Iterable<String> radioLines() => printed.where((l) => l.startsWith('[RADIO]'));
+  Iterable<String> radioLines() =>
+      printed.where((l) => l.startsWith('[RADIO]'));
 
   /// What somebody holding both keys can do with a radio frame: open it
   /// under [fromKey] and seal the very same signed bytes under [toKey],
@@ -392,7 +397,8 @@ void main() {
     );
   });
 
-  test('a group chunk under an unknown tag is dropped without a log line '
+  test(
+      'a group chunk under an unknown tag is dropped without a log line '
       'per chunk', () async {
     final (container, service) = await start();
     final got = await listen(container);
@@ -696,6 +702,53 @@ void main() {
 
     expect(service.debugRadioPairTagBuilds, 1);
     expect(got.map((g) => g.chunk.seq).toSet(), {1, 2});
+  });
+
+  test('with nobody tuned in a pair frame costs no pair crypto at all',
+      () async {
+    final (container, service) = await start();
+    final got = await listen(container);
+    final bob = await _Phone.make();
+    addContact(container, bob, tuned: false);
+
+    for (var i = 0; i < 3; i++) {
+      await service.debugReceiveFrame(
+        'peer-b',
+        await pairFrame(container, from: bob, seq: i),
+      );
+    }
+    await Future<void>.delayed(Duration.zero);
+
+    expect(got, isEmpty);
+    expect(service.debugRadioPairTagBuilds, 0);
+
+    // Tuned in, the same frames open.
+    container.read(radioPairPeersProvider.notifier).state = {bob.pubHex};
+    await service.debugReceiveFrame(
+      'peer-b',
+      await pairFrame(container, from: bob, seq: 7),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(got.map((g) => g.chunk.seq), [7]);
+    expect(service.debugRadioPairTagBuilds, 1);
+  });
+
+  test('a pair frame from a contact the radio is not tuned to is not opened',
+      () async {
+    final (container, service) = await start();
+    final got = await listen(container);
+    final bob = await _Phone.make();
+    final carol = await _Phone.make();
+    addContact(container, carol);
+    addContact(container, bob, tuned: false);
+    container.read(radioPairPeersProvider.notifier).state = {carol.pubHex};
+
+    await service.debugReceiveFrame(
+      'peer-b',
+      await pairFrame(container, from: bob, seq: 1),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(got, isEmpty);
   });
 
   test('a radio chunk addressed to us is refused', () async {

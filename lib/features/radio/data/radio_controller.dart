@@ -347,11 +347,23 @@ class RadioController extends Notifier<RadioState> {
   List<RadioRoom> _groupList() =>
       List.unmodifiable(_stored.values.map((s) => s.group));
 
-  /// Hands the keys to the transport, which opens group frames with them.
+  /// Tells the transport what this radio can play: the tuned group's key, or
+  /// the tuned contact - and nothing else. Every joined group's frames used
+  /// to be opened and verified, and a pair tag worked out (an X25519 each)
+  /// for every contact, by every phone with the app, whether or not anything
+  /// would ever play them; only the tuned channel is played (see
+  /// [_onInbound]), so only its frames are worth the crypto. A phone with the
+  /// radio off does none at all, and a group frame it cannot open is still
+  /// forwarded, since that happens before the cipher is read.
   void _publishKeys() {
     if (_disposed) return;
+    final active = state.active;
+    final room = active is RadioRoom ? _stored[active.tagHex] : null;
     ref.read(radioGroupKeysProvider.notifier).state = Map.unmodifiable({
-      for (final e in _stored.entries) e.key: e.value.key,
+      if (room != null) room.group.tagHex: room.key,
+    });
+    ref.read(radioPairPeersProvider.notifier).state = Set.unmodifiable({
+      if (active is RadioContact) active.canonicalId,
     });
   }
 
@@ -384,6 +396,7 @@ class RadioController extends Notifier<RadioState> {
       blockedReason: () => null,
       speakerBusy: _speakerBusy,
     );
+    _publishKeys();
   }
 
   // --------------------------------------------------------------- talking

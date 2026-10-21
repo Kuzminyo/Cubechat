@@ -728,6 +728,54 @@ void main() {
     });
   });
 
+  // Only what the radio would play is handed to the transport: a joined
+  // group that is not tuned, or a contact nobody tuned to, costs no crypto.
+  group('what the transport opens', () {
+    test('nothing tuned, nothing published; tuning publishes one channel', () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final a = rig.join('#patrol');
+        final b = rig.join('#other');
+        Map<String, Uint8List> keys() =>
+            rig.container.read(radioGroupKeysProvider);
+        Set<String> peers() => rig.container.read(radioPairPeersProvider);
+        expect(keys(), isEmpty);
+        expect(peers(), isEmpty);
+        expect(rig.state.groups, [a, b]);
+
+        rig.ctl.select(a);
+        expect(keys().keys, [a.tagHex]);
+        expect(peers(), isEmpty);
+
+        rig.ctl.select(const RadioContact('bob'));
+        expect(keys(), isEmpty);
+        expect(peers(), {'bob'});
+
+        rig.ctl.select(b);
+        expect(keys().keys, [b.tagHex]);
+        expect(peers(), isEmpty);
+
+        rig.ctl.select(null);
+        expect(keys(), isEmpty);
+        expect(peers(), isEmpty);
+        expect(rig.state.groups, [a, b]);
+        rig.dispose();
+      });
+    });
+
+    test('leaving the tuned group takes its key back', () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final a = rig.join('#patrol');
+        rig.ctl.select(a);
+        rig.ctl.leaveGroup(a.tagHex);
+        async.flushMicrotasks();
+        expect(rig.container.read(radioGroupKeysProvider), isEmpty);
+        rig.dispose();
+      });
+    });
+  });
+
   // The radio stays tuned for the life of the app, so what it costs while
   // nobody talks is what it costs for ever: a tick of ten wake-ups a second is
   // the battery the feature promised not to spend.
@@ -859,8 +907,11 @@ void main() {
       expect(g.name, '#patrol');
       expect(g.hasPassword, isTrue);
       expect(g.tagHex, tagHex);
-      expect(c.read(radioGroupKeysProvider)[tagHex], key);
       expect(c.read(radioControllerProvider).groups, [g]);
+      // Joined is not tuned: the transport opens only what would be played.
+      expect(c.read(radioGroupKeysProvider), isEmpty);
+      ctl.select(g);
+      expect(c.read(radioGroupKeysProvider), {tagHex: key});
 
       // The key is kept, never the password.
       final box = await hiveCipherProvider
@@ -870,7 +921,9 @@ void main() {
       final relaunched = fresh();
       await relaunched.read(radioControllerProvider.notifier).loaded;
       expect(relaunched.read(radioControllerProvider).groups, [g]);
-      expect(relaunched.read(radioGroupKeysProvider)[tagHex], key);
+      expect(relaunched.read(radioGroupKeysProvider), isEmpty);
+      relaunched.read(radioControllerProvider.notifier).select(g);
+      expect(relaunched.read(radioGroupKeysProvider), {tagHex: key});
 
       await relaunched
           .read(radioControllerProvider.notifier)

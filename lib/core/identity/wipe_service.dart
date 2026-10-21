@@ -121,6 +121,7 @@ Future<void> emergencyWipe(WidgetRef ref, {bool releaseName = true}) async {
     await ref.read(radioControllerProvider.notifier).clear();
   }
   ref.read(radioGroupKeysProvider.notifier).state = const {};
+  ref.read(radioPairPeersProvider.notifier).state = const {};
   await ref.read(favoritesControllerProvider.notifier).clear();
   await ref.read(pinnedChatsControllerProvider.notifier).clear();
   await ref.read(hiddenChatsControllerProvider.notifier).clear();

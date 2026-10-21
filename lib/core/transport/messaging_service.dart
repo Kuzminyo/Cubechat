@@ -7362,14 +7362,16 @@ class MessagingService {
 
   /// Pair tag hex -> contact canonical id, for the three active epochs.
   ///
-  /// Built on the first radio frame whose tag is not a group's, and rebuilt
-  /// only when the epoch turns or the set of contacts changes — never per
-  /// frame: a stranger's group three times a second must not cost a hash per
-  /// contact per chunk.
+  /// Only for the contact the radio is tuned to ([radioPairPeersProvider]) —
+  /// the only one whose voice would be played. Built on the first radio
+  /// frame whose tag is not a group's, and rebuilt only when the epoch turns,
+  /// the tuned contact changes or the contact list does — never per frame: a
+  /// stranger's group three times a second must not cost a hash per chunk.
   Map<String, String> _radioPairTags = const {};
   int? _radioPairTagsEpoch;
   Set<String> _radioPairTagsPeers = const {};
   Map<String, KnownPeer>? _radioPairTagsFrom;
+  Set<String>? _radioPairTagsWanted;
   Future<void>? _radioPairTagsBuilding;
 
   /// Every radio frame this service puts on the air, when a test asks.
@@ -7563,9 +7565,12 @@ class MessagingService {
 
   /// Which contact, if any, a radio tag names this hour, last hour or next.
   ///
-  /// Only contacts whose signing key is on file: a pair chunk is believed only
-  /// under that key, so a contact without one could never be heard anyway.
+  /// Only the contact the radio is tuned to, and only with a signing key on
+  /// file: a pair chunk is believed only under that key, so a contact without
+  /// one could never be heard anyway. With nobody tuned in this returns at
+  /// once — no table, no key agreement.
   Future<String?> _radioPairContactForTag(String tagHex) async {
+    if (_ref.read(radioPairPeersProvider).isEmpty) return null;
     // One build at a time, and shared: a frame that arrives while the table
     // is being built waits for that build instead of starting a second one.
     // Three chunks a second land on the first build, so without this each
@@ -7585,22 +7590,28 @@ class MessagingService {
   bool _radioPairTagsStale() {
     if (PeerId.epochAt(DateTime.now()) != _radioPairTagsEpoch) return true;
     final peers = _ref.read(knownPeersControllerProvider);
-    if (identical(peers, _radioPairTagsFrom)) return false;
+    final wanted = _ref.read(radioPairPeersProvider);
+    if (identical(peers, _radioPairTagsFrom) &&
+        identical(wanted, _radioPairTagsWanted)) {
+      return false;
+    }
     if (!setEquals(_radioPairCandidates(peers), _radioPairTagsPeers)) {
       return true;
     }
     _radioPairTagsFrom = peers;
+    _radioPairTagsWanted = wanted;
     return false;
   }
 
-  /// Contacts a pair chunk could be believed from: signing key on file, not
-  /// blocked.
+  /// Contacts a pair chunk could be believed from: tuned in on the radio,
+  /// signing key on file, not blocked.
   Set<String> _radioPairCandidates(Map<String, KnownPeer> peers) {
     final notifier = _ref.read(knownPeersControllerProvider.notifier);
     return {
-      for (final p in peers.values)
-        if (p.signPublicKey != null && !notifier.isBlocked(p.pubkeyHex))
-          p.pubkeyHex,
+      for (final id in _ref.read(radioPairPeersProvider))
+        if (peers[id] case final p?)
+          if (p.signPublicKey != null && !notifier.isBlocked(p.pubkeyHex))
+            p.pubkeyHex,
     };
   }
 
@@ -7620,6 +7631,7 @@ class MessagingService {
     debugRadioPairTagBuilds++;
     final now = DateTime.now();
     final peers = _ref.read(knownPeersControllerProvider);
+    final wanted = _ref.read(radioPairPeersProvider);
     final ids = _radioPairCandidates(peers);
     final tags = <String, String>{};
     var done = 0;
@@ -7639,6 +7651,7 @@ class MessagingService {
     _radioPairTagsEpoch = PeerId.epochAt(now);
     _radioPairTagsPeers = ids;
     _radioPairTagsFrom = peers;
+    _radioPairTagsWanted = wanted;
   }
 
   /// Open an inbound radio frame — a group's or a contact's — and hand the

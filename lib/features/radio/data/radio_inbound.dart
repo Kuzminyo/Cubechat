@@ -37,12 +37,22 @@ final radioInboundProvider = Provider<Stream<RadioInbound>>(
   (ref) => ref.watch(messagingServiceProvider).radioInbound,
 );
 
-/// Keys of the radio groups this phone is in: lowercase hex of the 8-byte tag
-/// -> the 32-byte key. Filled by the radio controller.
+/// Key of the radio group the radio is tuned to, if it is tuned to one:
+/// lowercase hex of the 8-byte tag -> the 32-byte key. Filled by the radio
+/// controller, which plays only the tuned channel - so a joined group that is
+/// not tuned is not in here, and its frames are not opened.
 ///
 /// Read by the transport for every group frame on the air, so a tag that is
 /// not in here costs one map lookup and nothing else: the frame has already
 /// been passed on for the phones it is meant for.
 final radioGroupKeysProvider = StateProvider<Map<String, Uint8List>>(
+  (ref) => const {},
+);
+
+/// The contact the radio is tuned to, if any, by canonical id. The transport
+/// works out 1:1 pair tags - an X25519 per contact - only for these, so a
+/// phone with nobody tuned in does no pair crypto at all, and a pair frame
+/// between two other people costs it nothing but the forward.
+final radioPairPeersProvider = StateProvider<Set<String>>(
   (ref) => const {},
 );
