@@ -3942,7 +3942,7 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get radioNearbySubtitle =>
-      'Затисніть кнопку й говоріть із групою чи контактом';
+      'Затисни кнопку й говори з групою чи контактом';
 
   @override
   String get radioGroupsLabel => 'Групи';
@@ -3955,19 +3955,19 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get radioNoGroups =>
-      'Рацій ще немає. Додайте — усі, хто введе ту саму назву й пароль, чують одне одного.';
+      'Рацій ще немає. Додай — усі, хто введе ту саму назву й пароль, чують одне одного.';
 
   @override
   String get radioLeave => 'Вийти з рації';
 
   @override
-  String get radioPickChannel => 'Оберіть групу або контакт';
+  String get radioPickChannel => 'Обери групу або контакт';
 
   @override
   String get radioPushToTalk => 'Затисни й говори';
 
   @override
-  String get radioTalking => 'Говоріть…';
+  String get radioTalking => 'Говори…';
 
   @override
   String get radioChannelBusy => 'Канал зайнятий';
@@ -3995,7 +3995,7 @@ class AppLocalizationsUk extends AppLocalizations {
       'Усі, хто введе ту саму назву й пароль, потрапляють в одну рацію. Жоден сервер не зберігає їхній список.';
 
   @override
-  String get radioJoinNameRequired => 'Введіть назву';
+  String get radioJoinNameRequired => 'Введи назву';
 
   @override
   String get radioJoinSubmit => 'Додати';
@@ -4013,7 +4013,7 @@ class AppLocalizationsUk extends AppLocalizations {
   String get radioBlockedUnavailable => 'Рація недоступна на цьому пристрої';
 
   @override
-  String get radioBlockedNoChannel => 'Спершу оберіть групу або контакт';
+  String get radioBlockedNoChannel => 'Спершу обери групу або контакт';
 
   @override
   String get radioTurnOff => 'Вимкнути рацію';

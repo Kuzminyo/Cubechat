@@ -224,7 +224,7 @@ void main() {
     );
 
     expect(
-      find.descendant(of: button, matching: find.text('Говоріть…')),
+      find.descendant(of: button, matching: find.text('Говори…')),
       findsOneWidget,
     );
   });
@@ -238,7 +238,7 @@ void main() {
     // Submitted empty: said, and nothing joined.
     await tester.tap(find.byKey(const ValueKey('radio-join-submit')));
     await tester.pump();
-    expect(find.text('Введіть назву'), findsOneWidget);
+    expect(find.text('Введи назву'), findsOneWidget);
     expect(fake.calls.where((c) => c.startsWith('join')), isEmpty);
 
     // A name that normalises to nothing is still no name.
@@ -389,7 +389,7 @@ void main() {
     expect(fake.calls, ['select null']);
     // The control has done its job and is gone; the panel says to pick again.
     expect(find.byKey(const ValueKey('radio-off')), findsNothing);
-    expect(find.text('Оберіть групу або контакт'), findsOneWidget);
+    expect(find.text('Обери групу або контакт'), findsOneWidget);
 
     // And the button is dead, not merely dim: a press reaches nobody.
     final gesture = await tester.startGesture(tester.getCenter(button));
@@ -403,7 +403,7 @@ void main() {
     await pump(tester);
 
     expect(find.byKey(const ValueKey('radio-off')), findsNothing);
-    expect(find.text('Оберіть групу або контакт'), findsOneWidget);
+    expect(find.text('Обери групу або контакт'), findsOneWidget);
   });
 
   testWidgets('the talk button is named for a screen reader', (tester) async {

@@ -799,7 +799,7 @@ class _TalkButtonState extends State<_TalkButton>
             button: true,
             enabled: tuned,
             // Always the invitation, not the live label: a reader that said
-            // "Говоріть…" mid-press would be describing the finger, not the
+            // "Говори…" mid-press would be describing the finger, not the
             // control.
             label: t.radioPushToTalk,
             excludeSemantics: true,
