@@ -564,6 +564,19 @@ class ChatScreen extends ConsumerWidget {
                       .read(_chatSearchOpenProvider(canonicalId).notifier)
                       .state = true,
                 ),
+                // The walkie-talkie, tuned to this person. Only once there is
+                // an identity to address (a chat opened from a Nearby tap has
+                // a BLE address and no key until the handshake lands), and
+                // not for somebody blocked or banned.
+                if (pubkeyHex != null && !blocked)
+                  _PillIconButton(
+                    icon: Icons.radio_rounded,
+                    color: AppColors.textOnGlass,
+                    tooltip: t.radioTitle,
+                    onPressed: () => context.push(
+                      '/radio?contact=${Uri.encodeQueryComponent(pubkeyHex)}',
+                    ),
+                  ),
                 if (showRetry)
                   _PillIconButton(
                     icon: Icons.refresh_rounded,

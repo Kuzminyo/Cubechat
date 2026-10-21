@@ -1893,5 +1893,34 @@
       "route": {"type": "String"}
     }
   },
-  "chatUnreadDivider": "New messages"
+  "chatUnreadDivider": "New messages",
+  "radioTitle": "Walkie-talkie",
+  "radioNearbySubtitle": "Hold a button and talk to a group or a contact",
+  "radioGroupsLabel": "Groups",
+  "radioDirectLabel": "Direct",
+  "radioAddGroup": "Add a radio",
+  "radioNoGroups": "No radios yet. Add one — everyone who enters the same name and password hears each other.",
+  "radioLeave": "Leave this radio",
+  "radioPickChannel": "Pick a group or a contact",
+  "radioPushToTalk": "Hold to talk",
+  "radioTalking": "Speaking…",
+  "radioChannelBusy": "Channel busy",
+  "radioSpeaker": "{name} is talking",
+  "@radioSpeaker": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "radioSilentTitle": "Talk in silent mode",
+  "radioSilentHint": "Voice plays even when the phone is on silent.",
+  "radioJoinNameLabel": "Name",
+  "radioJoinPasswordLabel": "Password (optional)",
+  "radioJoinHint": "Everyone who enters the same name and password is on the same radio. No server keeps a list of them.",
+  "radioJoinNameRequired": "Enter a name",
+  "radioJoinSubmit": "Add",
+  "radioBlockedTooLong": "Cut off after a minute of talking",
+  "radioBlockedCall": "A call is in progress",
+  "radioBlockedMicrophone": "No access to the microphone",
+  "radioBlockedUnavailable": "The radio is not available on this device",
+  "radioBlockedNoChannel": "Pick a group or a contact first"
 }

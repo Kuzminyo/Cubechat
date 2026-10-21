@@ -3936,4 +3936,82 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get chatUnreadDivider => 'Нові повідомлення';
+
+  @override
+  String get radioTitle => 'Рація';
+
+  @override
+  String get radioNearbySubtitle =>
+      'Затисніть кнопку й говоріть із групою чи контактом';
+
+  @override
+  String get radioGroupsLabel => 'Групи';
+
+  @override
+  String get radioDirectLabel => 'Особиста';
+
+  @override
+  String get radioAddGroup => 'Додати рацію';
+
+  @override
+  String get radioNoGroups =>
+      'Рацій ще немає. Додайте — усі, хто введе ту саму назву й пароль, чують одне одного.';
+
+  @override
+  String get radioLeave => 'Вийти з рації';
+
+  @override
+  String get radioPickChannel => 'Оберіть групу або контакт';
+
+  @override
+  String get radioPushToTalk => 'Затисни й говори';
+
+  @override
+  String get radioTalking => 'Говоріть…';
+
+  @override
+  String get radioChannelBusy => 'Канал зайнятий';
+
+  @override
+  String radioSpeaker(String name) {
+    return 'Говорить: $name';
+  }
+
+  @override
+  String get radioSilentTitle => 'Говорити в беззвучному режимі';
+
+  @override
+  String get radioSilentHint =>
+      'Голос лунає, навіть коли телефон у беззвучному режимі.';
+
+  @override
+  String get radioJoinNameLabel => 'Назва';
+
+  @override
+  String get radioJoinPasswordLabel => 'Пароль (необов’язково)';
+
+  @override
+  String get radioJoinHint =>
+      'Усі, хто введе ту саму назву й пароль, потрапляють в одну рацію. Жоден сервер не зберігає їхній список.';
+
+  @override
+  String get radioJoinNameRequired => 'Введіть назву';
+
+  @override
+  String get radioJoinSubmit => 'Додати';
+
+  @override
+  String get radioBlockedTooLong => 'Обірвано після хвилини розмови';
+
+  @override
+  String get radioBlockedCall => 'Триває дзвінок';
+
+  @override
+  String get radioBlockedMicrophone => 'Немає доступу до мікрофона';
+
+  @override
+  String get radioBlockedUnavailable => 'Рація недоступна на цьому пристрої';
+
+  @override
+  String get radioBlockedNoChannel => 'Спершу оберіть групу або контакт';
 }

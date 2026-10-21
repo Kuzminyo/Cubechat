@@ -93,6 +93,12 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
         children: [
           _Header(peripheral: peripheral),
           if (headerHasContent) const SizedBox(height: 12),
+          // The walkie-talkie lives with the other things done to people in
+          // range, and above them: it does not depend on who the scan has
+          // found, so it stays in the same place however the list below
+          // changes.
+          const _RadioEntry(),
+          const SizedBox(height: 8),
           ..._buildBody(context, t, state, controller),
         ],
       ),
@@ -193,6 +199,72 @@ class _PeersScreenState extends ConsumerState<PeersScreen> {
             ),
         ];
     }
+  }
+}
+
+/// «Рація»: one row that opens the walkie-talkie on its group list.
+class _RadioEntry extends StatelessWidget {
+  const _RadioEntry();
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return GlassCard(
+      key: const ValueKey('nearby-radio-entry'),
+      onTap: () => context.push('/radio'),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.brandPrimary.withValues(alpha: 0.16),
+              border: Border.all(
+                color: AppColors.brandPrimary.withValues(alpha: 0.4),
+              ),
+            ),
+            child: Icon(
+              Icons.radio_rounded,
+              size: 22,
+              color: AppColors.brandPrimary,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  t.radioTitle,
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  t.radioNearbySubtitle,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            Icons.chevron_right_rounded,
+            size: 20,
+            color: AppColors.textOnGlassFaint,
+          ),
+        ],
+      ),
+    );
   }
 }
 

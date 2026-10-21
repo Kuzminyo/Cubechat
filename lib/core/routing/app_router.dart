@@ -42,6 +42,7 @@ import '../../features/moderation/presentation/about_screen.dart';
 import '../../features/profile/presentation/diagnostics_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/profile/presentation/relays_screen.dart';
+import '../../features/radio/presentation/radio_screen.dart';
 import '../widgets/aurora_background.dart';
 import 'app_shell.dart';
 import '../util/timed_subtree.dart';
@@ -621,6 +622,23 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
         parentNavigatorKey: _rootNavKey,
         pageBuilder: (context, state) => fadeSlidePage(
           child: const AuroraBackground(child: ContactCardScreen()),
+          state: state,
+        ),
+      ),
+      // The walkie-talkie. `contact` is the canonical id of the chat whose
+      // header opened it, tuned in on arrival; without it the screen opens on
+      // the group list, which is what Nearby's entry wants. A query parameter
+      // like `name` on the routes above, and for the same reason it is not a
+      // path segment: the screen is the same one either way.
+      GoRoute(
+        path: '/radio',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) => fadeSlidePage(
+          child: AuroraBackground(
+            child: RadioScreen(
+              contactId: state.uri.queryParameters['contact'],
+            ),
+          ),
           state: state,
         ),
       ),

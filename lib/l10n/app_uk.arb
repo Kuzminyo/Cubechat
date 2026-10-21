@@ -1364,5 +1364,34 @@
       "route": {"type": "String"}
     }
   },
-  "chatUnreadDivider": "Нові повідомлення"
+  "chatUnreadDivider": "Нові повідомлення",
+  "radioTitle": "Рація",
+  "radioNearbySubtitle": "Затисніть кнопку й говоріть із групою чи контактом",
+  "radioGroupsLabel": "Групи",
+  "radioDirectLabel": "Особиста",
+  "radioAddGroup": "Додати рацію",
+  "radioNoGroups": "Рацій ще немає. Додайте — усі, хто введе ту саму назву й пароль, чують одне одного.",
+  "radioLeave": "Вийти з рації",
+  "radioPickChannel": "Оберіть групу або контакт",
+  "radioPushToTalk": "Затисни й говори",
+  "radioTalking": "Говоріть…",
+  "radioChannelBusy": "Канал зайнятий",
+  "radioSpeaker": "Говорить: {name}",
+  "@radioSpeaker": {
+    "placeholders": {
+      "name": {"type": "String"}
+    }
+  },
+  "radioSilentTitle": "Говорити в беззвучному режимі",
+  "radioSilentHint": "Голос лунає, навіть коли телефон у беззвучному режимі.",
+  "radioJoinNameLabel": "Назва",
+  "radioJoinPasswordLabel": "Пароль (необов’язково)",
+  "radioJoinHint": "Усі, хто введе ту саму назву й пароль, потрапляють в одну рацію. Жоден сервер не зберігає їхній список.",
+  "radioJoinNameRequired": "Введіть назву",
+  "radioJoinSubmit": "Додати",
+  "radioBlockedTooLong": "Обірвано після хвилини розмови",
+  "radioBlockedCall": "Триває дзвінок",
+  "radioBlockedMicrophone": "Немає доступу до мікрофона",
+  "radioBlockedUnavailable": "Рація недоступна на цьому пристрої",
+  "radioBlockedNoChannel": "Спершу оберіть групу або контакт"
 }

@@ -6727,6 +6727,150 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'New messages'**
   String get chatUnreadDivider;
+
+  /// No description provided for @radioTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Walkie-talkie'**
+  String get radioTitle;
+
+  /// No description provided for @radioNearbySubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold a button and talk to a group or a contact'**
+  String get radioNearbySubtitle;
+
+  /// No description provided for @radioGroupsLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Groups'**
+  String get radioGroupsLabel;
+
+  /// No description provided for @radioDirectLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Direct'**
+  String get radioDirectLabel;
+
+  /// No description provided for @radioAddGroup.
+  ///
+  /// In en, this message translates to:
+  /// **'Add a radio'**
+  String get radioAddGroup;
+
+  /// No description provided for @radioNoGroups.
+  ///
+  /// In en, this message translates to:
+  /// **'No radios yet. Add one — everyone who enters the same name and password hears each other.'**
+  String get radioNoGroups;
+
+  /// No description provided for @radioLeave.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave this radio'**
+  String get radioLeave;
+
+  /// No description provided for @radioPickChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a group or a contact'**
+  String get radioPickChannel;
+
+  /// No description provided for @radioPushToTalk.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold to talk'**
+  String get radioPushToTalk;
+
+  /// No description provided for @radioTalking.
+  ///
+  /// In en, this message translates to:
+  /// **'Speaking…'**
+  String get radioTalking;
+
+  /// No description provided for @radioChannelBusy.
+  ///
+  /// In en, this message translates to:
+  /// **'Channel busy'**
+  String get radioChannelBusy;
+
+  /// No description provided for @radioSpeaker.
+  ///
+  /// In en, this message translates to:
+  /// **'{name} is talking'**
+  String radioSpeaker(String name);
+
+  /// No description provided for @radioSilentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Talk in silent mode'**
+  String get radioSilentTitle;
+
+  /// No description provided for @radioSilentHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Voice plays even when the phone is on silent.'**
+  String get radioSilentHint;
+
+  /// No description provided for @radioJoinNameLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get radioJoinNameLabel;
+
+  /// No description provided for @radioJoinPasswordLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Password (optional)'**
+  String get radioJoinPasswordLabel;
+
+  /// No description provided for @radioJoinHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Everyone who enters the same name and password is on the same radio. No server keeps a list of them.'**
+  String get radioJoinHint;
+
+  /// No description provided for @radioJoinNameRequired.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a name'**
+  String get radioJoinNameRequired;
+
+  /// No description provided for @radioJoinSubmit.
+  ///
+  /// In en, this message translates to:
+  /// **'Add'**
+  String get radioJoinSubmit;
+
+  /// No description provided for @radioBlockedTooLong.
+  ///
+  /// In en, this message translates to:
+  /// **'Cut off after a minute of talking'**
+  String get radioBlockedTooLong;
+
+  /// No description provided for @radioBlockedCall.
+  ///
+  /// In en, this message translates to:
+  /// **'A call is in progress'**
+  String get radioBlockedCall;
+
+  /// No description provided for @radioBlockedMicrophone.
+  ///
+  /// In en, this message translates to:
+  /// **'No access to the microphone'**
+  String get radioBlockedMicrophone;
+
+  /// No description provided for @radioBlockedUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'The radio is not available on this device'**
+  String get radioBlockedUnavailable;
+
+  /// No description provided for @radioBlockedNoChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'Pick a group or a contact first'**
+  String get radioBlockedNoChannel;
 }
 
 class _AppLocalizationsDelegate

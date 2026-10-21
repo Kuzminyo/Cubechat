@@ -3892,4 +3892,82 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatUnreadDivider => 'New messages';
+
+  @override
+  String get radioTitle => 'Walkie-talkie';
+
+  @override
+  String get radioNearbySubtitle =>
+      'Hold a button and talk to a group or a contact';
+
+  @override
+  String get radioGroupsLabel => 'Groups';
+
+  @override
+  String get radioDirectLabel => 'Direct';
+
+  @override
+  String get radioAddGroup => 'Add a radio';
+
+  @override
+  String get radioNoGroups =>
+      'No radios yet. Add one — everyone who enters the same name and password hears each other.';
+
+  @override
+  String get radioLeave => 'Leave this radio';
+
+  @override
+  String get radioPickChannel => 'Pick a group or a contact';
+
+  @override
+  String get radioPushToTalk => 'Hold to talk';
+
+  @override
+  String get radioTalking => 'Speaking…';
+
+  @override
+  String get radioChannelBusy => 'Channel busy';
+
+  @override
+  String radioSpeaker(String name) {
+    return '$name is talking';
+  }
+
+  @override
+  String get radioSilentTitle => 'Talk in silent mode';
+
+  @override
+  String get radioSilentHint => 'Voice plays even when the phone is on silent.';
+
+  @override
+  String get radioJoinNameLabel => 'Name';
+
+  @override
+  String get radioJoinPasswordLabel => 'Password (optional)';
+
+  @override
+  String get radioJoinHint =>
+      'Everyone who enters the same name and password is on the same radio. No server keeps a list of them.';
+
+  @override
+  String get radioJoinNameRequired => 'Enter a name';
+
+  @override
+  String get radioJoinSubmit => 'Add';
+
+  @override
+  String get radioBlockedTooLong => 'Cut off after a minute of talking';
+
+  @override
+  String get radioBlockedCall => 'A call is in progress';
+
+  @override
+  String get radioBlockedMicrophone => 'No access to the microphone';
+
+  @override
+  String get radioBlockedUnavailable =>
+      'The radio is not available on this device';
+
+  @override
+  String get radioBlockedNoChannel => 'Pick a group or a contact first';
 }
