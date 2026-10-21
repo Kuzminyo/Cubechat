@@ -119,7 +119,10 @@ class OpusException implements Exception {
 
 /// PCM16 in, 20 ms Opus packets out.
 class OpusVoiceEncoder {
-  OpusVoiceEncoder([OpusLibrary? library])
+  /// [bitRate] defaults to the voice-note rate; the walkie-talkie asks for far
+  /// less, because its chunks share a Bluetooth link with everything else and
+  /// a 20 ms frame at 8 kbit/s is about 20 bytes.
+  OpusVoiceEncoder([OpusLibrary? library, int bitRate = OpusVoice.bitRate])
       : _lib = library ?? OpusLibrary.instance {
     final error = calloc<Int32>();
     try {
@@ -132,7 +135,7 @@ class OpusVoiceEncoder {
       if (error.value != _Opus.ok || _state == nullptr) {
         throw OpusException('opus_encoder_create', error.value);
       }
-      _ctl(_Opus.setBitrate, OpusVoice.bitRate);
+      _ctl(_Opus.setBitrate, bitRate);
       _ctl(_Opus.setVbr, 1);
       _ctl(_Opus.setComplexity, 10);
       _ctl(_Opus.setSignal, _Opus.signalVoice);
