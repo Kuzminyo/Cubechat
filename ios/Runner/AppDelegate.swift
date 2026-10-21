@@ -3,6 +3,7 @@ import BackgroundTasks
 import CoreLocation
 import Flutter
 import GoogleMaps
+import PushToTalk
 import UIKit
 import UserNotifications
 
@@ -19,6 +20,8 @@ import UserNotifications
   /// deallocation, taking the Diagnostics CPU panel with it.
   private var cpuProbePlugin: CubechatCpuProbePlugin?
   private var pushPlugin: CubechatPushPlugin?
+  /// Stage-0 radio spike; holds a CubechatRadioSpike (iOS 16+) for the life of the app.
+  private var radioSpike: AnyObject?
 
   /// The walkie-talkie speaker. Held for the life of the app so the engine it
   /// owns is not torn down under a message that is still playing.
@@ -170,6 +173,14 @@ import UserNotifications
       cpuProbePlugin = CubechatCpuProbePlugin(messenger: messenger)
       pushPlugin = CubechatPushPlugin(messenger: messenger)
       radioAudioPlugin = CubechatRadioAudioPlugin(messenger: messenger)
+      // Stage-0 radio probe: PushToTalk from a Bluetooth message
+      // (Diagnostics -> radio probe). Kept in main at the owner's request.
+      if #available(iOS 16.0, *) {
+        radioSpike = CubechatRadioSpike(messenger: messenger)
+      } else {
+        FlutterMethodChannel(name: "cubechat/radio_spike", binaryMessenger: messenger)
+          .setMethodCallHandler { _, result in result("unsupported: iOS < 16") }
+      }
       CubechatCallKit.shared.attach(messenger: messenger)
       refreshChannel = FlutterMethodChannel(
         name: AppDelegate.refreshChannelName,
@@ -939,5 +950,262 @@ final class SecureCapture {
     field.removeFromSuperview()
     self.field = nil
     return true
+  }
+}
+
+// MARK: - Stage-0 radio spike (branch spike/ios-ptt, throwaway)
+
+/// One question: when a message arrives over Bluetooth with no internet while
+/// the phone is locked, can the app make the system's PushToTalk channel
+/// activate audio and play a sound? `incoming` calls setActiveRemoteParticipant;
+/// if that works, `channelManager(_:didActivate:)` fires and a 2 s 880 Hz tone
+/// plays. Every callback and every failure is reported to Dart as `log`, which
+/// lands in Diagnostics under [RADIO-SPIKE]. Dart: lib/core/radio_spike.dart.
+///
+/// PushToTalk is iOS 16+ and the deployment target is 15.5, hence the
+/// availability guards here and at the registration site.
+@available(iOS 16.0, *)
+final class CubechatRadioSpike: NSObject, PTChannelManagerDelegate, PTChannelRestorationDelegate {
+  private let channel: FlutterMethodChannel
+  private var manager: PTChannelManager?
+  private var player: AVAudioPlayer?
+
+  /// Fixed, so a relaunch restores the same channel instead of piling up new ones.
+  private let channelUUID = UUID(uuidString: "6F0C2A52-3B7E-4C55-9D0B-0C0BEC1A5001")!
+
+  init(messenger: FlutterBinaryMessenger) {
+    channel = FlutterMethodChannel(name: "cubechat/radio_spike", binaryMessenger: messenger)
+    super.init()
+    channel.setMethodCallHandler { [weak self] call, result in
+      self?.handle(call, result: result)
+    }
+    // Async, so the manager appears a moment after launch; calls made before
+    // that answer "not ready".
+    Task { @MainActor [weak self] in
+      guard let self else { return }
+      do {
+        self.manager = try await PTChannelManager.channelManager(
+          delegate: self,
+          restorationDelegate: self
+        )
+        self.log("channel manager ready")
+      } catch {
+        self.log("channel manager failed: \(error)")
+      }
+    }
+  }
+
+  private func log(_ text: String) {
+    NSLog("cubechat radio-spike: %@", text)
+    DispatchQueue.main.async { [channel] in
+      channel.invokeMethod("log", arguments: text)
+    }
+  }
+
+  private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let manager else {
+      result("not ready")
+      return
+    }
+    switch call.method {
+    case "join":
+      let descriptor = PTChannelDescriptor(name: "cubechat test", image: nil)
+      manager.requestJoinChannel(channelUUID: channelUUID, descriptor: descriptor)
+      // The outcome arrives as didJoinChannel or failedToJoinChannel.
+      result("join requested")
+    case "incoming":
+      let name = (call.arguments as? String) ?? "cubechat"
+      let uuid = channelUUID
+      // The session defaults to soloAmbient, which the silent switch mutes and
+      // which does not play from a locked app; a play() on it can still
+      // return true. Ask for playAndRecord before the system activates it.
+      do {
+        try AVAudioSession.sharedInstance().setCategory(
+          .playAndRecord,
+          mode: .default,
+          options: [.defaultToSpeaker, .allowBluetooth]
+        )
+      } catch {
+        log("setCategory error: \(error)")
+      }
+      // On the main actor so `result` is answered on the platform thread.
+      Task { @MainActor in
+        do {
+          try await manager.setActiveRemoteParticipant(
+            PTParticipant(name: name, image: nil),
+            channelUUID: uuid
+          )
+          result("setActiveRemoteParticipant ok (\(name))")
+        } catch {
+          result("setActiveRemoteParticipant error: \(error)")
+        }
+      }
+    case "leave":
+      manager.leaveChannel(channelUUID: channelUUID)
+      result("leave requested")
+    default:
+      result(FlutterMethodNotImplemented)
+    }
+  }
+
+  /// 2 s of 880 Hz, 16-bit PCM mono 44.1 kHz, as the bytes of a WAV file.
+  private static func beepWav() -> Data {
+    let rate = 44100
+    let count = rate * 2
+    var pcm = Data(capacity: count * 2)
+    for i in 0..<count {
+      let phase = 2.0 * Double.pi * 880.0 * Double(i) / Double(rate)
+      let sample = Int16(sin(phase) * 0.5 * Double(Int16.max))
+      withUnsafeBytes(of: sample.littleEndian) { pcm.append(contentsOf: $0) }
+    }
+    func le32(_ v: UInt32) -> [UInt8] { withUnsafeBytes(of: v.littleEndian) { Array($0) } }
+    func le16(_ v: UInt16) -> [UInt8] { withUnsafeBytes(of: v.littleEndian) { Array($0) } }
+    var wav = Data()
+    wav.append(contentsOf: Array("RIFF".utf8))
+    wav.append(contentsOf: le32(UInt32(36 + pcm.count)))
+    wav.append(contentsOf: Array("WAVE".utf8))
+    wav.append(contentsOf: Array("fmt ".utf8))
+    wav.append(contentsOf: le32(16))
+    wav.append(contentsOf: le16(1))  // PCM
+    wav.append(contentsOf: le16(1))  // mono
+    wav.append(contentsOf: le32(UInt32(rate)))
+    wav.append(contentsOf: le32(UInt32(rate * 2)))  // byte rate
+    wav.append(contentsOf: le16(2))  // block align
+    wav.append(contentsOf: le16(16))  // bits per sample
+    wav.append(contentsOf: Array("data".utf8))
+    wav.append(contentsOf: le32(UInt32(pcm.count)))
+    wav.append(pcm)
+    return wav
+  }
+
+  // MARK: PTChannelManagerDelegate
+
+  func channelManager(
+    _ channelManager: PTChannelManager,
+    didActivate audioSession: AVAudioSession
+  ) {
+    var line = "didActivate: activated"
+    do {
+      let p = try AVAudioPlayer(data: CubechatRadioSpike.beepWav())
+      player = p
+      p.prepareToPlay()
+      line += p.play() ? ", played" : ", play() returned false"
+    } catch {
+      line += ", player error: \(error)"
+    }
+    line += ", category=\(audioSession.category.rawValue)"
+    line += ", secondaryAudioShouldBeSilencedHint=\(audioSession.secondaryAudioShouldBeSilencedHint)"
+    line += ", outputVolume=\(audioSession.outputVolume)"
+    log(line)
+    // Clear the participant once the 2 s tone is over, or a second marker
+    // gets "ok" without a new didActivate.
+    let uuid = channelUUID
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+      guard let self, let manager = self.manager else { return }
+      Task { @MainActor in
+        do {
+          try await manager.setActiveRemoteParticipant(nil, channelUUID: uuid)
+          self.log("participant cleared")
+        } catch {
+          self.log("participant clear error: \(error)")
+        }
+      }
+    }
+  }
+
+  func channelManager(
+    _ channelManager: PTChannelManager,
+    didDeactivate audioSession: AVAudioSession
+  ) {
+    player?.stop()
+    player = nil
+    log("didDeactivate")
+  }
+
+  func channelManager(
+    _ channelManager: PTChannelManager,
+    didJoinChannel channelUUID: UUID,
+    reason: PTChannelJoinReason
+  ) {
+    log("didJoinChannel \(channelUUID) reason=\(reason)")
+  }
+
+  func channelManager(
+    _ channelManager: PTChannelManager,
+    didLeaveChannel channelUUID: UUID,
+    reason: PTChannelLeaveReason
+  ) {
+    log("didLeaveChannel \(channelUUID) reason=\(reason)")
+  }
+
+  func channelManager(
+    _ channelManager: PTChannelManager,
+    channelUUID: UUID,
+    didBeginTransmittingFrom source: PTChannelTransmitRequestSource
+  ) {
+    log("didBeginTransmitting source=\(source)")
+  }
+
+  func channelManager(
+    _ channelManager: PTChannelManager,
+    channelUUID: UUID,
+    didEndTransmittingFrom source: PTChannelTransmitRequestSource
+  ) {
+    log("didEndTransmitting source=\(source)")
+  }
+
+  func channelManager(
+    _ channelManager: PTChannelManager,
+    receivedEphemeralPushToken pushToken: Data
+  ) {
+    log("receivedEphemeralPushToken (\(pushToken.count) bytes)")
+  }
+
+  func incomingPushResult(
+    channelManager: PTChannelManager,
+    channelUUID: UUID,
+    pushPayload: [String: Any]
+  ) -> PTPushResult {
+    log("incomingPushResult -> leaveChannel (pushes are not used in the spike)")
+    return .leaveChannel
+  }
+
+  func channelManager(
+    _ channelManager: PTChannelManager,
+    failedToJoinChannel channelUUID: UUID,
+    error: Error
+  ) {
+    log("failedToJoinChannel: \(error)")
+  }
+
+  func channelManager(
+    _ channelManager: PTChannelManager,
+    failedToLeaveChannel channelUUID: UUID,
+    error: Error
+  ) {
+    log("failedToLeaveChannel: \(error)")
+  }
+
+  func channelManager(
+    _ channelManager: PTChannelManager,
+    failedToBeginTransmittingInChannel channelUUID: UUID,
+    error: Error
+  ) {
+    log("failedToBeginTransmitting: \(error)")
+  }
+
+  func channelManager(
+    _ channelManager: PTChannelManager,
+    failedToStopTransmittingInChannel channelUUID: UUID,
+    error: Error
+  ) {
+    log("failedToStopTransmitting: \(error)")
+  }
+
+  // MARK: PTChannelRestorationDelegate
+
+  func channelDescriptor(restoredChannelUUID channelUUID: UUID) -> PTChannelDescriptor {
+    log("channelDescriptor restored \(channelUUID)")
+    return PTChannelDescriptor(name: "cubechat test", image: nil)
   }
 }

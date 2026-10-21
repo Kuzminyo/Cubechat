@@ -12,6 +12,7 @@ import '../../../core/theme/colors.dart';
 import '../../../core/theme/glass.dart';
 import '../../../core/theme/typography.dart';
 import '../../../core/notifications/ios_significant_location.dart';
+import '../../../core/radio_spike.dart';
 import '../../../core/util/cpu_probe.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/frame_stats.dart';
@@ -343,12 +344,21 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
         if (humanizeLogLine(e.line, t) case final friendly?) (e, friendly),
     ];
     if (lines.isEmpty) {
-      return Center(
-        child: Text(
-          t.diagnosticsEmpty,
-          textAlign: TextAlign.center,
-          style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
-        ),
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
+        children: [
+          const _RadioSpikePanel(),
+          Padding(
+            padding: const EdgeInsets.only(top: 40),
+            child: Center(
+              child: Text(
+                t.diagnosticsEmpty,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+              ),
+            ),
+          ),
+        ],
       );
     }
     final time = TextStyle(
@@ -358,9 +368,15 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     );
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
-      itemCount: lines.length,
+      itemCount: lines.length + 1,
       itemBuilder: (_, i) {
-        final (entry, friendly) = lines[i];
+        if (i == 0) {
+          return const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: _RadioSpikePanel(),
+          );
+        }
+        final (entry, friendly) = lines[i - 1];
         final problem = friendly.kind == LogKind.problem;
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 6),
@@ -421,19 +437,39 @@ class _DiagnosticsScreenState extends State<DiagnosticsScreen> {
     // screen full of log lines asked it thirty-odd times for the same answer.
     final line = AppTypography.mono(size: 11.5, color: AppColors.textOnGlass);
 
+    // The stage-0 radio spike panel is the first row of the scrolling log, not
+    // a fixed block above it: a fixed block overflowed the developer layout.
     return entries.isEmpty
-        ? Center(
-            child: Text(
-              'No log entries yet.\nTrigger a connection and come back.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
-            ),
+        ? ListView(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
+            children: [
+              const _RadioSpikePanel(),
+              Padding(
+                padding: const EdgeInsets.only(top: 40),
+                child: Center(
+                  child: Text(
+                    'No log entries yet.\nTrigger a connection and come back.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: AppColors.textOnGlassDim,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           )
         : ListView.builder(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
-            itemCount: entries.length,
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 140),
+            itemCount: entries.length + 1,
             itemBuilder: (_, i) {
-              final e = entries[i];
+              if (i == 0) {
+                return const Padding(
+                  padding: EdgeInsets.only(bottom: 8),
+                  child: _RadioSpikePanel(),
+                );
+              }
+              final e = entries[i - 1];
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 3),
                 child: Text(
@@ -779,6 +815,55 @@ class _WakePanelState extends State<_WakePanel> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Stage-0 walkie-talkie spike (branch spike/ios-ptt, never merged): joins the
+/// PushToTalk test channel and shows the last [RadioSpike.tag] lines.
+class _RadioSpikePanel extends StatelessWidget {
+  const _RadioSpikePanel();
+
+  @override
+  Widget build(BuildContext context) {
+    // Touching the singleton installs its native `log` handler, so lines the
+    // native side wrote at launch are not dropped.
+    RadioSpike.instance;
+    return ListenableBuilder(
+      listenable: DebugLog.instance,
+      builder: (context, _) {
+        final lines = [
+          for (final e in DebugLog.instance.entries)
+            if (e.line.startsWith('[${RadioSpike.tag}]')) e.text,
+        ].take(8).toList();
+        return Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppColors.glass(0.06),
+            border: Border.all(color: AppColors.glass(0.12)),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextButton(
+                onPressed: () => unawaited(RadioSpike.instance.join()),
+                child: const Text('Рація: проба — увійти в канал'),
+              ),
+              for (final line in lines)
+                Text(
+                  line,
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 10.5,
+                    height: 1.3,
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

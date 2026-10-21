@@ -75,6 +75,7 @@ import '../util/app_lifecycle.dart';
 import '../util/cost_meter.dart';
 import '../util/cpu_probe.dart';
 import '../util/debug_log.dart';
+import '../radio_spike.dart';
 import '../util/platform_info.dart';
 import 'announcement.dart';
 import 'ble_gatt_client.dart';
@@ -8443,6 +8444,17 @@ class MessagingService {
             unpadTextPayload(unpacked.body),
             allowMalformed: true,
           );
+          // Stage-0 walkie-talkie spike (spike/ios-ptt): from a known,
+          // non-blocked contact the marker drives PushToTalk and is never
+          // filed as a message; from anyone else it is ordinary text.
+          if (PlatformInfo.isIOS && plaintext.startsWith(RadioSpike.marker)) {
+            final spikeSender = senderPub != null ? _hexOf(senderPub) : peerId;
+            final spikePeer = _ref.read(knownPeersControllerProvider)[spikeSender];
+            if (spikePeer != null && !spikePeer.isBlocked) {
+              unawaited(RadioSpike.instance.incoming(spikePeer.displayName));
+              return;
+            }
+          }
           // A map beacon is transport wearing a text message's clothes: it
           // arrives every 45 seconds while their map is open. Filing it in the
           // conversation would bury the conversation, and — because history is

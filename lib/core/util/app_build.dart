@@ -16,7 +16,7 @@ library;
 ///
 /// Bumped by hand alongside pubspec, and `tool/build_apk.ps1` verifies the two
 /// agree before it will build.
-const String appVersion = '1.0.0';
+const String appVersion = '1.0.1';
 
 /// Which build, in words. Bumped for every APK that leaves this machine so a
 /// tester can say what they are running without reading a number.
