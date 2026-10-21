@@ -125,7 +125,8 @@ Noise/X3DH/Nostr-event framing is implemented in-repo and pinned to test vectors
 | **At rest** | Chat history, roster, keys | AES-encrypted Hive boxes; the AES key + identity private key live in the OS Keystore/Keychain (`flutter_secure_storage`) |
 
 **Two-tier envelope.** Every application message is wrapped as: outer cipher
-(SealedBox `0x01`, X3DH `0x02`, or channel `0x03`) → inner `SignedPayload`
+(SealedBox `0x01`, X3DH `0x02`, channel `0x03`, forward-secret media `0x04`, or
+walkie-talkie `0x05` — see the wire protocol below) → inner `SignedPayload`
 (Ed25519) → typed inner payload. So relays route without decrypting, the
 recipient decrypts, and the signature proves who sent it.
 
@@ -401,6 +402,22 @@ the receiver *before* dispatch (`frame_fragment.dart`) — transparent to dedup,
 replay and relay. The native peripheral side (Swift/Kotlin) queues notifies and
 drains them on the BLE "ready to send" callback, so a media burst no longer
 overruns the transmit queue and aborts the transfer.
+
+**Walkie-talkie chunks are broadcast, and nothing keeps them.** A press of the
+radio button becomes 300 ms `radioChunk` inner payloads (`0xEC`) under their
+own envelope cipher tag, **`0x05`**: `body = [0x05][tag:8][ChaCha20-Poly1305]`,
+always a broadcast (`destHash` all zero), ttl at most 3. A group's key is
+`BLAKE2s(name ‖ password)` on a radio domain (never equal to the text channel
+of the same name); a 1:1 pair's key comes from static-static X25519 between the
+two identity keys, behind a tag that rotates with the hourly peer-id epoch.
+1:1 voice is a broadcast too, on purpose: every phone that relays a frame
+*addressed* to somebody keeps a copy in its store-and-forward cache, and a few
+seconds of voice there pushed out the mail a neighbour was carrying. Chunks are
+never stored, queued or published to Nostr — voice late is worse than none.
+The Ed25519 signature covers the tag, so a chunk signed for one group or pair
+cannot be re-sealed into another and verify as the same speaker. A phone outside
+the group forwards the frame and drops it without a word; an older build sees
+an unknown cipher tag and does the same.
 
 ---
 

@@ -7475,6 +7475,19 @@ class MessagingService {
   /// The full signature (with the signer's Ed25519 key in it), as a room post
   /// has: members of a group need not know each other, and the compact form
   /// can only be checked by somebody who already holds the key.
+  ///
+  /// **The signature covers the tag.** [_radioSignedContext] puts it where a
+  /// directed frame has its destination, so a chunk signed for one group or
+  /// pair cannot be opened, re-sealed unchanged under another key it holds,
+  /// and verified there as the same person speaking. Without it a member of
+  /// two groups could make anyone in one "talk" in the other, and a contact
+  /// could push somebody's private 1:1 chunk into a group. Rooms have the
+  /// same gap — a room post signs the all-zero destination and not its
+  /// channel tag — and it is left alone there because changing what a room
+  /// signs would split every room between old builds and new. Radio has no
+  /// installed base yet, so this is the one moment it can be closed for free.
+  /// The bytes on the wire are unchanged: the envelope's destination is still
+  /// the broadcast zeros; only what the signature is computed over differs.
   static Future<TransportEnvelope> radioEnvelope({
     required Uint8List key,
     required Uint8List tag,
@@ -7491,9 +7504,9 @@ class MessagingService {
     final broadcast = TransportEnvelope.broadcastDest();
     final signed = await SignedPayload.wrap(
       inner: packInnerPayload(InnerPayloadType.radioChunk, chunk.encode()),
-      context: SignedPayload.contextBytes(
-        originPubkeyHash: originHash,
-        destPubkeyHash: broadcast,
+      context: _radioSignedContext(
+        originHash: originHash,
+        tag: tag,
         msgId: msgId,
       ),
       signKeyPair: signKeyPair,
@@ -7511,6 +7524,21 @@ class MessagingService {
       body: _tagBody(_cipherRadio, radioBody),
     );
   }
+
+  /// What a radio signature is computed over: origin, the 8-byte group or
+  /// pair tag in the destination's place, and the msgId. See [radioEnvelope]
+  /// for why the tag and not the broadcast zeros. A tag is exactly as long as
+  /// a routing hash, so the context keeps the layout every signature here has.
+  static Uint8List _radioSignedContext({
+    required Uint8List originHash,
+    required Uint8List tag,
+    required Uint8List msgId,
+  }) =>
+      SignedPayload.contextBytes(
+        originPubkeyHash: originHash,
+        destPubkeyHash: tag,
+        msgId: msgId,
+      );
 
   /// The 1:1 radio key with the contact whose identity key is [pubHex].
   Future<Uint8List?> _radioPairKeyFor(String pubHex) async {
@@ -7538,43 +7566,79 @@ class MessagingService {
   /// Only contacts whose signing key is on file: a pair chunk is believed only
   /// under that key, so a contact without one could never be heard anyway.
   Future<String?> _radioPairContactForTag(String tagHex) async {
-    while (_radioPairTagsBuilding != null) {
-      await _radioPairTagsBuilding;
+    // One build at a time, and shared: a frame that arrives while the table
+    // is being built waits for that build instead of starting a second one.
+    // Three chunks a second land on the first build, so without this each
+    // would redo the whole table.
+    final inFlight = _radioPairTagsBuilding;
+    if (inFlight != null) await inFlight;
+    if (_radioPairTagsStale()) {
+      await (_radioPairTagsBuilding ??= _buildRadioPairTags()
+          .whenComplete(() => _radioPairTagsBuilding = null));
     }
-    final now = DateTime.now();
-    final epoch = PeerId.epochAt(now);
+    return _radioPairTags[tagHex];
+  }
+
+  /// Whether the pair tag table no longer describes this epoch's contacts.
+  /// Synchronous and cheap when nothing changed: an identity check on the
+  /// contact map, then a set comparison only if the map was replaced.
+  bool _radioPairTagsStale() {
+    if (PeerId.epochAt(DateTime.now()) != _radioPairTagsEpoch) return true;
     final peers = _ref.read(knownPeersControllerProvider);
-    if (epoch == _radioPairTagsEpoch && identical(peers, _radioPairTagsFrom)) {
-      return _radioPairTags[tagHex];
+    if (identical(peers, _radioPairTagsFrom)) return false;
+    if (!setEquals(_radioPairCandidates(peers), _radioPairTagsPeers)) {
+      return true;
     }
+    _radioPairTagsFrom = peers;
+    return false;
+  }
+
+  /// Contacts a pair chunk could be believed from: signing key on file, not
+  /// blocked.
+  Set<String> _radioPairCandidates(Map<String, KnownPeer> peers) {
     final notifier = _ref.read(knownPeersControllerProvider.notifier);
-    final ids = <String>{
+    return {
       for (final p in peers.values)
         if (p.signPublicKey != null && !notifier.isBlocked(p.pubkeyHex))
           p.pubkeyHex,
     };
-    if (epoch != _radioPairTagsEpoch || !setEquals(ids, _radioPairTagsPeers)) {
-      final done = Completer<void>();
-      _radioPairTagsBuilding = done.future;
-      try {
-        final tags = <String, String>{};
-        for (final id in ids) {
-          final key = await _radioPairKeyFor(id);
-          if (key == null) continue;
-          for (final e in PeerId.activeEpochs(now)) {
-            tags[_hexOf(await RadioCrypto.derivePairTag(key, e))] = id;
-          }
+  }
+
+  /// How many contacts' tags are worked out between yields to the event
+  /// loop. X25519 here is pure Dart, and a first build over a crowd's worth
+  /// of known peers in one unbroken microtask chain would hold the UI isolate
+  /// for as long as it takes; sixteen at a time keeps each slice to a few
+  /// key agreements.
+  static const int _radioPairTagsPerSlice = 16;
+
+  /// Times the pair tag table was built — for a test that two frames
+  /// arriving together cause one build, not two.
+  @visibleForTesting
+  int debugRadioPairTagBuilds = 0;
+
+  Future<void> _buildRadioPairTags() async {
+    debugRadioPairTagBuilds++;
+    final now = DateTime.now();
+    final peers = _ref.read(knownPeersControllerProvider);
+    final ids = _radioPairCandidates(peers);
+    final tags = <String, String>{};
+    var done = 0;
+    for (final id in ids) {
+      final key = await _radioPairKeyFor(id);
+      if (key != null) {
+        for (final e in PeerId.activeEpochs(now)) {
+          tags[_hexOf(await RadioCrypto.derivePairTag(key, e))] = id;
         }
-        _radioPairTags = tags;
-        _radioPairTagsEpoch = epoch;
-        _radioPairTagsPeers = ids;
-      } finally {
-        _radioPairTagsBuilding = null;
-        done.complete();
+      }
+      if (++done % _radioPairTagsPerSlice == 0) {
+        await Future<void>.delayed(Duration.zero);
+        if (_disposed) return;
       }
     }
+    _radioPairTags = tags;
+    _radioPairTagsEpoch = PeerId.epochAt(now);
+    _radioPairTagsPeers = ids;
     _radioPairTagsFrom = peers;
-    return _radioPairTags[tagHex];
   }
 
   /// Open an inbound radio frame — a group's or a contact's — and hand the
@@ -7623,7 +7687,13 @@ class MessagingService {
       // Strict: believed only under the contact's own signing key. The pair
       // key alone already says it is one of the two of us; the signature
       // says which, and that it is still the key we know.
-      opened = await _openRadio(env, pairKey, sealed, expectedEdPub: signPub);
+      opened = await _openRadio(
+        env,
+        tagBytes,
+        pairKey,
+        sealed,
+        expectedEdPub: signPub,
+      );
     } catch (e) {
       _noteRadioFailure('p:$contactId', 'from ${_short(contactId)}', e);
       return;
@@ -7645,6 +7715,7 @@ class MessagingService {
     try {
       opened = await _openRadio(
         env,
+        tagBytes,
         key,
         sealed,
         expectedEdPub: await _expectedEdPubFor(env.originPubkeyHash),
@@ -7678,18 +7749,21 @@ class MessagingService {
   /// the caller decides how loudly to say so.
   Future<({RadioChunk chunk, Uint8List senderEdPub})> _openRadio(
     TransportEnvelope env,
+    Uint8List tag,
     Uint8List key,
     Uint8List sealed, {
     required Uint8List? expectedEdPub,
   }) async {
     final plain = await RadioCrypto.open(key, sealed);
     // Throws on anything not carrying the full signature, as a room does: a
-    // radio frame with no author is not one we play.
+    // radio frame with no author is not one we play. Checked against the tag
+    // this frame arrived under, so a chunk signed for another group or pair
+    // and re-sealed here does not verify — see [radioEnvelope].
     final verified = await SignedPayload.verify(
       wire: plain,
-      context: SignedPayload.contextBytes(
-        originPubkeyHash: env.originPubkeyHash,
-        destPubkeyHash: env.destPubkeyHash,
+      context: _radioSignedContext(
+        originHash: env.originPubkeyHash,
+        tag: tag,
         msgId: env.msgId,
       ),
       expectedEdPub: expectedEdPub,

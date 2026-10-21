@@ -285,6 +285,28 @@ void main() {
 
   Iterable<String> radioLines() => printed.where((l) => l.startsWith('[RADIO]'));
 
+  /// What somebody holding both keys can do with a radio frame: open it
+  /// under [fromKey] and seal the very same signed bytes under [toKey],
+  /// behind [toTag]. Origin, msgId and signature are untouched.
+  Future<Uint8List> reseal(
+    Uint8List frame, {
+    required Uint8List fromKey,
+    required Uint8List toKey,
+    required Uint8List toTag,
+  }) async {
+    final env = TransportEnvelope.decode(Frame.decode(frame).payload);
+    final plain = await RadioCrypto.open(fromKey, env.body.sublist(9));
+    final sealed = await RadioCrypto.seal(toKey, plain);
+    final moved = TransportEnvelope(
+      originPubkeyHash: env.originPubkeyHash,
+      destPubkeyHash: env.destPubkeyHash,
+      msgId: env.msgId,
+      ttl: env.ttl,
+      body: Uint8List.fromList([0x05, ...toTag, ...sealed]),
+    );
+    return Frame(type: FrameType.transport, payload: moved.encode()).encode();
+  }
+
   test('a radio chunk to an unreachable contact is not held', () async {
     final (container, service) = await start();
 
@@ -533,9 +555,11 @@ void main() {
     final plain = await RadioCrypto.open(key, env.body.sublist(9));
     final verified = await SignedPayload.verify(
       wire: plain,
+      // Signed over the pair tag in the destination's place, not the
+      // envelope's broadcast zeros.
       context: SignedPayload.contextBytes(
         originPubkeyHash: env.originPubkeyHash,
-        destPubkeyHash: env.destPubkeyHash,
+        destPubkeyHash: env.body.sublist(1, 9),
         msgId: env.msgId,
       ),
       expectedEdPub: me.signPublicKey,
@@ -600,6 +624,78 @@ void main() {
     await Future<void>.delayed(Duration.zero);
 
     expect(got.map((g) => g.chunk.seq), [1]);
+  });
+
+  test('a chunk signed for one tag and re-sealed under another is dropped',
+      () async {
+    final (container, service) = await start();
+    final got = await listen(container);
+    final bob = await _Phone.make();
+    final alice = await _Phone.make();
+    addContact(container, bob);
+    final k1 = await RadioCrypto.deriveKey('patrol', 'one');
+    final t1 = await RadioCrypto.deriveTag(k1);
+    final k2 = await RadioCrypto.deriveKey('patrol', 'two');
+    final t2 = await RadioCrypto.deriveTag(k2);
+    // We are in G2 only. Whoever moves the chunk is in G1 too.
+    container.read(radioGroupKeysProvider.notifier).state = {_hex(t2): k2};
+    printed.clear();
+
+    // Bob speaking in G1, moved into G2 unchanged.
+    for (var i = 0; i < 20; i++) {
+      final inG1 = await groupFrame(from: bob, key: k1, tag: t1, seq: i);
+      await service.debugReceiveFrame(
+        'peer-a',
+        await reseal(inG1, fromKey: k1, toKey: k2, toTag: t2),
+      );
+    }
+    // Bob's private chunk to Alice, pushed by Alice into G2.
+    final pairKey = await bob.pairKeyWith(alice.pub);
+    final toAlice = await groupFrame(
+      from: bob,
+      key: pairKey,
+      tag: await RadioCrypto.derivePairTag(pairKey, _epochNow),
+      seq: 50,
+    );
+    await service.debugReceiveFrame(
+      'peer-a',
+      await reseal(toAlice, fromKey: pairKey, toKey: k2, toTag: t2),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(got, isEmpty, reason: 'Bob never spoke in G2');
+    expect(
+      radioLines().length,
+      lessThanOrEqualTo(1),
+      reason: 'once a minute for G2, at most: ${radioLines().join('\n')}',
+    );
+
+    // Control: a chunk Bob really did sign for G2 is heard.
+    await service.debugReceiveFrame(
+      'peer-b',
+      await groupFrame(from: bob, key: k2, tag: t2, seq: 99),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(got.map((g) => g.chunk.seq), [99]);
+  });
+
+  test('frames arriving together share one build of the pair tag table',
+      () async {
+    final (container, service) = await start();
+    final got = await listen(container);
+    final bob = await _Phone.make();
+    addContact(container, bob);
+    final first = await pairFrame(container, from: bob, seq: 1);
+    final second = await pairFrame(container, from: bob, seq: 2);
+
+    await Future.wait([
+      service.debugReceiveFrame('peer-b', first),
+      service.debugReceiveFrame('peer-b', second),
+    ]);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(service.debugRadioPairTagBuilds, 1);
+    expect(got.map((g) => g.chunk.seq).toSet(), {1, 2});
   });
 
   test('a radio chunk addressed to us is refused', () async {
