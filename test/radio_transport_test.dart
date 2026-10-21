@@ -5,8 +5,11 @@ import 'dart:io';
 import 'package:cryptography/cryptography.dart';
 import 'package:cubechat/core/crypto/identity_service.dart';
 import 'package:cubechat/core/crypto/radio_crypto.dart';
+import 'package:cubechat/core/crypto/sealed_box.dart';
+import 'package:cubechat/core/crypto/signed_payload.dart';
 import 'package:cubechat/core/transport/envelope.dart';
 import 'package:cubechat/core/transport/frame.dart';
+import 'package:cubechat/core/transport/inner_payload.dart';
 import 'package:cubechat/core/transport/messaging_service.dart';
 import 'package:cubechat/core/transport/nostr/nostr_signer.dart';
 import 'package:cubechat/core/transport/nostr/nostr_transport.dart';
@@ -95,8 +98,9 @@ class _Relay {
 
 /// Another phone: its own X25519 identity and Ed25519 signing key.
 class _Phone {
-  _Phone._(this.pub, this.signKeyPair, this.signPub);
+  _Phone._(this.keyPair, this.pub, this.signKeyPair, this.signPub);
 
+  final SimpleKeyPair keyPair;
   final Uint8List pub;
   final SimpleKeyPairData signKeyPair;
   final Uint8List signPub;
@@ -107,6 +111,7 @@ class _Phone {
     final x = await X25519().newKeyPair();
     final ed = await Ed25519().newKeyPair();
     return _Phone._(
+      x,
       Uint8List.fromList((await x.extractPublicKey()).bytes),
       await ed.extract(),
       Uint8List.fromList((await ed.extractPublicKey()).bytes),
@@ -115,7 +120,14 @@ class _Phone {
 
   Future<Uint8List> originHash() =>
       PeerId.derive(pub, PeerId.epochAt(DateTime.now()));
+
+  /// The 1:1 radio key this phone shares with the phone whose identity key
+  /// is [theirPub].
+  Future<Uint8List> pairKeyWith(Uint8List theirPub) =>
+      RadioCrypto.derivePairKey(mine: keyPair, myPub: pub, theirPub: theirPub);
 }
+
+int get _epochNow => PeerId.epochAt(DateTime.now());
 
 String _hex(Uint8List b) =>
     b.map((x) => x.toRadixString(16).padLeft(2, '0')).join();
@@ -214,7 +226,7 @@ void main() {
     required Uint8List tag,
     required int seq,
   }) async {
-    final env = await MessagingService.radioGroupEnvelope(
+    final env = await MessagingService.radioEnvelope(
       key: key,
       tag: tag,
       chunk: _chunk(seq),
@@ -226,6 +238,43 @@ void main() {
     );
     return Frame(type: FrameType.transport, payload: env.encode()).encode();
   }
+
+  /// A 1:1 frame from [from] to this phone, as [from] would put it on the
+  /// air in [epoch]. [signer] stands in for somebody else's signature.
+  Future<Uint8List> pairFrame(
+    ProviderContainer c, {
+    required _Phone from,
+    required int seq,
+    int? epoch,
+    Uint8List? key,
+    _Phone? signer,
+  }) async {
+    final me = await c.read(identityProvider.future);
+    final pairKey =
+        key ?? await from.pairKeyWith(Uint8List.fromList(me.publicKey));
+    final tag = await RadioCrypto.derivePairTag(
+      await from.pairKeyWith(Uint8List.fromList(me.publicKey)),
+      epoch ?? _epochNow,
+    );
+    return groupFrame(
+      from: _Phone._(
+        from.keyPair,
+        from.pub,
+        (signer ?? from).signKeyPair,
+        (signer ?? from).signPub,
+      ),
+      key: pairKey,
+      tag: tag,
+      seq: seq,
+    );
+  }
+
+  void addContact(ProviderContainer c, _Phone p) =>
+      c.read(knownPeersControllerProvider.notifier).upsert(
+            pubkeyHex: p.pubHex,
+            displayName: 'Bob',
+            signPublicKey: p.signPub,
+          );
 
   Future<List<RadioInbound>> listen(ProviderContainer c) async {
     final got = <RadioInbound>[];
@@ -239,7 +288,26 @@ void main() {
   test('a radio chunk to an unreachable contact is not held', () async {
     final (container, service) = await start();
 
-    final links = await service.sendRadioToContact(peerHex, _chunk(0));
+    service.debugRadioFrames = [];
+    expect(await service.sendRadioToContact(peerHex, _chunk(0)), 0);
+    expect(
+      service.debugRadioFrames,
+      isEmpty,
+      reason: 'with no link at all, not even built',
+    );
+
+    // Now as if a link were up, so the frame is built and fanned out: it
+    // still reaches nobody, and it is a broadcast — no phone that relays it,
+    // of any build, files it in a store-and-forward cache for anybody.
+    service.debugAssumeLinkUp = true;
+    final links = await service.sendRadioToContact(peerHex, _chunk(1));
+    expect(service.debugRadioFrames, hasLength(1));
+    final env = TransportEnvelope.decode(
+      Frame.decode(service.debugRadioFrames!.single).payload,
+    );
+    expect(env.isBroadcast, isTrue, reason: 'destHash all zero');
+    expect(env.body[0], 0x05, reason: 'the radio cipher byte');
+    expect(env.ttl, lessThanOrEqualTo(3));
 
     expect(links, 0, reason: 'no Bluetooth link: it went nowhere');
     expect(
@@ -284,12 +352,16 @@ void main() {
     expect(nostr.sent, greaterThan(0), reason: 'the relay road is open');
 
     nostr.sent = 0;
+    // Built and fanned out for real, not stopped at "no link".
+    service.debugAssumeLinkUp = true;
+    service.debugRadioFrames = [];
     final key = await RadioCrypto.deriveKey('patrol', '');
     final tag = await RadioCrypto.deriveTag(key);
     for (var i = 0; i < 5; i++) {
       expect(await service.sendRadioToContact(peerHex, _chunk(i)), 0);
       expect(await service.sendRadioToGroup(key, tag, _chunk(i)), 0);
     }
+    expect(service.debugRadioFrames, hasLength(10), reason: 'all built');
     expect(nostr.sent, 0, reason: 'not one chunk was published');
     expect(
       container.read(messagesControllerProvider)[peerHex]!.length,
@@ -399,6 +471,7 @@ void main() {
     final got = await listen(container);
     final me = await container.read(identityProvider.future);
     final self = _Phone._(
+      me.asKeyPair(),
       Uint8List.fromList(me.publicKey),
       me.asSignKeyPair(),
       me.signPublicKey,
@@ -416,26 +489,147 @@ void main() {
     expect(got, isEmpty);
   });
 
-  test('a 1:1 radio chunk reaches radioInbound with no group tag', () async {
+  test('a pair frame reaches radioInbound with the contact as sender',
+      () async {
     final (container, service) = await start();
     final got = await listen(container);
     final bob = await _Phone.make();
-    container.read(knownPeersControllerProvider.notifier).upsert(
-          pubkeyHex: bob.pubHex,
-          displayName: 'Bob',
-          signPublicKey: bob.signPub,
-        );
+    addContact(container, bob);
+
+    await service.debugReceiveFrame(
+      'peer-b',
+      await pairFrame(container, from: bob, seq: 3),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(got, hasLength(1));
+    expect(got.single.senderId, bob.pubHex);
+    expect(got.single.groupTag, isNull);
+    expect(got.single.chunk.seq, 3);
+  });
+
+  test('a chunk sent to a contact opens with the key the contact derives',
+      () async {
+    final (container, service) = await start();
+    final bob = await _Phone.make();
+    addContact(container, bob);
+    service
+      ..debugAssumeLinkUp = true
+      ..debugRadioFrames = [];
+
+    await service.sendRadioToContact(bob.pubHex, _chunk(9));
+
+    final env = TransportEnvelope.decode(
+      Frame.decode(service.debugRadioFrames!.single).payload,
+    );
+    final me = await container.read(identityProvider.future);
+    final key = await bob.pairKeyWith(Uint8List.fromList(me.publicKey));
+    expect(env.isBroadcast, isTrue);
+    expect(
+      env.body.sublist(1, 9),
+      await RadioCrypto.derivePairTag(key, _epochNow),
+      reason: "the tag Bob looks for this hour",
+    );
+    final plain = await RadioCrypto.open(key, env.body.sublist(9));
+    final verified = await SignedPayload.verify(
+      wire: plain,
+      context: SignedPayload.contextBytes(
+        originPubkeyHash: env.originPubkeyHash,
+        destPubkeyHash: env.destPubkeyHash,
+        msgId: env.msgId,
+      ),
+      expectedEdPub: me.signPublicKey,
+    );
+    final inner = unpackInnerPayload(verified.inner);
+    expect(inner.type, InnerPayloadType.radioChunk);
+    expect(RadioChunk.decode(inner.body).seq, 9);
+  });
+
+  test('a pair frame from a non-contact or under the wrong key is dropped',
+      () async {
+    final (container, service) = await start();
+    final got = await listen(container);
+    final bob = await _Phone.make();
+    final mallory = await _Phone.make();
+    addContact(container, bob);
+    printed.clear();
+
+    // Somebody we have never met: their pair tag names no contact.
+    for (var i = 0; i < 10; i++) {
+      await service.debugReceiveFrame(
+        'peer-m',
+        await pairFrame(container, from: mallory, seq: i),
+      );
+    }
+    expect(radioLines(), isEmpty, reason: 'nobody of ours: not a word');
+
+    // Bob's tag this hour, but a body sealed under some other key.
+    final wrong = await RadioCrypto.deriveKey('not', 'the pair key');
+    for (var i = 0; i < 10; i++) {
+      await service.debugReceiveFrame(
+        'peer-m',
+        await pairFrame(container, from: bob, seq: i, key: wrong),
+      );
+    }
+    // Bob's tag and Bob's pair key, signed by somebody else.
+    await service.debugReceiveFrame(
+      'peer-m',
+      await pairFrame(container, from: bob, seq: 0, signer: mallory),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(got, isEmpty);
+    expect(radioLines().length, 1, reason: 'once a minute for Bob, at most');
+  });
+
+  test('a previous-epoch pair tag is still accepted, two epochs old is not',
+      () async {
+    final (container, service) = await start();
+    final got = await listen(container);
+    final bob = await _Phone.make();
+    addContact(container, bob);
+
+    await service.debugReceiveFrame(
+      'peer-b',
+      await pairFrame(container, from: bob, seq: 1, epoch: _epochNow - 1),
+    );
+    await service.debugReceiveFrame(
+      'peer-b',
+      await pairFrame(container, from: bob, seq: 2, epoch: _epochNow - 2),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(got.map((g) => g.chunk.seq), [1]);
+  });
+
+  test('a radio chunk addressed to us is refused', () async {
+    final (container, service) = await start();
+    final got = await listen(container);
+    final bob = await _Phone.make();
+    addContact(container, bob);
     final me = await container.read(identityProvider.future);
     final myPub = Uint8List.fromList(me.publicKey);
-    final env = await MessagingService.radioDirectEnvelope(
-      chunk: _chunk(3),
-      recipientPub: myPub,
-      originHash: await bob.originHash(),
-      destHash: await PeerId.derive(myPub, PeerId.epochAt(DateTime.now())),
-      msgId: TransportEnvelope.newMsgId(initialTtl: 3),
-      ttl: 3,
+    final origin = await bob.originHash();
+    final dest = await PeerId.derive(myPub, _epochNow);
+    final msgId = TransportEnvelope.newMsgId(initialTtl: 3);
+    // What the first cut of this task sent: signed, sealed to us, addressed.
+    final signed = await SignedPayload.wrap(
+      inner: packInnerPayload(InnerPayloadType.radioChunk, _chunk(4).encode()),
+      context: SignedPayload.contextBytes(
+        originPubkeyHash: origin,
+        destPubkeyHash: dest,
+        msgId: msgId,
+      ),
       signKeyPair: bob.signKeyPair,
       senderEdPub: bob.signPub,
+    );
+    final sealed = await SealedBox.seal(signed, myPub);
+    final env = TransportEnvelope(
+      originPubkeyHash: origin,
+      destPubkeyHash: dest,
+      msgId: msgId,
+      ttl: 3,
+      body: Uint8List.fromList([0x01, ...sealed]),
     );
 
     await service.debugReceiveFrame(
@@ -444,9 +638,6 @@ void main() {
     );
     await Future<void>.delayed(Duration.zero);
 
-    expect(got, hasLength(1));
-    expect(got.single.senderId, bob.pubHex);
-    expect(got.single.groupTag, isNull);
-    expect(got.single.chunk.seq, 3);
+    expect(got, isEmpty);
   });
 }

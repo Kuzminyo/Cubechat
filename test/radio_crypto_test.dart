@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart'
-    show SecretBoxAuthenticationError;
+    show SecretBoxAuthenticationError, SimpleKeyPair, X25519;
 import 'package:cubechat/core/crypto/channel_crypto.dart';
 import 'package:cubechat/core/crypto/radio_crypto.dart';
 import 'package:cubechat/features/channels/models/channel.dart';
@@ -99,6 +99,65 @@ void main() {
         RadioCrypto.open(key, Uint8List(27)),
         throwsFormatException,
       );
+    });
+  });
+
+  group('RadioCrypto pair', () {
+    Future<(SimpleKeyPair, Uint8List)> identity() async {
+      final kp = await X25519().newKeyPair();
+      return (kp, Uint8List.fromList((await kp.extractPublicKey()).bytes));
+    }
+
+    test('both sides derive the same pair key', () async {
+      final (a, aPub) = await identity();
+      final (b, bPub) = await identity();
+      final fromA =
+          await RadioCrypto.derivePairKey(mine: a, myPub: aPub, theirPub: bPub);
+      final fromB =
+          await RadioCrypto.derivePairKey(mine: b, myPub: bPub, theirPub: aPub);
+      expect(fromA, equals(fromB));
+      expect(fromA.length, RadioCrypto.keyLen);
+    });
+
+    test("a third party's pair key differs", () async {
+      final (a, aPub) = await identity();
+      final (_, bPub) = await identity();
+      final (c, cPub) = await identity();
+      final ab =
+          await RadioCrypto.derivePairKey(mine: a, myPub: aPub, theirPub: bPub);
+      final cb =
+          await RadioCrypto.derivePairKey(mine: c, myPub: cPub, theirPub: bPub);
+      final ca =
+          await RadioCrypto.derivePairKey(mine: c, myPub: cPub, theirPub: aPub);
+      expect(cb, isNot(equals(ab)));
+      expect(ca, isNot(equals(ab)));
+    });
+
+    test('a pair key is not a group key, nor its tag a group tag', () async {
+      final (a, aPub) = await identity();
+      final (_, bPub) = await identity();
+      final pair =
+          await RadioCrypto.derivePairKey(mine: a, myPub: aPub, theirPub: bPub);
+      final group = await RadioCrypto.deriveKey('', '');
+      expect(pair, isNot(equals(group)));
+      // Fed the very same key bytes, the pair tag and the group tag still do
+      // not agree: the domains keep the two selectors apart.
+      expect(
+        await RadioCrypto.derivePairTag(pair, 0),
+        isNot(equals(await RadioCrypto.deriveTag(pair))),
+      );
+    });
+
+    test('the pair tag is 8 bytes, stable within an epoch, new each epoch',
+        () async {
+      final (a, aPub) = await identity();
+      final (_, bPub) = await identity();
+      final key =
+          await RadioCrypto.derivePairKey(mine: a, myPub: aPub, theirPub: bPub);
+      final t = await RadioCrypto.derivePairTag(key, 493000);
+      expect(t.length, RadioCrypto.tagLen);
+      expect(await RadioCrypto.derivePairTag(key, 493000), equals(t));
+      expect(await RadioCrypto.derivePairTag(key, 493001), isNot(equals(t)));
     });
   });
 }

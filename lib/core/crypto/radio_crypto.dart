@@ -59,6 +59,79 @@ class RadioCrypto {
     return Uint8List.fromList(digest.bytes.sublist(0, tagLen));
   }
 
+  static final _x25519 = X25519();
+
+  static const _pairKeyDomain = 'cubechat-radio-pair-v1';
+  static const _pairTagDomain = 'cubechat-radio-pair-tag-v1';
+
+  /// The 32-byte key two contacts talk 1:1 over the radio with.
+  ///
+  /// Static-static X25519 between our identity key pair [mine] (public half
+  /// [myPub]) and the contact's identity key [theirPub] - the same statics the
+  /// Noise handshakes authenticate, so no new key exists anywhere - then
+  /// BLAKE2s over `domain, NUL, shared, lowPub, highPub`, the same shape as
+  /// [deriveKey]. The two public keys are sorted, so both phones put the same
+  /// bytes in the hash and get the same key; naming them pins the key to this
+  /// pair even though the shared secret alone would already.
+  ///
+  /// Why a shared key at all, and not a frame sealed to the contact: a 1:1
+  /// chunk travels as a broadcast exactly like a group's, because a phone that
+  /// relays a frame *addressed* to somebody keeps a copy for them in its
+  /// store-and-forward cache - and three chunks a second of somebody's voice
+  /// pushed out the mail it was carrying for them inside fifteen seconds.
+  /// Nothing holds a broadcast. Not forward-secret, as a group is not.
+  static Future<Uint8List> derivePairKey({
+    required SimpleKeyPair mine,
+    required Uint8List myPub,
+    required Uint8List theirPub,
+  }) async {
+    if (myPub.length != 32 || theirPub.length != 32) {
+      throw ArgumentError('X25519 public keys must be 32 bytes');
+    }
+    final shared = await _x25519.sharedSecretKey(
+      keyPair: mine,
+      remotePublicKey: SimplePublicKey(theirPub, type: KeyPairType.x25519),
+    );
+    final sharedBytes = await shared.extractBytes();
+    final mineFirst = _compare(myPub, theirPub) <= 0;
+    final material = <int>[
+      ...utf8.encode(_pairKeyDomain),
+      0,
+      ...sharedBytes,
+      ...(mineFirst ? myPub : theirPub),
+      ...(mineFirst ? theirPub : myPub),
+    ];
+    final digest = await _blake.hash(material);
+    return Uint8List.fromList(digest.bytes);
+  }
+
+  /// Public 8-byte selector for a pair in one hour-long [epoch] (unix millis
+  /// ~/ 1 h, the rotating peer id's epoch - `PeerId.epochAt`).
+  ///
+  /// Rotates, unlike a group's tag: a group is a name that anybody in it may
+  /// tell anybody, while a pair tag that never changed would be a label on
+  /// two particular people that a listener could follow for as long as they
+  /// knew each other. The receiver tries the previous, current and next
+  /// epoch, as it does for peer ids.
+  static Future<Uint8List> derivePairTag(Uint8List pairKey, int epoch) async {
+    final epochBytes = Uint8List(8);
+    ByteData.sublistView(epochBytes).setInt64(0, epoch);
+    final material = <int>[
+      ...utf8.encode(_pairTagDomain),
+      ...pairKey,
+      ...epochBytes,
+    ];
+    final digest = await _blake.hash(material);
+    return Uint8List.fromList(digest.bytes.sublist(0, tagLen));
+  }
+
+  static int _compare(Uint8List a, Uint8List b) {
+    for (var i = 0; i < a.length && i < b.length; i++) {
+      if (a[i] != b[i]) return a[i] - b[i];
+    }
+    return a.length - b.length;
+  }
+
   /// Encrypt [plain] under [key]; returns `[nonce:12][ciphertext][mac:16]`.
   ///
   /// The framing is the same as a channel's by design but written out here on
