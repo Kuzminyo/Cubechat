@@ -28,8 +28,7 @@ RadioChunk _chunk(
   );
 }
 
-List<int?> _tags(List<Uint8List?> frames) =>
-    [for (final f in frames) f?[0]];
+List<int?> _tags(List<Uint8List?> frames) => [for (final f in frames) f?[0]];
 
 void main() {
   late DateTime now;
@@ -86,23 +85,45 @@ void main() {
     expect(buffer.push(_chunk(1)), isFalse);
   });
 
-  test('a chunk whose start is older than five seconds is refused', () {
-    // Chunk 0 was meant to be heard at the start; now it is 5.001 s later.
-    advance(5001);
-    expect(buffer.push(_chunk(0)), isFalse);
-    // Chunk 3 of the same press is meant for start + 900 ms: 4.1 s old, fine.
-    expect(buffer.push(_chunk(3)), isTrue);
+  // Ruling 22: freshness is anchored on this phone's arrival of the first
+  // chunk; the sender's clock is only a loose bound against old replays.
+  test('a sender whose clock is six seconds behind is still heard', () {
+    const behind = _startedAtMs - 6000;
+    expect(buffer.push(_chunk(0, startedAtMs: behind)), isTrue);
+    advance(300);
+    expect(buffer.push(_chunk(1, startedAtMs: behind)), isTrue);
+    expect(
+      _tags(buffer.drain()),
+      [...List.filled(15, 0), ...List.filled(15, 1)],
+    );
   });
 
-  test('a chunk exactly five seconds old is still accepted', () {
-    advance(5000);
+  test('a chunk 5.5 s behind its expected arrival is refused', () {
     expect(buffer.push(_chunk(0)), isTrue);
+    // Seq 1 was expected 300 ms after seq 0 arrived.
+    advance(300 + 5500);
+    expect(buffer.push(_chunk(1)), isFalse);
+    // Seq 2, expected at 600 ms, is 5.2 s late: refused too.
+    expect(buffer.push(_chunk(2)), isFalse);
   });
 
-  test('a chunk from further than clockSkew ahead is refused', () {
-    // Sender's clock 30.001 s fast.
-    expect(buffer.push(_chunk(0, startedAtMs: _startedAtMs + 30001)), isFalse);
-    expect(buffer.push(_chunk(0, startedAtMs: _startedAtMs + 30000)), isTrue);
+  test('a chunk exactly five seconds behind its expected arrival plays', () {
+    expect(buffer.push(_chunk(0)), isTrue);
+    advance(300 + 5000);
+    expect(buffer.push(_chunk(1)), isTrue);
+  });
+
+  test('a chunk 61 s off the sender clock is refused, either way', () {
+    // Meant to be heard 61 s ago.
+    advance(61000);
+    expect(buffer.push(_chunk(0)), isFalse);
+    // Meant for 61 s from now.
+    expect(
+      buffer.push(_chunk(0, startedAtMs: _startedAtMs + 2 * 61000)),
+      isFalse,
+    );
+    // Exactly 60 s off is still taken.
+    expect(buffer.push(_chunk(0, startedAtMs: _startedAtMs + 1000)), isTrue);
   });
 
   // Chunks 0 and 1 play, chunk 2 never shows, chunk 3 is queued behind the
@@ -141,6 +162,45 @@ void main() {
     advance(300);
     buffer.drain();
     expect(buffer.push(_chunk(2)), isFalse);
+  });
+
+  test('a wide hole is jumped, not filled with seconds of silence', () {
+    buffer.push(_chunk(0));
+    advance(400);
+    expect(_tags(buffer.drain()), List.filled(15, 0));
+    // Seq 200 is a minute into the press: the sender stalled, or everything
+    // in between was lost.
+    buffer.push(_chunk(200));
+    // The hole is seen, then given its one chunk of grace.
+    expect(buffer.drain(), isEmpty);
+    advance(300);
+    final tags = _tags(buffer.drain());
+    expect(
+      tags.where((t) => t == null).length,
+      lessThanOrEqualTo(3 * RadioChunk.framesPerChunk),
+    );
+    expect(tags.where((t) => t != null).toSet(), {200});
+  });
+
+  test('a hole is as long as the chunk before it', () {
+    RadioChunk short(int seq) => RadioChunk(
+          transmissionId: _id,
+          seq: seq,
+          isLast: false,
+          startedAtMs: _startedAtMs,
+          frames: [
+            for (var i = 0; i < 5; i++) Uint8List.fromList([seq, i]),
+          ],
+        );
+    buffer.push(short(0));
+    buffer.push(short(2));
+    advance(400);
+    expect(_tags(buffer.drain()), List.filled(5, 0));
+    advance(300);
+    expect(
+      _tags(buffer.drain()),
+      [...List.filled(5, null), ...List.filled(5, 2)],
+    );
   });
 
   test('a hole before the first chunk still waits for the prebuffer', () {

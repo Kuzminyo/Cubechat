@@ -575,6 +575,95 @@ void main() {
       });
     });
 
+    test('a stall of more than a second mid-sentence does not lose the rest',
+        () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final g = rig.join('#patrol');
+        rig.ctl.select(g);
+        final tx = _txId(9);
+        final start = rig.nowMs;
+        for (var s = 0; s < 3; s++) {
+          rig.hear('bob', g, _chunk(tx, s, start));
+          async.elapse(const Duration(milliseconds: 300));
+        }
+        // The link stalls for 1.5 s: the floor's 1 s tail lets go.
+        async.elapse(const Duration(milliseconds: 1200));
+        expect(rig.state.floor, isA<Idle>());
+
+        // The rest of the sentence comes through.
+        rig.hear('bob', g, _chunk(tx, 3, start));
+        expect(rig.state.floor, isA<Listening>(), reason: 'busy again');
+        async.elapse(const Duration(milliseconds: 300));
+        rig.hear('bob', g, _chunk(tx, 4, start));
+        expect(rig.state.floor, isA<Listening>());
+        async.elapse(const Duration(milliseconds: 300));
+        rig.hear('bob', g, _chunk(tx, 5, start, last: true));
+        async.elapse(const Duration(seconds: 3));
+
+        final marks = rig.sink.frameMarks;
+        for (var s = 3; s < 6; s++) {
+          expect(
+            marks.where((m) => m ~/ 100 == s).length,
+            RadioChunk.framesPerChunk,
+            reason: 'chunk $s played',
+          );
+        }
+        expect(rig.state.floor, isA<Idle>());
+        rig.dispose();
+      });
+    });
+
+    test('a sender whose clock is six seconds behind is heard', () {
+      final log = _captureRadioLog();
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final g = rig.join('#patrol');
+        rig.ctl.select(g);
+        final tx = _txId(9);
+        final start = rig.nowMs - 6000;
+        rig.hear('bob', g, _chunk(tx, 0, start));
+        async.elapse(const Duration(milliseconds: 300));
+        rig.hear('bob', g, _chunk(tx, 1, start, last: true));
+        async.elapse(const Duration(seconds: 3));
+        expect(rig.sink.frameMarks, [
+          for (var s = 0; s < 2; s++)
+            for (var f = 0; f < RadioChunk.framesPerChunk; f++) s * 100 + f,
+        ]);
+        rig.dispose();
+      });
+      expect(log.where((l) => l.contains('drop tx')), isEmpty);
+    });
+
+    test('a sender a minute out is dropped with one line, not one per chunk',
+        () {
+      final log = _captureRadioLog();
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final g = rig.join('#patrol');
+        rig.ctl.select(g);
+        final start = rig.nowMs - 61000;
+        for (var s = 0; s < 5; s++) {
+          rig.hear('bob', g, _chunk(_txId(9), s, start));
+          async.elapse(const Duration(milliseconds: 300));
+        }
+        // Another stale press within ten seconds: no second line yet.
+        rig.hear('bob', g, _chunk(_txId(8), 0, rig.nowMs - 70000));
+        // Past the ten seconds, a new transmission may say so again.
+        async.elapse(const Duration(seconds: 10));
+        rig.hear('bob', g, _chunk(_txId(7), 0, rig.nowMs - 90000));
+        rig.hear('bob', g, _chunk(_txId(7), 1, rig.nowMs - 90000));
+        async.elapse(const Duration(seconds: 2));
+        expect(rig.sink.written, isEmpty);
+        expect(rig.state.floor, isA<Idle>());
+        rig.dispose();
+      });
+      expect(log, [
+        '[RADIO] drop tx 09090909 from bob: 61.0 s off (clock?)',
+        '[RADIO] drop tx 07070707 from bob: 90.0 s off (clock?)',
+      ]);
+    });
+
     test('inbound for a channel that is not active is not played', () {
       fakeAsync((async) {
         final rig = _Rig(async);

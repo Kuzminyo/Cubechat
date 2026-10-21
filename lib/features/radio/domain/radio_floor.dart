@@ -44,8 +44,8 @@ class RadioFloor {
   RadioFloor({
     required DateTime Function() clock,
     this.tail = const Duration(seconds: 1),
-    this.maxAge = const Duration(seconds: 5),
-    this.clockSkew = const Duration(seconds: 30),
+    this.maxLate = const Duration(seconds: 5),
+    this.maxClockOffset = const Duration(seconds: 60),
   }) : _clock = clock;
 
   final DateTime Function() _clock;
@@ -56,11 +56,18 @@ class RadioFloor {
   final Duration tail;
 
   /// The same limits as `RadioJitterBuffer`. A chunk the buffer would refuse
-  /// as stale or from the future must not win the floor either: a replayed
-  /// press from an hour ago has the smallest `startedAtMs` of all, and would
-  /// otherwise silence whoever is talking.
-  final Duration maxAge;
-  final Duration clockSkew;
+  /// as late or as off the sender's clock must not win the floor either: a
+  /// replayed press from an hour ago has the smallest `startedAtMs` of all,
+  /// and would otherwise silence whoever is talking.
+  ///
+  /// Lateness is against this phone's clock - the first chunk accepted from a
+  /// transmission fixes when it was heard here, and seq N is expected
+  /// (N - firstSeq) * 300 ms later - and the sender's clock is only a loose
+  /// bound of [maxClockOffset] either way. Ruling 22: a phone whose clock
+  /// drifted a few seconds while it was off the network is exactly the phone
+  /// a walkie-talkie is for, and a 5 s rule on `startedAtMs` never heard it.
+  final Duration maxLate;
+  final Duration maxClockOffset;
 
   FloorState _state = const Idle();
 
@@ -77,7 +84,21 @@ class RadioFloor {
   /// was reordered behind that chunk does not reopen the channel.
   Uint8List? _ended;
 
+  /// Where each recent transmission was first heard here, newest last. Kept
+  /// past the tail, so a press that stalls and then carries on is still held
+  /// to when its first chunk came - its resumed chunks are as late as they
+  /// are, not fresh.
+  final List<_Anchor> _anchors = [];
+  static const int _anchorsKept = 8;
+
+  Duration? _staleBy;
+
   FloorState get state => _state;
+
+  /// How far off the chunk the last [onChunk] refused for its timing was -
+  /// late against its expected arrival, or off the sender's clock. Null when
+  /// that call did not refuse it for timing.
+  Duration? get staleBy => _staleBy;
 
   /// Takes the floor for my press. False when somebody else is heard.
   bool tryTalk(Uint8List myTxId, int startedAtMs) {
@@ -98,15 +119,22 @@ class RadioFloor {
   /// True when this chunk belongs to the transmission that should be played.
   bool onChunk(String senderId, RadioChunk chunk) {
     tick();
+    _staleBy = null;
     final now = _clock();
-    final nowMs = now.millisecondsSinceEpoch;
-    final meantAtMs = chunk.startedAtMs +
-        chunk.seq * RadioChunk.chunkDuration.inMilliseconds;
-    if (meantAtMs < nowMs - maxAge.inMilliseconds) return false;
-    if (meantAtMs > nowMs + clockSkew.inMilliseconds) return false;
-
     final id = chunk.transmissionId;
     if (_isMine(id)) return false;
+    final off = _offBy(chunk, now);
+    if (off != null) {
+      _staleBy = off;
+      return false;
+    }
+    final accepted = _decide(senderId, chunk, now);
+    if (accepted) _anchor(chunk, now);
+    return accepted;
+  }
+
+  bool _decide(String senderId, RadioChunk chunk, DateTime now) {
+    final id = chunk.transmissionId;
     final ended = _ended;
     if (ended != null && _sameId(ended, id)) return true;
 
@@ -136,6 +164,34 @@ class RadioFloor {
         _hold(senderId, chunk, now);
         return true;
     }
+  }
+
+  /// How far off [chunk] is when it is too far to take, else null: off the
+  /// sender's clock by more than [maxClockOffset], or more than [maxLate]
+  /// behind when its transmission's first chunk says it should have come.
+  Duration? _offBy(RadioChunk chunk, DateTime now) {
+    final meantAtMs =
+        chunk.startedAtMs + chunk.seq * RadioChunk.chunkDuration.inMilliseconds;
+    final offMs = (now.millisecondsSinceEpoch - meantAtMs).abs();
+    if (offMs > maxClockOffset.inMilliseconds) {
+      return Duration(milliseconds: offMs);
+    }
+    for (final a in _anchors) {
+      if (!_sameId(a.id, chunk.transmissionId)) continue;
+      final expected =
+          a.at.add(RadioChunk.chunkDuration * (chunk.seq - a.firstSeq));
+      final late = now.difference(expected);
+      return late > maxLate ? late : null;
+    }
+    return null;
+  }
+
+  void _anchor(RadioChunk chunk, DateTime now) {
+    if (_anchors.any((a) => _sameId(a.id, chunk.transmissionId))) return;
+    _anchors.add(
+      _Anchor(Uint8List.fromList(chunk.transmissionId), chunk.seq, now),
+    );
+    if (_anchors.length > _anchorsKept) _anchors.removeAt(0);
   }
 
   /// Frees the channel when the speaker has been silent for [tail].
@@ -193,4 +249,12 @@ class RadioFloor {
     }
     return true;
   }
+}
+
+/// When a transmission's first accepted chunk arrived here, and its seq.
+class _Anchor {
+  const _Anchor(this.id, this.firstSeq, this.at);
+  final Uint8List id;
+  final int firstSeq;
+  final DateTime at;
 }

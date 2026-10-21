@@ -117,9 +117,10 @@ class RadioController extends Notifier<RadioState> {
 
   /// Chunks of one press allowed to wait for the transport at once. The
   /// microphone makes one every 300 ms; four waiting means the link has fallen
-  /// more than a second behind, and a chunk that late is about to be dropped
-  /// by every receiver anyway (they refuse anything 5 s old). Dropping it here
-  /// instead keeps the radio from piling up in front of everybody's text.
+  /// more than a second behind, and a chunk that late is on its way to being
+  /// dropped by every receiver anyway (they refuse one 5 s behind where the
+  /// first chunk said it would be). Dropping it here instead keeps the radio
+  /// from piling up in front of everybody's text.
   static const int maxQueuedSends = 4;
 
   /// Longest press. A walkie-talkie turn is seconds; a minute is far past
@@ -160,10 +161,19 @@ class RadioController extends Notifier<RadioState> {
   _Press? _press;
   _Heard? _heard;
 
-  /// Transmissions this phone already closed, so a straggler of one is not
-  /// heard a second time as if it were a new press.
+  /// Transmissions that are over - finished with their last chunk, or lost a
+  /// collision - so a straggler of one is not heard a second time as if it
+  /// were a new press. Not one the floor's tail let go of without a last
+  /// chunk: that may only be a stall, and when its chunks come back they are
+  /// the rest of the sentence.
   final List<Uint8List> _closed = [];
   static const int _closedKept = 8;
+
+  /// Transmissions already named in a `drop tx` line, and when the last such
+  /// line was written: one line per transmission, one per [_staleLogEvery].
+  final List<Uint8List> _staleLogged = [];
+  DateTime? _staleLoggedAt;
+  static const Duration _staleLogEvery = Duration(seconds: 10);
 
   /// Speaker calls in order: start, write and stop are all asynchronous, and a
   /// write that overtook its start would be ignored.
@@ -191,6 +201,8 @@ class RadioController extends Notifier<RadioState> {
     final generation = ++_generation;
     _stored.clear();
     _closed.clear();
+    _staleLogged.clear();
+    _staleLoggedAt = null;
     _silentTouched = false;
 
     // Listened, not read once: the stream belongs to MessagingService, and
@@ -555,6 +567,8 @@ class RadioController extends Notifier<RadioState> {
     if (_closed.any((id) => _sameId(id, chunk.transmissionId))) return;
 
     final accepted = floor.onChunk(m.senderId, chunk);
+    final staleBy = floor.staleBy;
+    if (staleBy != null) _noteStale(m.senderId, chunk, staleBy);
     if (accepted || floor.state is! Idle) _wake();
     final press = _press;
     if (press != null && floor.state is Listening) {
@@ -566,8 +580,9 @@ class RadioController extends Notifier<RadioState> {
       var heard = _heard;
       if (heard == null || !_sameId(heard.txId, chunk.transmissionId)) {
         // A new winner. Whatever the buffer held belongs to a press that is
-        // over or out-talked, and would otherwise hold the buffer shut.
-        _closeHeard(stopNow: false);
+        // over or out-talked, and would otherwise hold the buffer shut. A
+        // press that is still being heard has lost the floor for good.
+        _closeHeard(stopNow: false, over: true);
         buffer.reset();
         heard = _heard = _Heard(
           Uint8List.fromList(chunk.transmissionId),
@@ -578,6 +593,26 @@ class RadioController extends Notifier<RadioState> {
       if (buffer.push(chunk)) heard.note(chunk, _clock());
     }
     _syncFloor();
+  }
+
+  /// One line for a transmission the floor refused for its timing - almost
+  /// always a sender whose clock is a minute or more out, which would
+  /// otherwise be a radio that is silent for no reason anybody can see.
+  void _noteStale(String senderId, RadioChunk chunk, Duration off) {
+    final id = chunk.transmissionId;
+    if (_staleLogged.any((x) => _sameId(x, id))) return;
+    final now = _clock();
+    final last = _staleLoggedAt;
+    if (last != null && now.difference(last) < _staleLogEvery) return;
+    _staleLoggedAt = now;
+    _staleLogged.add(Uint8List.fromList(id));
+    if (_staleLogged.length > _closedKept) _staleLogged.removeAt(0);
+    final short = senderId.length > 8 ? senderId.substring(0, 8) : senderId;
+    DebugLog.instance.log(
+      'RADIO',
+      'drop tx ${radioHex(Uint8List.sublistView(id, 0, 4))} from $short: '
+          '${(off.inMilliseconds / 1000).toStringAsFixed(1)} s off (clock?)',
+    );
   }
 
   static bool _matches(RadioChannel active, RadioInbound m) {
@@ -611,13 +646,15 @@ class RadioController extends Notifier<RadioState> {
       final f = floor.state;
       final stillHeld = f is Listening && _sameId(f.transmissionId, heard.txId);
       if (buffer.finished) {
-        _closeHeard(stopNow: false);
+        _closeHeard(stopNow: false, over: true);
       } else if (!heard.lastArrived && !stillHeld) {
-        // The floor let go after its tail: the last chunk is not coming, and
-        // the buffer would wait for it for ever.
+        // The floor let go after its tail: the buffer would wait for the last
+        // chunk for ever. Not marked over - a second's stall in the middle
+        // of a sentence looks the same from here, and if its chunks come back
+        // the floor takes them as Listening again and they play.
         _closeHeard(stopNow: false);
       } else if (_clock().difference(heard.lastArrival) > _stuckAfter) {
-        _closeHeard(stopNow: false);
+        _closeHeard(stopNow: false, over: heard.lastArrived);
       }
     }
     _syncFloor();
@@ -706,15 +743,19 @@ class RadioController extends Notifier<RadioState> {
   }
 
   /// Ends the transmission being heard: one log line, and the speaker let go
-  /// once what was written has played - or at once, when [stopNow].
-  void _closeHeard({required bool stopNow}) {
+  /// once what was written has played - or at once, when [stopNow]. [over]
+  /// when the transmission itself is over (see [_closed]), not only this
+  /// phone's playback of it.
+  void _closeHeard({required bool stopNow, bool over = false}) {
     final heard = _heard;
     if (heard != null) {
       _heard = null;
       _buffer?.reset();
       heard.decoder?.dispose();
-      _closed.add(heard.txId);
-      if (_closed.length > _closedKept) _closed.removeAt(0);
+      if (over) {
+        _closed.add(heard.txId);
+        if (_closed.length > _closedKept) _closed.removeAt(0);
+      }
       if (heard.count > 0) {
         final latencyMs = math.max(
           0,

@@ -20,7 +20,9 @@ RadioChunk _chunk(
     seq: seq,
     isLast: isLast,
     startedAtMs: startedAtMs,
-    frames: [Uint8List.fromList([1, 2])],
+    frames: [
+      Uint8List.fromList([1, 2]),
+    ],
   );
 }
 
@@ -211,8 +213,38 @@ void main() {
 
   test('a start from a clock far ahead cannot take the floor either', () {
     floor.tryTalk(_id(2), _t0);
-    expect(floor.onChunk('mallory', _chunk(_id(1), _t0 + 31000)), isFalse);
+    expect(floor.onChunk('mallory', _chunk(_id(1), _t0 + 61000)), isFalse);
     expect(floor.state, isA<Talking>());
+    expect(floor.staleBy, const Duration(seconds: 61));
+  });
+
+  // Ruling 22: lateness is measured from when the transmission was first
+  // heard here; the sender's clock only has to be within a minute.
+  test('a sender whose clock is six seconds behind takes the floor', () {
+    expect(floor.onChunk('alice', _chunk(_id(1), _t0 - 6000)), isTrue);
+    expect(floor.state, isA<Listening>());
+    expect(floor.staleBy, isNull);
+  });
+
+  test('a sender-clock age of 61 s is refused', () {
+    expect(floor.onChunk('alice', _chunk(_id(1), _t0 - 61000)), isFalse);
+    expect(floor.state, isA<Idle>());
+    expect(floor.staleBy, const Duration(seconds: 61));
+    expect(floor.onChunk('alice', _chunk(_id(1), _t0 - 60000)), isTrue);
+  });
+
+  test('a chunk 5.5 s behind its expected arrival is refused', () {
+    expect(floor.onChunk('alice', _chunk(_id(1), _t0)), isTrue);
+    // Seq 1 was expected 300 ms after seq 0 came; the tail has long let go,
+    // but the transmission is still held to when it was first heard.
+    advance(300 + 5500);
+    expect(floor.onChunk('alice', _chunk(_id(1), _t0, seq: 1)), isFalse);
+    expect(floor.staleBy, const Duration(milliseconds: 5500));
+    expect(floor.state, isA<Idle>());
+    // 4.9 s behind is a stall, not a replay: it takes the floor back.
+    advance(-600);
+    expect(floor.onChunk('alice', _chunk(_id(1), _t0, seq: 1)), isTrue);
+    expect(floor.state, isA<Listening>());
   });
 
   test('talking is not cut off by the tail timer', () {
