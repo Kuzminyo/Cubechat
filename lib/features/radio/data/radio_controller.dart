@@ -750,7 +750,8 @@ class RadioController extends Notifier<RadioState> {
       _speakerOpen = true;
       _playEnd = now;
       final silent = state.playInSilentMode;
-      _audioDo(() => _sink.start(playInSilentMode: silent));
+      final inCall = _inCall();
+      _audioDo(() => _sink.start(playInSilentMode: silent, inCall: inCall));
     }
     // From the later of now and the end of what is queued: a gap in what was
     // written (the buffer waiting on a hole) is a gap the speaker sat idle in.
@@ -821,8 +822,20 @@ class RadioController extends Notifier<RadioState> {
     if (!_speakerOpen) return;
     _speakerOpen = false;
     _playEnd = null;
-    _audioDo(_sink.stop);
+    final inCall = _inCall();
+    _audioDo(() => _sink.stop(inCall: inCall));
     _syncFloor();
+  }
+
+  /// [_callBusy] for the speaker's sake. It reads another provider, which a
+  /// teardown may run after; not knowing is "no call", as it was before Dart
+  /// said anything about it.
+  bool _inCall() {
+    try {
+      return _callBusy();
+    } catch (_) {
+      return false;
+    }
   }
 
   void _audioDo(Future<void> Function() op) {
@@ -866,7 +879,8 @@ class RadioController extends Notifier<RadioState> {
       // Through the chain: a start or write still queued in it would
       // otherwise run after this stop and reopen the player with nobody left
       // to close it.
-      _audioDo(_sink.stop);
+      final inCall = _inCall();
+      _audioDo(() => _sink.stop(inCall: inCall));
     }
   }
 

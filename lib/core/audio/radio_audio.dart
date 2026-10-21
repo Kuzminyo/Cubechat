@@ -13,13 +13,16 @@ import '../util/debug_log.dart';
 abstract class RadioAudioSink {
   /// Opens the speaker for 48 kHz mono PCM16. [playInSilentMode] decides
   /// whether the ring/silent switch (and Android's media volume) can mute it.
-  Future<void> start({required bool playInSilentMode});
+  /// [inCall] says a voice call owns the audio session, which iOS must then
+  /// leave exactly as the call set it.
+  Future<void> start({required bool playInSilentMode, required bool inCall});
 
   /// Plays [pcm] after whatever is already queued. Ignored before [start].
   Future<void> write(Int16List pcm);
 
-  /// Lets the speaker go. Harmless when nothing is playing.
-  Future<void> stop();
+  /// Lets the speaker go. Harmless when nothing is playing. [inCall] as for
+  /// [start]: a call that began while the radio played must keep its session.
+  Future<void> stop({bool inCall = false});
 }
 
 /// The phone's own audio output: `AudioTrack` on Android, `AVAudioEngine` on
@@ -44,11 +47,15 @@ class PlatformRadioAudio implements RadioAudioSink {
   bool _open = false;
 
   @override
-  Future<void> start({required bool playInSilentMode}) async {
+  Future<void> start({
+    required bool playInSilentMode,
+    required bool inCall,
+  }) async {
     _open = true;
     await _invoke('start', <String, Object>{
       'sampleRate': sampleRate,
       'playInSilentMode': playInSilentMode,
+      'inCall': inCall,
     });
   }
 
@@ -66,10 +73,10 @@ class PlatformRadioAudio implements RadioAudioSink {
   }
 
   @override
-  Future<void> stop() async {
+  Future<void> stop({bool inCall = false}) async {
     if (!_open) return;
     _open = false;
-    await _invoke('stop');
+    await _invoke('stop', <String, Object>{'inCall': inCall});
   }
 
   Future<void> _invoke(String method, [Object? arguments]) async {
@@ -83,4 +90,5 @@ class PlatformRadioAudio implements RadioAudioSink {
   }
 }
 
-final radioAudioProvider = Provider<RadioAudioSink>((_) => PlatformRadioAudio());
+final radioAudioProvider =
+    Provider<RadioAudioSink>((_) => PlatformRadioAudio());

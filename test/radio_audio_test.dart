@@ -27,13 +27,18 @@ void main() {
   test('write sends pcm bytes in order and start passes the silent flag',
       () async {
     final audio = PlatformRadioAudio();
-    await audio.start(playInSilentMode: true);
+    await audio.start(playInSilentMode: true, inCall: false);
     await audio.write(Int16List.fromList([1, -2, 256]));
     await audio.write(Int16List.fromList([-32768, 32767]));
     await audio.stop();
 
     expect(calls.map((c) => c.method), ['start', 'write', 'write', 'stop']);
-    expect(calls[0].arguments, {'sampleRate': 48000, 'playInSilentMode': true});
+    expect(calls[0].arguments, {
+      'sampleRate': 48000,
+      'playInSilentMode': true,
+      'inCall': false,
+    });
+    expect(calls[3].arguments, {'inCall': false});
     // Little-endian PCM16: 1 -> 01 00, -2 -> FE FF, 256 -> 00 01.
     expect(
       calls[1].arguments,
@@ -47,8 +52,18 @@ void main() {
 
   test('start passes playInSilentMode false through', () async {
     final audio = PlatformRadioAudio();
-    await audio.start(playInSilentMode: false);
+    await audio.start(playInSilentMode: false, inCall: false);
     expect(calls.single.arguments['playInSilentMode'], false);
+  });
+
+  test('inCall goes to the platform on start and on stop', () async {
+    // iOS leaves the audio session exactly as a call set it, and is told so
+    // rather than guessing from the session's category and mode.
+    final audio = PlatformRadioAudio();
+    await audio.start(playInSilentMode: true, inCall: true);
+    await audio.stop(inCall: true);
+    expect(calls[0].arguments['inCall'], true);
+    expect(calls[1].arguments, {'inCall': true});
   });
 
   test('write before start is not sent', () async {
@@ -59,7 +74,7 @@ void main() {
 
   test('write after stop is not sent', () async {
     final audio = PlatformRadioAudio();
-    await audio.start(playInSilentMode: false);
+    await audio.start(playInSilentMode: false, inCall: false);
     await audio.stop();
     calls.clear();
     await audio.write(Int16List.fromList([1]));
@@ -68,7 +83,7 @@ void main() {
 
   test('stop after stop is harmless', () async {
     final audio = PlatformRadioAudio();
-    await audio.start(playInSilentMode: false);
+    await audio.start(playInSilentMode: false, inCall: false);
     await audio.stop();
     await audio.stop();
     // The second stop must neither throw nor reach the platform: stopping a
@@ -81,7 +96,7 @@ void main() {
       throw PlatformException(code: 'audio');
     });
     final audio = PlatformRadioAudio();
-    await audio.start(playInSilentMode: false);
+    await audio.start(playInSilentMode: false, inCall: false);
     await audio.write(Int16List.fromList([1]));
     await audio.stop();
   });

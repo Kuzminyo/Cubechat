@@ -90,9 +90,17 @@ class _FakeSink implements RadioAudioSink {
   final events = <({String what, DateTime at})>[];
   final written = <Int16List>[];
 
+  /// The inCall each start and stop was given, in order.
+  final inCall = <bool>[];
+
   @override
-  Future<void> start({required bool playInSilentMode}) async =>
-      events.add((what: 'start', at: now()));
+  Future<void> start({
+    required bool playInSilentMode,
+    required bool inCall,
+  }) async {
+    this.inCall.add(inCall);
+    events.add((what: 'start', at: now()));
+  }
 
   @override
   Future<void> write(Int16List pcm) async {
@@ -101,7 +109,10 @@ class _FakeSink implements RadioAudioSink {
   }
 
   @override
-  Future<void> stop() async => events.add((what: 'stop', at: now()));
+  Future<void> stop({bool inCall = false}) async {
+    this.inCall.add(inCall);
+    events.add((what: 'stop', at: now()));
+  }
 
   /// First sample of every 20 ms frame played, in order.
   List<int> get frameMarks => [
@@ -488,6 +499,27 @@ void main() {
         rig.hear('bob', g, _chunk(_txId(9), 0, rig.nowMs, last: true));
         async.elapse(const Duration(seconds: 2));
         expect(rig.sink.frameMarks, [for (var f = 0; f < 15; f++) f]);
+        rig.dispose();
+      });
+    });
+
+    test('a call that starts mid-sentence stops the speaker as a call', () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final g = rig.join('#patrol');
+        rig.ctl.select(g);
+        final tx = _txId(9);
+        final start = rig.nowMs;
+        rig.hear('bob', g, _chunk(tx, 0, start));
+        rig.hear('bob', g, _chunk(tx, 1, start));
+        async.elapse(const Duration(milliseconds: 200));
+        expect(rig.sink.events.first.what, 'start');
+        rig.callBusy = true;
+        async.elapse(const Duration(milliseconds: 200));
+        expect(rig.sink.events.last.what, 'stop');
+        // Started outside a call; stopped inside one, which iOS must leave
+        // the audio session to.
+        expect(rig.sink.inCall, [false, true]);
         rig.dispose();
       });
     });

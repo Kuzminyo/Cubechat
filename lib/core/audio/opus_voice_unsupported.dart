@@ -28,7 +28,11 @@ Future<Uint8List> decodeOggOpusToWav(Uint8List ogg) async =>
 /// catches it and the radio says it is unavailable here. [library] is
 /// `Object?` because `OpusLibrary` is an ffi type the web does not have.
 class OpusVoiceEncoder {
-  OpusVoiceEncoder([Object? library, int bitRate = OpusVoice.bitRate]) {
+  OpusVoiceEncoder({
+    Object? library,
+    int bitRate = OpusVoice.bitRate,
+    bool vbr = true,
+  }) {
     throw UnsupportedError('Opus needs dart:ffi');
   }
 

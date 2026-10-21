@@ -15,7 +15,11 @@ import Foundation
 /// (rule 8 of the `calls` skill: that mode must never be undone). Changing the
 /// category from here would drop the call's echo cancellation and its route,
 /// so in that case this plays into the session as it is and touches nothing —
-/// not on start, and not on stop.
+/// not on start, and not on stop. Dart says whether a call is up (`inCall` on
+/// both methods, from the call controller's phase). This used to be guessed
+/// from the session's category and mode, which is wrong both ways: anything
+/// else in `.playAndRecord` / `.voiceChat` looked like a call, and a call
+/// still ringing, before CallKit has set the session, did not.
 ///
 /// Everything runs on one serial queue, and Flutter's replies go out on the
 /// main thread.
@@ -67,8 +71,13 @@ final class CubechatRadioAudioPlugin: NSObject {
       let args = call.arguments as? [String: Any]
       let sampleRate = (args?["sampleRate"] as? NSNumber)?.doubleValue ?? 48_000
       let playInSilentMode = (args?["playInSilentMode"] as? Bool) ?? false
+      let inCall = (args?["inCall"] as? Bool) ?? false
       queue.async {
-        let error = self.start(sampleRate: sampleRate, playInSilentMode: playInSilentMode)
+        let error = self.start(
+          sampleRate: sampleRate,
+          playInSilentMode: playInSilentMode,
+          inCall: inCall
+        )
         DispatchQueue.main.async {
           if let error {
             result(FlutterError(code: "audio", message: error, details: nil))
@@ -83,8 +92,9 @@ final class CubechatRadioAudioPlugin: NSObject {
       guard let data = (call.arguments as? FlutterStandardTypedData)?.data else { return }
       queue.async { self.write(data) }
     case "stop":
+      let inCall = ((call.arguments as? [String: Any])?["inCall"] as? Bool) ?? false
       queue.async {
-        self.teardown()
+        self.teardown(inCall: inCall)
         DispatchQueue.main.async { result(nil) }
       }
     default:
@@ -92,19 +102,14 @@ final class CubechatRadioAudioPlugin: NSObject {
     }
   }
 
-  /// A call is up: the session is already `.playAndRecord` / `.voiceChat`.
-  private func callOwnsSession(_ session: AVAudioSession) -> Bool {
-    return session.category == .playAndRecord && session.mode == .voiceChat
-  }
-
   /// Returns an error message, or nil when the speaker is open.
-  private func start(sampleRate: Double, playInSilentMode: Bool) -> String? {
+  private func start(sampleRate: Double, playInSilentMode: Bool, inCall: Bool) -> String? {
     // "Start twice restarts cleanly": the first engine is gone before the
     // second is built.
-    teardown()
+    teardown(inCall: inCall)
     let session = AVAudioSession.sharedInstance()
     do {
-      if !callOwnsSession(session) {
+      if !inCall {
         // `.playback` ignores the ring/silent switch; `.ambient` obeys it,
         // which is the point of the "talk in silent mode" toggle. `.playback`
         // ducks other audio under the voice (the Android side asks for
@@ -130,7 +135,7 @@ final class CubechatRadioAudioPlugin: NSObject {
           interleaved: false
         )
       else {
-        teardown()
+        teardown(inCall: inCall)
         return "no audio format for \(sampleRate) Hz"
       }
       let engine = AVAudioEngine()
@@ -156,7 +161,7 @@ final class CubechatRadioAudioPlugin: NSObject {
       }
       return nil
     } catch {
-      teardown()
+      teardown(inCall: inCall)
       return "\(error)"
     }
   }
@@ -167,7 +172,11 @@ final class CubechatRadioAudioPlugin: NSObject {
       try engine.start()
       node.play()
     } catch {
-      teardown()
+      // No word from Dart here, so an engine that will not restart is let go
+      // as if no call were up. A call coming up is answered by the
+      // controller's own stop, with `inCall`, within a tick (100 ms); only a
+      // restart that fails inside that tick hands the session back early.
+      teardown(inCall: false)
     }
   }
 
@@ -204,8 +213,9 @@ final class CubechatRadioAudioPlugin: NSObject {
   }
 
   /// Stops playback and, if this plugin turned the session on and no call has
-  /// taken it since, turns it off and tells other apps they can resume.
-  private func teardown() {
+  /// taken it since ([inCall], from Dart), turns it off and tells other apps
+  /// they can resume.
+  private func teardown(inCall: Bool) {
     generation += 1
     queuedFrames = 0
     if let observer = configObserver {
@@ -219,13 +229,15 @@ final class CubechatRadioAudioPlugin: NSObject {
     format = nil
     if activatedSession {
       activatedSession = false
-      let session = AVAudioSession.sharedInstance()
       // A call that started while we were playing now owns the session;
       // deactivating it would end the call's audio.
-      if !callOwnsSession(session) {
+      if !inCall {
         // Throws when something else is still using the session; then it is
         // not ours to turn off anyway.
-        try? session.setActive(false, options: .notifyOthersOnDeactivation)
+        try? AVAudioSession.sharedInstance().setActive(
+          false,
+          options: .notifyOthersOnDeactivation
+        )
       }
     }
   }

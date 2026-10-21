@@ -25,10 +25,20 @@ class OpusLibrary {
           'opus_encoder_create',
         ),
         _encode = lib.lookupFunction<
-            Int32 Function(Pointer<Void>, Pointer<Int16>, Int32, Pointer<Uint8>,
-                Int32,),
+            Int32 Function(
+              Pointer<Void>,
+              Pointer<Int16>,
+              Int32,
+              Pointer<Uint8>,
+              Int32,
+            ),
             int Function(
-                Pointer<Void>, Pointer<Int16>, int, Pointer<Uint8>, int,)>(
+              Pointer<Void>,
+              Pointer<Int16>,
+              int,
+              Pointer<Uint8>,
+              int,
+            )>(
           'opus_encode',
         ),
         _encoderCtlInt = lib.lookupFunction<
@@ -49,10 +59,22 @@ class OpusLibrary {
           'opus_decoder_create',
         ),
         _decode = lib.lookupFunction<
-            Int32 Function(Pointer<Void>, Pointer<Uint8>, Int32, Pointer<Int16>,
-                Int32, Int32,),
+            Int32 Function(
+              Pointer<Void>,
+              Pointer<Uint8>,
+              Int32,
+              Pointer<Int16>,
+              Int32,
+              Int32,
+            ),
             int Function(
-                Pointer<Void>, Pointer<Uint8>, int, Pointer<Int16>, int, int,)>(
+              Pointer<Void>,
+              Pointer<Uint8>,
+              int,
+              Pointer<Int16>,
+              int,
+              int,
+            )>(
           'opus_decode',
         ),
         _decoderDestroy = lib.lookupFunction<Void Function(Pointer<Void>),
@@ -92,8 +114,14 @@ class OpusLibrary {
   final int Function(Pointer<Void>, int, Pointer<Int32>) _encoderCtlOut;
   final void Function(Pointer<Void>) _encoderDestroy;
   final Pointer<Void> Function(int, int, Pointer<Int32>) _decoderCreate;
-  final int Function(Pointer<Void>, Pointer<Uint8>, int, Pointer<Int16>, int,
-      int,) _decode;
+  final int Function(
+    Pointer<Void>,
+    Pointer<Uint8>,
+    int,
+    Pointer<Int16>,
+    int,
+    int,
+  ) _decode;
   final void Function(Pointer<Void>) _decoderDestroy;
 }
 
@@ -122,8 +150,17 @@ class OpusVoiceEncoder {
   /// [bitRate] defaults to the voice-note rate; the walkie-talkie asks for far
   /// less, because its chunks share a Bluetooth link with everything else and
   /// a 20 ms frame at 8 kbit/s is about 20 bytes.
-  OpusVoiceEncoder([OpusLibrary? library, int bitRate = OpusVoice.bitRate])
-      : _lib = library ?? OpusLibrary.instance {
+  ///
+  /// [vbr] false is hard CBR: every packet the same size. Voice notes keep
+  /// VBR - a note is sealed whole and its length says only how long it is -
+  /// but a walkie-talkie chunk goes on the air as it is spoken, and with VBR
+  /// its size would rise and fall with speech and pauses for anyone counting
+  /// bytes, the way the README pads text so its length says nothing.
+  OpusVoiceEncoder({
+    OpusLibrary? library,
+    int bitRate = OpusVoice.bitRate,
+    bool vbr = true,
+  }) : _lib = library ?? OpusLibrary.instance {
     final error = calloc<Int32>();
     try {
       _state = _lib._encoderCreate(
@@ -136,7 +173,7 @@ class OpusVoiceEncoder {
         throw OpusException('opus_encoder_create', error.value);
       }
       _ctl(_Opus.setBitrate, bitRate);
-      _ctl(_Opus.setVbr, 1);
+      _ctl(_Opus.setVbr, vbr ? 1 : 0);
       _ctl(_Opus.setComplexity, 10);
       _ctl(_Opus.setSignal, _Opus.signalVoice);
       final out = calloc<Int32>();
@@ -254,7 +291,7 @@ class OpusVoiceDecoder {
 /// round trip through the plugin, and it cannot drift from the audio.
 class OpusNoteWriter {
   OpusNoteWriter({OpusLibrary? library})
-      : _encoder = OpusVoiceEncoder(library);
+      : _encoder = OpusVoiceEncoder(library: library);
 
   final OpusVoiceEncoder _encoder;
   final List<Uint8List> _packets = <Uint8List>[];
@@ -388,7 +425,8 @@ Future<Uint8List> decodeOggOpusToWav(
     }
     final ch = stream.head.channels;
     final start = math.min(stream.head.preSkip * ch, at);
-    final end = math.min((stream.head.preSkip + stream.audibleSamples) * ch, at);
+    final end =
+        math.min((stream.head.preSkip + stream.audibleSamples) * ch, at);
     return wavFromPcm16(
       Int16List.sublistView(pcm, start, math.max(start, end)),
       channels: ch,

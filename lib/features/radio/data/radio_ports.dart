@@ -129,8 +129,12 @@ class OpusRadioCodec implements RadioCodec {
   /// everybody's text. Speech at 8 kbit/s is narrowband but clear.
   static const int bitRate = 8000;
 
+  /// Hard CBR, not the voice note's VBR: a chunk's length must not say when
+  /// somebody is speaking and when they paused, to anyone on the air counting
+  /// bytes - the README pads text for the same reason.
   @override
-  RadioEncoder encoder() => _OpusEncoder(OpusVoiceEncoder(null, bitRate));
+  RadioEncoder encoder() =>
+      _OpusEncoder(OpusVoiceEncoder(bitRate: bitRate, vbr: false));
 
   @override
   RadioDecoder decoder() => _OpusDecoder(OpusVoiceDecoder());

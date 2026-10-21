@@ -52,8 +52,13 @@ void main() {
     // ones that split a sample in two.
     final bytes = pcmBytes(input);
     for (var at = 0; at < bytes.length; at += 1023) {
-      writer.add(Uint8List.sublistView(
-          bytes, at, math.min(at + 1023, bytes.length),),);
+      writer.add(
+        Uint8List.sublistView(
+          bytes,
+          at,
+          math.min(at + 1023, bytes.length),
+        ),
+      );
     }
     expect(writer.duration.inMilliseconds, 1000);
 
@@ -83,8 +88,11 @@ void main() {
     final bytesPerSecond =
         stream.packets.fold<int>(0, (n, p) => n + p.length) / 5;
     expect(bytesPerSecond, lessThan(OpusVoice.bitRate / 8 * 1.25));
-    expect(bytesPerSecond, lessThan(64000 / 8 / 1.5),
-        reason: 'the point of the switch is less airtime, not more',);
+    expect(
+      bytesPerSecond,
+      lessThan(64000 / 8 / 1.5),
+      reason: 'the point of the switch is less airtime, not more',
+    );
   });
 
   test('a quiet voice is still there after the codec', () async {
@@ -128,9 +136,34 @@ void main() {
     expect(out.length / 48, closeTo(1500, 1));
   });
 
+  test('the radio rate in CBR makes every packet the same size', () {
+    if (lib == null) return markTestSkipped('libopus for Windows not found');
+    // Speech-like tone, then silence: VBR shrinks the silence, CBR must not,
+    // or a chunk's length would say when somebody paused.
+    final tone = sine(0.4);
+    final quiet = Int16List(tone.length);
+    List<int> sizes(OpusVoiceEncoder e) => [
+          for (final pcm in [tone, quiet])
+            for (var o = 0; o < pcm.length; o += OpusVoice.frameSamples)
+              e
+                  .encode(
+                    Int16List.sublistView(pcm, o, o + OpusVoice.frameSamples),
+                  )
+                  .length,
+        ];
+    final cbr = OpusVoiceEncoder(library: lib, bitRate: 8000, vbr: false);
+    final vbr = OpusVoiceEncoder(library: lib, bitRate: 8000);
+    final cbrSizes = sizes(cbr);
+    final vbrSizes = sizes(vbr);
+    cbr.dispose();
+    vbr.dispose();
+    expect(cbrSizes.toSet(), hasLength(1), reason: '$cbrSizes');
+    expect(vbrSizes.toSet().length, greaterThan(1), reason: '$vbrSizes');
+  });
+
   test('the encoder reports its own delay as the pre-skip', () {
     if (lib == null) return markTestSkipped('libopus for Windows not found');
-    final encoder = OpusVoiceEncoder(lib);
+    final encoder = OpusVoiceEncoder(library: lib);
     expect(encoder.lookahead, inInclusiveRange(120, 960));
     encoder.dispose();
     expect(OggOpus.granuleRate, OpusVoice.sampleRate);

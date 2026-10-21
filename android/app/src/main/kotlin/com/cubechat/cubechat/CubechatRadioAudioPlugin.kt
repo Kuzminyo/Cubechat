@@ -2,6 +2,7 @@ package com.cubechat.cubechat
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
@@ -93,6 +94,9 @@ class CubechatRadioAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
         }
         when (call.method) {
             "start" -> {
+                // "inCall" is not read here: Android has no shared session to
+                // keep its hands off, and the radio does not play during a
+                // call anyway (the controller drops chunks while one is up).
                 val sampleRate = call.argument<Int>("sampleRate") ?: SAMPLE_RATE
                 val silentOk = call.argument<Boolean>("playInSilentMode") ?: false
                 val gen = ++generation
@@ -139,9 +143,19 @@ class CubechatRadioAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
             // Android; USAGE_MEDIA follows the media volume and is silenced
             // with it. The content is speech either way, which is what lets
             // the system treat it as a voice and not as music.
+            //
+            // But an alarm is also played out of the loudspeaker when earbuds
+            // or a headset are in - the policy makes sure an alarm is heard
+            // even if the headphones are lying on the table - and a private
+            // 1:1 message would then be read out to the room. With something
+            // on the user's ears there is no silent switch to get past anyway:
+            // media goes to the earbuds and only there. Checked per start, and
+            // the controller starts once per transmission, so plugging in
+            // earbuds takes effect from the next one.
+            val alarm = playInSilentMode && !privateOutputPresent(ctx)
             val attrs = AudioAttributes.Builder()
                 .setUsage(
-                    if (playInSilentMode) {
+                    if (alarm) {
                         AudioAttributes.USAGE_ALARM
                     } else {
                         AudioAttributes.USAGE_MEDIA
@@ -178,13 +192,48 @@ class CubechatRadioAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
                 created.release()
                 return
             }
-            requestFocus(ctx, attrs, playInSilentMode)
+            requestFocus(ctx, attrs, alarm)
             created.play()
             track = created
         } catch (e: Throwable) {
             // No speaker is a lost message, never a crash on the worker.
             Log.e(TAG, "start failed", e)
             release()
+        }
+    }
+
+    /**
+     * Whether a wired headset or headphones, a USB headset, Bluetooth audio
+     * (A2DP, SCO, LE audio) or a hearing aid is connected as an output - one
+     * that USAGE_ALARM would duplicate to the loudspeaker. Types newer than
+     * minSdk 24 are only asked for where the OS has them.
+     */
+    private fun privateOutputPresent(ctx: Context): Boolean {
+        val am = ctx.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return false
+        val types = mutableSetOf(
+            AudioDeviceInfo.TYPE_WIRED_HEADSET,
+            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            types.add(AudioDeviceInfo.TYPE_USB_HEADSET)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            types.add(AudioDeviceInfo.TYPE_HEARING_AID)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            types.add(AudioDeviceInfo.TYPE_BLE_HEADSET)
+            types.add(AudioDeviceInfo.TYPE_BLE_SPEAKER)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            types.add(AudioDeviceInfo.TYPE_BLE_BROADCAST)
+        }
+        return try {
+            am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { it.type in types }
+        } catch (e: Throwable) {
+            Log.e(TAG, "output devices unreadable", e)
+            false
         }
     }
 
