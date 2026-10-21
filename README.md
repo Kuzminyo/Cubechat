@@ -416,8 +416,12 @@ seconds of voice there pushed out the mail a neighbour was carrying. Chunks are
 never stored, queued or published to Nostr — voice late is worse than none.
 The Ed25519 signature covers the tag, so a chunk signed for one group or pair
 cannot be re-sealed into another and verify as the same speaker. A phone outside
-the group forwards the frame and drops it without a word; an older build sees
-an unknown cipher tag and does the same.
+the group, or not tuned to it, forwards the frame and drops it without a word
+and without any crypto: only the channel the radio is tuned to is opened. An
+older build never sees the `0xEC` inside — it sits inside `0x05`. It forwards
+the `0x05` broadcast (that happens before the cipher is read) and logs one
+collapsed `[CRYPTO] drop transport … unknown cipher tag 0x5` line for the
+first copy of each frame; the third hop logs `ttl exhausted`.
 
 ---
 

@@ -334,13 +334,18 @@ enum InnerPayloadType {
   /// 0xEC was the lowest byte the wire-protocol script printed as free on
   /// 2026-10-21 (0xEC-0xEF and 0xFD-0xFF were). A type, not a text URI: it
   /// is a new chunk stream, a few dozen a second, and nothing that belongs
-  /// in a chat row. [unpackInnerPayload] throws a FormatException on a type it
-  /// does not know; the callers catch it, so an old build drops the frame -
-  /// logged as a malformed inner in a channel frame, as a failed SealedBox
-  /// open (with a stack) on the direct path, skipped without a line from the
-  /// relay buffer. Nothing is shown to the user, which is exactly right for
-  /// radio: a phone that cannot play the voice simply hears nothing, and there
-  /// is no half-delivered message to show.
+  /// in a chat row.
+  ///
+  /// An old build never sees this byte: a radio chunk travels only inside
+  /// envelope cipher 0x05, and the old build stops at that. It forwards the
+  /// 0x05 broadcast for the mesh (that happens before the cipher is read),
+  /// then logs one `[CRYPTO] drop transport from <peer>: unknown cipher tag
+  /// 0x5` line for the first copy of each frame - later copies stop at dedup,
+  /// and DebugLog collapses the repeats into one line - and the phone at the
+  /// third hop logs `[MESH] not forwarding transport: ttl exhausted`. Nothing
+  /// is shown to the user, which is exactly right for radio: a phone that
+  /// cannot play the voice simply hears nothing, and there is no
+  /// half-delivered message to show.
   radioChunk(0xEC);
 
   const InnerPayloadType(this.tag);

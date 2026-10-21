@@ -13,9 +13,11 @@ import 'dart:typed_data';
 /// [transmissionId]; [seq] counts its chunks from 0 and [isLast] marks the
 /// final one, so a receiver can close the playback without waiting for a
 /// timeout. [startedAtMs] is when the press began, the same in every chunk of
-/// the transmission: the receiver works out when chunk N was *meant* to be
-/// heard (`startedAtMs + seq * 300 ms`) and drops it if that moment is
-/// already too far behind, because late voice is worse than no voice.
+/// the transmission. It settles who wins when two people press at once, and
+/// bounds a replay: a chunk a minute or more off by it is refused. How late a
+/// chunk is, though, is measured on the receiver's own clock, from when the
+/// transmission's first chunk arrived there (Ruling 22 - a sender's clock may
+/// have drifted seconds), because late voice is worse than no voice.
 ///
 /// Sealing and signing happen outside, in the envelope. This type is only the
 /// bytes inside.
