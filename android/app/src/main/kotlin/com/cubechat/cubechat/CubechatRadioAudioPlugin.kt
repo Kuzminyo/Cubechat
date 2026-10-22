@@ -8,6 +8,7 @@ import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.Build
+import android.os.PowerManager
 import android.util.Log
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
@@ -66,6 +67,7 @@ class CubechatRadioAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
     private var track: AudioTrack? = null
     private var focusRequest: AudioFocusRequest? = null
     private var legacyFocusListener: AudioManager.OnAudioFocusChangeListener? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         appContext = binding.applicationContext
@@ -100,7 +102,11 @@ class CubechatRadioAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
                 val sampleRate = call.argument<Int>("sampleRate") ?: SAMPLE_RATE
                 val silentOk = call.argument<Boolean>("playInSilentMode") ?: false
                 val gen = ++generation
-                exec.execute { start(sampleRate, silentOk, gen) }
+                // Read here, on the platform thread, and carried into the
+                // queued work: onDetachedFromEngine nulls the field, and the
+                // worker must not find it empty halfway through a start.
+                val ctx = appContext
+                exec.execute { start(ctx, sampleRate, silentOk, gen) }
                 result.success(null)
             }
             "write" -> {
@@ -131,13 +137,14 @@ class CubechatRadioAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
         }
     }
 
-    private fun start(sampleRate: Int, playInSilentMode: Boolean, gen: Int) {
+    private fun start(ctx: Context?, sampleRate: Int, playInSilentMode: Boolean, gen: Int) {
         // "Start twice restarts cleanly": whatever the first start built goes
         // before the second is made, so there is never a second track on the
-        // speaker.
-        release()
+        // speaker. Only the output goes: the wake lock stays held across a
+        // restart and is re-armed below, so the CPU is never let go in between.
+        releaseOutput()
         if (gen != generation) return // stopped again before we got here
-        val ctx = appContext ?: return
+        if (ctx == null) return
         try {
             // USAGE_ALARM is the one usage the ringer switch does not mute on
             // Android; USAGE_MEDIA follows the media volume and is silenced
@@ -175,6 +182,7 @@ class CubechatRadioAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
             )
             if (minBuffer <= 0) {
                 Log.e(TAG, "no buffer size for $sampleRate Hz mono ($minBuffer)")
+                releaseWakeLock()
                 return
             }
             // Four times the minimum: the minimum is the smallest the mixer
@@ -190,11 +198,13 @@ class CubechatRadioAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
             if (created.state != AudioTrack.STATE_INITIALIZED) {
                 Log.e(TAG, "AudioTrack did not initialise")
                 created.release()
+                releaseWakeLock()
                 return
             }
             requestFocus(ctx, attrs, alarm)
             created.play()
             track = created
+            holdCpuAwake(ctx)
         } catch (e: Throwable) {
             // No speaker is a lost message, never a crash on the worker.
             Log.e(TAG, "start failed", e)
@@ -302,13 +312,60 @@ class CubechatRadioAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
         }
     }
 
+    /** Everything a stop, a detach or a dead output lets go of: the speaker and the CPU. */
+    private fun release() {
+        releaseOutput()
+        releaseWakeLock()
+    }
+
+    /**
+     * Keeps the CPU running while the track plays (Ruling 28, screen-off
+     * reception). A track in MODE_STREAM is only fed from here; with the screen
+     * off and nothing else holding the device awake, the CPU can suspend in the
+     * gaps between 300 ms chunks and the next chunk is heard late or not at all.
+     * A partial lock leaves the screen alone.
+     *
+     * Not reference-counted, so a second start re-arms this one lock instead of
+     * stacking another. The timeout is the leak bound: if the stop never comes
+     * (Dart killed, the engine gone without a detach) the lock drops itself
+     * after [WAKE_LOCK_TIMEOUT_MS] rather than draining the battery until the
+     * user notices. A refused lock is a radio that may stutter with the screen
+     * off, never an exception into Flutter.
+     */
+    private fun holdCpuAwake(ctx: Context) {
+        try {
+            var lock = wakeLock
+            if (lock == null) {
+                val pm = ctx.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
+                lock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKE_LOCK_TAG)
+                lock.setReferenceCounted(false)
+                wakeLock = lock
+            }
+            lock.acquire(WAKE_LOCK_TIMEOUT_MS)
+        } catch (e: Throwable) {
+            Log.e(TAG, "wake lock refused", e)
+        }
+    }
+
+    /**
+     * Needs no Context, so it is safe from the release queued by a detach
+     * after [appContext] has been cleared. The object is kept for the next start.
+     */
+    private fun releaseWakeLock() {
+        val lock = wakeLock ?: return
+        try {
+            if (lock.isHeld) lock.release()
+        } catch (_: Throwable) {
+        }
+    }
+
     /**
      * Pause, flush, release — not `stop()`. In stream mode `stop()` plays out
      * everything already queued, and a stop here means the controller has
      * decided the audio is over: the 300 ms still in the buffer belongs to a
      * message that was cut or has ended.
      */
-    private fun release() {
+    private fun releaseOutput() {
         val t = track
         track = null
         if (t != null) {
@@ -348,6 +405,8 @@ class CubechatRadioAudioPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
         private const val SAMPLE_RATE = 48000
         private const val BUFFER_FACTOR = 4
         private const val WAIT_FOR_ROOM_MS = 5L
+        private const val WAKE_LOCK_TAG = "cubechat:radio"
+        private const val WAKE_LOCK_TIMEOUT_MS = 3 * 60 * 1000L
 
         /** Two seconds of 48 kHz mono PCM16. */
         private const val MAX_PENDING_BYTES = SAMPLE_RATE * 2 * 2
