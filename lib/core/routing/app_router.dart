@@ -625,8 +625,8 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
           state: state,
         ),
       ),
-      // The walkie-talkie. `contact` is the canonical id of the chat whose
-      // header opened it, tuned in on arrival; without it the screen opens on
+      // The walkie-talkie. `contact` is the canonical id of the contact whose
+      // profile opened it, tuned in on arrival; without it the screen opens on
       // the group list, which is what Nearby's entry wants. A query parameter
       // like `name` on the routes above, and for the same reason it is not a
       // path segment: the screen is the same one either way.

@@ -346,6 +346,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactProfileCall => 'Call';
 
   @override
+  String get contactProfileRadio => 'Radio';
+
+  @override
   String get contactProfileSecurity => 'Security';
 
   @override

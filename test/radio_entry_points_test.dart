@@ -215,21 +215,18 @@ void main() {
       return opened;
     }
 
-    testWidgets('is there for somebody with an identity, and opens the radio '
-        'on them', (tester) async {
-      final opened = await openChat(
-        tester,
-        peerId: _bob,
-        roster: {_bob: _peer()},
+    testWidgets('is gone: the radio moved to the contact profile',
+        (tester) async {
+      // Asked for 2026-10-22: the radio sits beside the call button on the
+      // profile, and the header keeps search and retry.
+      await openChat(tester, peerId: _bob, roster: {_bob: _peer()});
+
+      expect(
+        find.byTooltip('Search'),
+        findsOneWidget,
+        reason: 'the header is up',
       );
-
-      expect(find.byTooltip('Walkie-talkie'), findsOneWidget);
-      await tester.tap(find.byTooltip('Walkie-talkie'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 400));
-
-      expect(opened, ['/radio?contact=$_bob']);
-      expect(find.text('radio stub'), findsOneWidget);
+      expect(find.byTooltip('Walkie-talkie'), findsNothing);
     });
 
     testWidgets('is hidden before there is an identity to address',

@@ -84,6 +84,9 @@ void main() {
       ),
       findsOneWidget,
     );
+    // The walkie-talkie, moved here from the chat header beside the call.
+    expect(find.text('\u0420\u0430\u0446\u0456\u044f'), findsOneWidget);
+    expect(find.byIcon(Icons.radio_rounded), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.byIcon(Icons.more_vert_rounded));
@@ -156,6 +159,11 @@ void main() {
         '\u0420\u043e\u0437\u0431\u043b\u043e\u043a\u0443\u0432\u0430\u0442\u0438',
       ),
       findsOneWidget,
+    );
+    expect(
+      find.byIcon(Icons.radio_rounded),
+      findsNothing,
+      reason: 'no radio for somebody blocked',
     );
     expect(tester.takeException(), isNull);
   });

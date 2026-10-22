@@ -152,6 +152,7 @@
   "callsCallBack": "Call",
   "contactProfileChat": "Chat",
   "contactProfileCall": "Call",
+  "contactProfileRadio": "Radio",
   "contactProfileSecurity": "Security",
   "contactProfileActions": "Contact actions",
   "contactProfileVerify": "Verify",

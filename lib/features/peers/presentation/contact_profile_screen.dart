@@ -870,10 +870,20 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                               : () => unawaited(ref
                                   .read(callControllerProvider)
                                   .dial(peerPubkeyHex)),
+                          // The walkie-talkie tuned to this person, under the
+                          // same rule as the chat header it moved from: not
+                          // for somebody blocked.
+                          onRadio: peer?.isBlocked ?? false
+                              ? null
+                              : () => context.push(
+                                    '/radio?contact='
+                                    '${Uri.encodeQueryComponent(peerPubkeyHex)}',
+                                  ),
                           onMute: () => _setMuted(ref, peer),
                           onBlock: () => _setBlocked(ref, peer),
                           chatLabel: t.contactProfileChat,
                           callLabel: t.contactProfileCall,
+                          radioLabel: t.contactProfileRadio,
                           muteLabel:
                               peer?.isMuted == true ? t.peerUnmute : t.peerMute,
                           blockLabel: peer?.isBlocked == true
@@ -1152,10 +1162,12 @@ class _ProfileHero extends ConsumerWidget {
     required this.onMore,
     required this.onChat,
     required this.onCall,
+    required this.onRadio,
     required this.onMute,
     required this.onBlock,
     required this.chatLabel,
     required this.callLabel,
+    required this.radioLabel,
     required this.muteLabel,
     required this.blockLabel,
     required this.moreTooltip,
@@ -1201,10 +1213,12 @@ class _ProfileHero extends ConsumerWidget {
   /// hold a key for — and then the button is not drawn at all. A button that
   /// does nothing when pressed is worse than one that is not there.
   final VoidCallback? onCall;
+  final VoidCallback? onRadio;
   final VoidCallback onMute;
   final VoidCallback onBlock;
   final String chatLabel;
   final String callLabel;
+  final String radioLabel;
   final String muteLabel;
   final String blockLabel;
   final String moreTooltip;
@@ -1479,6 +1493,15 @@ class _ProfileHero extends ConsumerWidget {
                         icon: Icons.call_rounded,
                         label: callLabel,
                         onTap: onCall!,
+                      ),
+                    // Next to the call, its sibling: the walkie-talkie lived
+                    // in the chat header, where it crowded search and retry
+                    // and was asked to move here (2026-10-22).
+                    if (onRadio != null)
+                      _QuickAction(
+                        icon: Icons.radio_rounded,
+                        label: radioLabel,
+                        onTap: onRadio!,
                       ),
                     _QuickAction(
                       icon: muted

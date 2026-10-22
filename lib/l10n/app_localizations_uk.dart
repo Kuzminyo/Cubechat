@@ -347,6 +347,9 @@ class AppLocalizationsUk extends AppLocalizations {
   String get contactProfileCall => 'Дзвінок';
 
   @override
+  String get contactProfileRadio => 'Рація';
+
+  @override
   String get contactProfileSecurity => 'Безпека';
 
   @override

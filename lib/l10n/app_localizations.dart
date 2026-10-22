@@ -692,6 +692,12 @@ abstract class AppLocalizations {
   /// **'Call'**
   String get contactProfileCall;
 
+  /// No description provided for @contactProfileRadio.
+  ///
+  /// In en, this message translates to:
+  /// **'Radio'**
+  String get contactProfileRadio;
+
   /// No description provided for @contactProfileSecurity.
   ///
   /// In en, this message translates to:
