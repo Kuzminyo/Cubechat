@@ -16,6 +16,7 @@ import '../../../core/util/debug_log.dart';
 import '../../call/data/call_controller.dart';
 import '../../call/domain/call_state_machine.dart';
 import '../../peers/data/known_peers_controller.dart';
+import '../../peers/data/peer_discovery_controller.dart';
 import '../models/radio_channel.dart';
 
 // Everything the radio controller touches outside its own logic, each behind a
@@ -392,6 +393,12 @@ final radioContactsProvider = Provider<Set<String>>((ref) {
 /// has not arrived yet would drop every one of them as unknown.
 final radioContactsReadyProvider = Provider<Future<void> Function()>(
   (ref) => () => ref.read(knownPeersControllerProvider.notifier).loaded,
+);
+
+/// How many cubechat phones the scanner sees right now, for the `nobody in
+/// reach` line. Read once per press, not watched.
+final radioNearbyProvider = Provider<int Function()>(
+  (ref) => () => ref.read(peerDiscoveryControllerProvider).peers.length,
 );
 
 /// Whether a voice call is up. Read, not watched: the controller asks on every

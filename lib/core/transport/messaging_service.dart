@@ -13936,6 +13936,13 @@ class MessagingService {
   /// costs a scan-result pass and a log line every time.
   bool hasLinkOrPendingTo(String peerId) => _clients.containsKey(peerId);
 
+  /// Links up or being dialled, in either role: what the radio counts against
+  /// its two (`PeerDiscoveryController.radioGroupLinks`) so a dial still in
+  /// flight is not answered by dialling a third.
+  int get linkOrPendingCount =>
+      _clients.length +
+      _ref.read(peripheralControllerProvider).connectedCentralIds.length;
+
   /// True when we are already talking to this identity, on any address and in
   /// either direction.
   ///

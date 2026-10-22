@@ -57,6 +57,9 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
   @override
   void initState() {
     super.initState();
+    // While this screen is open the radio may dial for links; the scanner
+    // also asks whether the app is in front (`RadioReach.wanted`).
+    _radio.screenShown(true);
     final contact = widget.contactId;
     if (contact != null) {
       // After the first frame: tuning in writes the controller's state, which
@@ -70,6 +73,8 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
   @override
   void dispose() {
     _reasonTimer?.cancel();
+    // No provider state behind it, so no microtask: it may be told here.
+    _radio.screenShown(false);
     if (_holding) {
       // A microtask for the reason in initState: releasing writes state.
       final radio = _radio;

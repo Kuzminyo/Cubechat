@@ -18,6 +18,8 @@ import '../../../core/util/debug_log.dart';
 import '../../../core/util/app_lifecycle.dart';
 import '../../../core/util/platform_info.dart';
 import '../../../core/transport/peer_id.dart';
+import '../../radio/data/radio_reach.dart';
+import '../../radio/models/radio_channel.dart';
 import '../models/discovered_peer.dart';
 import 'known_peers_controller.dart';
 import 'peripheral_controller.dart';
@@ -448,6 +450,7 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
       final resolved = await _resolveContacts(peers);
       state = state.copyWith(peers: resolved);
       _maybeAutoConnect(resolved);
+      _maybeRadioConnect(resolved);
     });
     await _adapterSub?.cancel();
     _adapterSub = scanner.adapterState.listen((s) {
@@ -645,6 +648,86 @@ class PeerDiscoveryController extends Notifier<PeerDiscoveryState> {
       }());
     }
   }
+
+  // ---- links for the radio ----
+
+  /// A group radio dials until this many links are up or under way, no more:
+  /// two is a chain that does not break with one phone, and every link past
+  /// it is a connection held open for a voice that already gets through.
+  static const radioGroupLinks = 2;
+
+  /// Opens the links the radio asked for ([RadioReach]) - nothing else did.
+  /// A personal channel dials that contact and only them; a group dials the
+  /// loudest cubechat phones in view up to [radioGroupLinks]. The same
+  /// per-address cooldown as [_maybeAutoConnect], so a phone that will not
+  /// answer is tried every 25 s, not on every scan result.
+  void _maybeRadioConnect(List<DiscoveredPeer> peers) {
+    final want = ref
+        .read(radioReachProvider)
+        .wanted(foreground: AppLifecycle.instance.isForeground);
+    if (want == null || peers.isEmpty) return;
+    final messaging = ref.read(messagingServiceProvider);
+    final List<DiscoveredPeer> targets;
+    final int room;
+    switch (want) {
+      case RadioContact(:final canonicalId):
+        final pub =
+            ref.read(knownPeersControllerProvider)[canonicalId]?.pubkeyHex ??
+                canonicalId;
+        if (messaging.hasSessionWithPubkey(pub)) return;
+        targets = [
+          for (final p in peers)
+            if (p.resolvedPubkeyHex == pub) p,
+        ]..sort(_louderFirst);
+        room = 1;
+      case RadioRoom():
+        room = radioGroupLinks - messaging.linkOrPendingCount;
+        if (room <= 0) return;
+        final blocked = {
+          for (final p in ref.read(knownPeersControllerProvider).values)
+            if (p.isBlocked) p.pubkeyHex,
+        };
+        targets = [
+          for (final p in peers)
+            if (!blocked.contains(p.resolvedPubkeyHex)) p,
+        ]..sort(_louderFirst);
+    }
+
+    final now = DateTime.now();
+    _autoAttempts.removeWhere((_, t) => now.difference(t) > _autoCooldown);
+    var started = 0;
+    for (final peer in targets) {
+      if (started >= room) break;
+      if (messaging.hasLinkOrPendingTo(peer.id)) continue;
+      final identity = peer.resolvedPubkeyHex;
+      if (identity != null && messaging.hasSessionWithPubkey(identity)) {
+        continue;
+      }
+      final last = _autoAttempts[peer.id];
+      if (last != null && now.difference(last) < _autoCooldown) continue;
+      _autoAttempts[peer.id] = now;
+      started++;
+      DebugLog.instance.log(
+        'RADIO',
+        'dialling ${peer.advertisedName} (${peer.rssi} dBm) for $want',
+      );
+      unawaited(() async {
+        try {
+          await messaging.connectAsInitiator(
+            BluetoothDevice.fromId(peer.id),
+            displayName: peer.advertisedName,
+          );
+        } catch (_) {
+          // transient — the cooldown will let us retry later
+        }
+      }());
+    }
+  }
+
+  static int _louderFirst(DiscoveredPeer a, DiscoveredPeer b) =>
+      // An unknown reading sorts last, not first: 127 is a sentinel.
+      (b.hasSignalReading ? b.rssi : -999)
+          .compareTo(a.hasSignalReading ? a.rssi : -999);
 
   void _disposeSubscriptions() {
     _peerSub?.cancel();

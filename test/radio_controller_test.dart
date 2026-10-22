@@ -10,6 +10,7 @@ import 'package:cubechat/core/transport/radio_chunk.dart';
 import 'package:cubechat/features/radio/data/radio_controller.dart';
 import 'package:cubechat/features/radio/data/radio_inbound.dart';
 import 'package:cubechat/features/radio/data/radio_ports.dart';
+import 'package:cubechat/features/radio/data/radio_reach.dart';
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -196,6 +197,7 @@ class _Rig {
         radioClockProvider.overrideWithValue(now),
         radioCallBusyProvider.overrideWithValue(() => callBusy),
         radioGroupStoreProvider.overrideWithValue(this.store),
+        radioNearbyProvider.overrideWithValue(() => 0),
       ],
     );
     container.read(radioControllerProvider);
@@ -229,6 +231,8 @@ class _Rig {
 
   RadioController get ctl => container.read(radioControllerProvider.notifier);
   RadioState get state => container.read(radioControllerProvider);
+  RadioChannel? get reach =>
+      container.read(radioReachProvider).wanted(foreground: true);
   Set<String> get peers => container.read(radioPairPeersProvider);
 
   set contacts(Set<String> ids) {
@@ -1407,6 +1411,58 @@ void main() {
         relaunched.read(radioControllerProvider).playInSilentMode,
         isFalse,
       );
+    });
+  });
+
+  group('links the radio asks for', () {
+    // 2026-10-22: with the internet up nothing opened a Bluetooth link, and a
+    // press a metre from the other phone went out to "nobody in reach".
+    test('only while its screen is shown on a channel', () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final g = rig.join('#patrol');
+        expect(rig.reach, isNull, reason: 'nothing tuned, nothing shown');
+
+        rig.ctl.screenShown(true);
+        expect(rig.reach, isNull, reason: 'shown, but tuned to nothing');
+
+        rig.ctl.select(g);
+        expect(rig.reach, g);
+
+        rig.ctl.screenShown(false);
+        expect(rig.reach, isNull, reason: 'tuned in a pocket asks nothing');
+        rig.dispose();
+      });
+    });
+
+    test('for as long as a press is going out, screen or not', () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final g = rig.join('#patrol');
+        rig.ctl.select(g);
+        expect(rig.press(), isTrue);
+        expect(rig.reach, g);
+        rig.mic.emit(_pcm(600));
+        async.flushMicrotasks();
+        rig.release();
+        expect(rig.reach, isNull);
+        rig.dispose();
+      });
+    });
+
+    test('a screen left open under a locked phone asks nothing', () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final g = rig.join('#patrol');
+        rig.ctl
+          ..select(g)
+          ..screenShown(true);
+        expect(
+          rig.container.read(radioReachProvider).wanted(foreground: false),
+          isNull,
+        );
+        rig.dispose();
+      });
     });
   });
 }

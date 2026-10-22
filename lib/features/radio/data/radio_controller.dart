@@ -16,6 +16,7 @@ import '../domain/radio_jitter_buffer.dart';
 import '../models/radio_channel.dart';
 import 'radio_inbound.dart';
 import 'radio_ports.dart';
+import 'radio_reach.dart';
 
 export '../domain/radio_floor.dart' show FloorState, Idle, Listening, Talking;
 export '../models/radio_channel.dart';
@@ -174,6 +175,14 @@ class RadioController extends Notifier<RadioState> {
   late bool Function() _callBusy;
   late RadioGroupStore _store;
 
+  /// Null until [build]: a screen test's stand-in controller replaces build
+  /// and still has its screen report in.
+  RadioReach? _reach;
+  late int Function() _nearby;
+
+  /// The radio screen is on screen - see [screenShown].
+  bool _screenShown = false;
+
   /// Joined groups by tag hex, in the order they were joined.
   final Map<String, StoredRadioGroup> _stored = {};
   Future<void>? _loading;
@@ -246,7 +255,14 @@ class RadioController extends Notifier<RadioState> {
     _clock = ref.read(radioClockProvider);
     _callBusy = ref.read(radioCallBusyProvider);
     _store = ref.read(radioGroupStoreProvider);
+    final reach = ref.read(radioReachProvider);
+    _reach = reach;
+    _nearby = ref.read(radioNearbyProvider);
     _disposed = false;
+    // Nothing is tuned yet, and [state] may not be read before build returns.
+    reach
+      ..onScreen = null
+      ..talking = null;
     final generation = ++_generation;
     _stored.clear();
     _closed.clear();
@@ -274,6 +290,9 @@ class RadioController extends Notifier<RadioState> {
     );
     ref.onDispose(() {
       _disposed = true;
+      reach
+        ..onScreen = null
+        ..talking = null;
       unawaited(sub?.cancel());
       _teardown();
     });
@@ -602,6 +621,22 @@ class RadioController extends Notifier<RadioState> {
 
   // --------------------------------------------------------------- channel
 
+  /// The radio screen tells the radio it is shown ([on]) or gone. While it is
+  /// shown on a channel the radio asks the scanner for links to it
+  /// ([RadioReach]); that ask is what lets a press be heard by a phone nobody
+  /// had connected to yet.
+  void screenShown(bool on) {
+    if (on == _screenShown) return;
+    _screenShown = on;
+    _syncReach();
+  }
+
+  void _syncReach() {
+    _reach
+      ?..onScreen = _screenShown ? state.active : null
+      ..talking = _press == null ? null : state.active;
+  }
+
   /// Tune to [channel], or to nothing. Whatever was being said or heard on
   /// the old one stops at once. Remembered across restarts (Ruling 26).
   ///
@@ -657,6 +692,7 @@ class RadioController extends Notifier<RadioState> {
       blockedReason: () => null,
       speakerBusy: _speakerBusy,
     );
+    _syncReach();
     _publishKeys();
   }
 
@@ -704,6 +740,7 @@ class RadioController extends Notifier<RadioState> {
       send: send,
     );
     _press = press;
+    _syncReach();
     _wake();
     _armCallIdle();
     state = state.copyWith(floor: floor.state, blockedReason: () => null);
@@ -815,6 +852,7 @@ class RadioController extends Notifier<RadioState> {
       );
     }
     if (identical(_press, press)) _press = null;
+    _syncReach();
     final heldMs = _clock().millisecondsSinceEpoch - press.framer.startedAtMs;
     // A press that never got a sample in is not a transmission: nobody has
     // heard of it, and a lone "last" chunk would only flicker their floor.
@@ -843,7 +881,12 @@ class RadioController extends Notifier<RadioState> {
       'sent ${press.sent} chunks in '
       '${(math.max(0, heldMs) / 1000).toStringAsFixed(1)} s',
     );
-    if (press.links == 0) note.write(', nobody in reach');
+    if (press.links == 0) {
+      // Whether anybody was there to link to: "nobody in reach" with phones
+      // in view is a link that was never made, not an empty room.
+      final seen = _nearby();
+      note.write(', nobody in reach ($seen cubechat phone(s) in view)');
+    }
     if (press.dropped > 0) note.write(', ${press.dropped} dropped behind');
     if (lost) note.write(', channel taken');
     if (tooLong) note.write(', cut at ${maxPress.inSeconds} s');
