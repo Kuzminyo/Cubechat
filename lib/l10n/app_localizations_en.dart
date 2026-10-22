@@ -3973,4 +3973,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get radioTurnOff => 'Turn the radio off';
+
+  @override
+  String get radioPersonalCallsTitle => 'Take personal calls';
+
+  @override
+  String get radioPersonalCallsHint =>
+      'While the radio is off, a contact who talks to you tunes it to them.';
+
+  @override
+  String get radioBackgroundHint =>
+      'With the screen off the radio is heard only while background mode is on.';
 }

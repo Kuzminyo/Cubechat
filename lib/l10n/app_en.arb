@@ -1923,5 +1923,8 @@
   "radioBlockedMicrophone": "No access to the microphone",
   "radioBlockedUnavailable": "The radio is not available on this device",
   "radioBlockedNoChannel": "Pick a group or a contact first",
-  "radioTurnOff": "Turn the radio off"
+  "radioTurnOff": "Turn the radio off",
+  "radioPersonalCallsTitle": "Take personal calls",
+  "radioPersonalCallsHint": "While the radio is off, a contact who talks to you tunes it to them.",
+  "radioBackgroundHint": "With the screen off the radio is heard only while background mode is on."
 }

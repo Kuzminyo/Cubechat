@@ -55,6 +55,7 @@ import 'features/peers/data/known_peers_controller.dart';
 import 'features/peers/data/peer_discovery_controller.dart';
 import 'features/peers/data/peripheral_controller.dart';
 import 'features/profile/data/ui_scale_controller.dart';
+import 'features/radio/data/radio_controller.dart';
 import 'features/cube_id/data/cube_id_controller.dart';
 import 'features/cube_id/domain/cubechat_link.dart';
 import 'core/util/debug_log.dart';
@@ -853,6 +854,14 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // resume above, since a headless start would be blocked.)
     ref.watch(backgroundModeProvider);
     ref.watch(mapPresenceControllerProvider);
+    // The walkie-talkie, built at startup (Ruling 25) so a tuned channel - or
+    // a contact's personal call - is heard on any screen and with the screen
+    // off, not only once the radio screen has been opened. Nothing in it
+    // touches a platform service at build, so a headless start is harmless;
+    // and a radio nobody ever used costs nothing: no timer, no keys, no
+    // crypto. Listened, not watched: its floor changes several times a second
+    // while somebody talks, and the app has no business rebuilding for that.
+    ref.listen(radioControllerProvider, (_, __) {});
     // Built at startup so an offer is answered whatever tab is open.
     // Listened, not watched: its state changes with every transfer, and the
     // whole app has no business rebuilding for that.

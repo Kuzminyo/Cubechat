@@ -50,6 +50,7 @@ class RadioState {
     this.active,
     this.floor = const Idle(),
     this.playInSilentMode = true,
+    this.personalCalls = true,
     this.blockedReason,
     this.speakerBusy = false,
   });
@@ -67,6 +68,11 @@ class RadioState {
   /// The «Говорити в беззвучному режимі» switch. On by default: a walkie-talkie
   /// that the silent switch mutes is one that misses the call it exists for.
   final bool playInSilentMode;
+
+  /// The «Приймай особисті виклики» switch (Ruling 27). On by default: while
+  /// nothing is tuned, a contact who talks to this phone tunes the radio to
+  /// themselves and is heard - the radio's version of a phone ringing.
+  final bool personalCalls;
 
   /// Set when [RadioController.pressToTalk] refused, cleared by the next press
   /// that works and by [RadioController.select].
@@ -87,6 +93,7 @@ class RadioState {
     RadioChannel? Function()? active,
     FloorState? floor,
     bool? playInSilentMode,
+    bool? personalCalls,
     RadioBlockedReason? Function()? blockedReason,
     bool? speakerBusy,
   }) =>
@@ -95,6 +102,7 @@ class RadioState {
         active: active != null ? active() : this.active,
         floor: floor ?? this.floor,
         playInSilentMode: playInSilentMode ?? this.playInSilentMode,
+        personalCalls: personalCalls ?? this.personalCalls,
         blockedReason:
             blockedReason != null ? blockedReason() : this.blockedReason,
         speakerBusy: speakerBusy ?? this.speakerBusy,
@@ -162,6 +170,22 @@ class RadioController extends Notifier<RadioState> {
   final Map<String, StoredRadioGroup> _stored = {};
   Future<void>? _loading;
   bool _silentTouched = false;
+
+  /// Set once a choice was made in this run - a channel tuned, the switch
+  /// flipped, the radio used or wiped - so a load still in flight does not
+  /// put the disk's older answer back over it.
+  bool _activeTouched = false;
+  bool _personalTouched = false;
+  bool _usedTouched = false;
+
+  /// A room was added or a channel tuned, ever (`radio.used`). Until then the
+  /// radio publishes nothing at all, personal calls included: a phone whose
+  /// owner never opened the radio pays nothing for it (Rulings 25, 27).
+  bool _used = false;
+
+  /// Open only while personal calls are being listened for - see
+  /// [radioContactsProvider] for why not always.
+  ProviderSubscription<Set<String>>? _contactsSub;
   bool _disposed = false;
   int _generation = 0;
 
@@ -215,6 +239,12 @@ class RadioController extends Notifier<RadioState> {
     _staleLogged.clear();
     _staleLoggedAt = null;
     _silentTouched = false;
+    _activeTouched = false;
+    _personalTouched = false;
+    _usedTouched = false;
+    _used = false;
+    // A rebuild has already closed the old one with the rest of its listens.
+    _contactsSub = null;
 
     // Listened, not read once: the stream belongs to MessagingService, and
     // an Emergency Wipe (or a restore) builds a new one. Subscribed once, the
@@ -239,10 +269,16 @@ class RadioController extends Notifier<RadioState> {
 
   Future<void> _load(int generation) async {
     bool? silent;
+    bool? personal;
+    bool? used;
+    String? activeRef;
     try {
       silent = await _store.loadPlayInSilentMode();
+      personal = await _store.loadPersonalCalls();
+      used = await _store.loadUsed();
+      activeRef = await _store.loadActive();
     } catch (e) {
-      debugPrint('Radio switch load failed: $e');
+      debugPrint('Radio settings load failed: $e');
     }
     var loaded = const <StoredRadioGroup>[];
     try {
@@ -263,12 +299,36 @@ class RadioController extends Notifier<RadioState> {
     _stored
       ..clear()
       ..addAll(merged);
-    _publishKeys();
+    if (!_usedTouched) _used = used ?? false;
     state = state.copyWith(
       groups: _groupList(),
       playInSilentMode:
           _silentTouched ? state.playInSilentMode : (silent ?? true),
+      personalCalls:
+          _personalTouched ? state.personalCalls : (personal ?? true),
     );
+    // After the groups, which a stored room is looked up in (Ruling 26).
+    if (!_activeTouched && activeRef != null) _restore(activeRef);
+    _publishKeys();
+  }
+
+  /// Tunes back to the channel the radio was on before the restart - quietly:
+  /// it is the same choice, so nothing is written back. A room left (or
+  /// wiped) since is not an error; the radio comes up tuned to nothing, and
+  /// the stale entry is dropped.
+  void _restore(String ref) {
+    final tag = RadioChannelRef.roomTag(ref);
+    final contact = RadioChannelRef.contactId(ref);
+    final channel = tag != null
+        ? _stored[tag]?.group
+        : contact != null
+            ? RadioContact(contact)
+            : null;
+    if (channel == null) {
+      unawaited(_saveActive(null));
+      return;
+    }
+    _tune(channel);
   }
 
   // ---------------------------------------------------------------- groups
@@ -294,6 +354,7 @@ class RadioController extends Notifier<RadioState> {
     );
     if (_disposed) return group;
     _stored[group.tagHex] = stored;
+    _markUsed();
     _publishKeys();
     state = state.copyWith(groups: _groupList());
     try {
@@ -317,20 +378,71 @@ class RadioController extends Notifier<RadioState> {
     }
   }
 
-  /// Forget every group, and the switch - Emergency Wipe. The switch goes
-  /// back to its default rather than to whatever the disk says: a wipe leaves
-  /// nothing of this phone's choices behind, and a load still in flight must
-  /// not put the old one back ([_silentTouched]).
+  /// Forget every group, the tuned channel, the `used` flag and the switches -
+  /// Emergency Wipe. The switches go back to their defaults rather than to
+  /// whatever the disk says: a wipe leaves nothing of this phone's choices
+  /// behind, and a load still in flight must not put the old ones back (the
+  /// `_touched` flags). Wiped is never-used: nothing is published again until
+  /// a room is added or a channel tuned.
   Future<void> clear() async {
     select(null);
     _stored.clear();
-    _publishKeys();
     _silentTouched = true;
-    state = state.copyWith(groups: const [], playInSilentMode: true);
+    _personalTouched = true;
+    _usedTouched = true;
+    _used = false;
+    state = state.copyWith(
+      groups: const [],
+      playInSilentMode: true,
+      personalCalls: true,
+    );
+    _publishKeys();
     try {
       await _store.clearGroups();
     } catch (e) {
       debugPrint('Radio groups clear failed: $e');
+    }
+    try {
+      await _store.clearSettings();
+    } catch (e) {
+      debugPrint('Radio settings clear failed: $e');
+    }
+  }
+
+  /// The «Приймай особисті виклики» switch (Ruling 27).
+  Future<void> setPersonalCalls(bool value) async {
+    _personalTouched = true;
+    state = state.copyWith(personalCalls: value);
+    _publishKeys();
+    try {
+      await _store.savePersonalCalls(value);
+    } catch (e) {
+      debugPrint('Radio personal-calls persist failed: $e');
+    }
+  }
+
+  void _markUsed() {
+    _usedTouched = true;
+    if (_used) return;
+    _used = true;
+    unawaited(_saveUsed());
+  }
+
+  Future<void> _saveUsed() async {
+    try {
+      await _store.saveUsed(true);
+    } catch (e) {
+      debugPrint('Radio used-flag persist failed: $e');
+    }
+  }
+
+  Future<void> _saveActive(RadioChannel? channel) async {
+    try {
+      await _store.saveActive(
+        channel == null ? null : RadioChannelRef.of(channel),
+      );
+    } catch (e) {
+      debugPrint('Radio channel persist failed: $e');
     }
   }
 
@@ -355,6 +467,13 @@ class RadioController extends Notifier<RadioState> {
   /// [_onInbound]), so only its frames are worth the crypto. A phone with the
   /// radio off does none at all, and a group frame it cannot open is still
   /// forwarded, since that happens before the cipher is read.
+  ///
+  /// The one exception is an idle radio taking personal calls (Ruling 27):
+  /// tuned to nothing, used at least once and with the switch on, it listens
+  /// for every contact who is not blocked, so that one of them talking to
+  /// this phone can tune it ([_answerPersonalCall]). The transport derives
+  /// each pair key once and keeps it, so this is an X25519 per contact once,
+  /// not per frame - and none at all on a phone that never used the radio.
   void _publishKeys() {
     if (_disposed) return;
     final active = state.active;
@@ -362,20 +481,75 @@ class RadioController extends Notifier<RadioState> {
     ref.read(radioGroupKeysProvider.notifier).state = Map.unmodifiable({
       if (room != null) room.group.tagHex: room.key,
     });
-    ref.read(radioPairPeersProvider.notifier).state = Set.unmodifiable({
+    final personal = _takingPersonalCalls;
+    final contacts = _watchContacts(personal);
+    final peers = <String>{
       if (active is RadioContact) active.canonicalId,
-    });
+      if (personal) ...contacts,
+    };
+    // Unchanged is left alone: the roster changes with every presence beacon,
+    // and a new set object would send the transport to compare its table.
+    final pairs = ref.read(radioPairPeersProvider.notifier);
+    if (!setEquals(pairs.state, peers)) pairs.state = Set.unmodifiable(peers);
+  }
+
+  bool get _takingPersonalCalls =>
+      state.active == null && _used && state.personalCalls;
+
+  /// Opens or closes the roster subscription to match [on]; the contacts when
+  /// open, nothing when closed.
+  Set<String> _watchContacts(bool on) {
+    if (!on) {
+      _contactsSub?.close();
+      _contactsSub = null;
+      return const {};
+    }
+    final sub = _contactsSub ??= ref.listen<Set<String>>(
+      radioContactsProvider,
+      (_, __) => _publishKeys(),
+    );
+    return sub.read();
+  }
+
+  /// A 1:1 chunk reached a radio tuned to nothing. When personal calls are
+  /// being taken and it is from a contact listened for, the radio tunes to
+  /// them - persisted like any other choice - and the chunk is then handled
+  /// as on any tuned channel. Never during a call (Ruling 17): the call wins
+  /// and the radio stays off. Never for the rest of a transmission the user
+  /// just switched away from ([_closed]), or "turn off" would undo itself on
+  /// the next chunk of the sentence it cut.
+  bool _answerPersonalCall(RadioInbound m) {
+    if (m.groupTag != null || !_takingPersonalCalls) return false;
+    final contacts = _contactsSub?.read() ?? const <String>{};
+    if (!contacts.contains(m.senderId)) return false;
+    if (_callBusy()) return false;
+    if (_closed.any((id) => _sameId(id, m.chunk.transmissionId))) return false;
+    DebugLog.instance.log('RADIO', 'personal call tunes the radio');
+    select(RadioContact(m.senderId));
+    return true;
   }
 
   // --------------------------------------------------------------- channel
 
   /// Tune to [channel], or to nothing. Whatever was being said or heard on
-  /// the old one stops at once.
+  /// the old one stops at once. Remembered across restarts (Ruling 26).
   void select(RadioChannel? channel) {
+    _activeTouched = true;
+    if (channel == state.active) return;
+    if (channel != null) _markUsed();
+    _tune(channel);
+    unawaited(_saveActive(channel));
+  }
+
+  void _tune(RadioChannel? channel) {
     if (channel == state.active) return;
     final press = _press;
     if (press != null) unawaited(_endPress(press, sendLast: true));
-    _closeHeard(stopNow: true);
+    // What was being heard is over for this phone: its stragglers must not
+    // come back as a personal call ([_answerPersonalCall]).
+    final held = _floor?.state;
+    if (held is Listening) _markClosed(held.transmissionId);
+    _closeHeard(stopNow: true, over: true);
     _ticker?.cancel();
     _ticker = null;
     if (channel == null) {
@@ -589,6 +763,7 @@ class RadioController extends Notifier<RadioState> {
   // ------------------------------------------------------------- listening
 
   void _onInbound(RadioInbound m) {
+    if (state.active == null && !_answerPersonalCall(m)) return;
     final active = state.active;
     final floor = _floor;
     final buffer = _buffer;
@@ -786,10 +961,7 @@ class RadioController extends Notifier<RadioState> {
       _heard = null;
       _buffer?.reset();
       heard.decoder?.dispose();
-      if (over) {
-        _closed.add(heard.txId);
-        if (_closed.length > _closedKept) _closed.removeAt(0);
-      }
+      if (over) _markClosed(heard.txId);
       if (heard.count > 0) {
         final latencyMs = math.max(
           0,
@@ -814,6 +986,12 @@ class RadioController extends Notifier<RadioState> {
         (end.isAfter(now) ? end.difference(now) : Duration.zero) + stopMargin;
     _stopTimer?.cancel();
     _stopTimer = Timer(wait, _stopSpeaker);
+  }
+
+  void _markClosed(Uint8List txId) {
+    if (_closed.any((id) => _sameId(id, txId))) return;
+    _closed.add(Uint8List.fromList(txId));
+    if (_closed.length > _closedKept) _closed.removeAt(0);
   }
 
   void _stopSpeaker() {

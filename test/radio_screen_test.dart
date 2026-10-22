@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:cubechat/core/ble/background_mode_controller.dart';
 import 'package:cubechat/core/theme/colors.dart';
 import 'package:cubechat/features/peers/data/contact_aliases_controller.dart';
 import 'package:cubechat/features/peers/data/known_peers_controller.dart';
@@ -76,6 +77,22 @@ class _FakeRadio extends RadioController {
     calls.add('silent $value');
     state = state.copyWith(playInSilentMode: value);
   }
+
+  @override
+  Future<void> setPersonalCalls(bool value) async {
+    calls.add('personal $value');
+    state = state.copyWith(personalCalls: value);
+  }
+}
+
+/// The background-mode preference without its foreground service.
+class _Background extends BackgroundModeController {
+  _Background(this.on);
+
+  final bool on;
+
+  @override
+  bool build() => on;
 }
 
 class _FakePeers extends KnownPeersController {
@@ -111,12 +128,14 @@ void main() {
     WidgetTester tester, {
     RadioState state = const RadioState(groups: [_group]),
     String? contactId,
+    bool background = true,
   }) async {
     final fake = _FakeRadio(state);
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           radioControllerProvider.overrideWith(() => fake),
+          backgroundModeProvider.overrideWith(() => _Background(background)),
           knownPeersControllerProvider
               .overrideWith(() => _FakePeers({_alice: _peer(_alice, 'Alice')})),
           contactAliasesControllerProvider.overrideWith(_NoAliases.new),
@@ -144,6 +163,13 @@ void main() {
   }
 
   final button = find.byKey(const ValueKey('radio-talk-button'));
+
+  /// The settings sit at the end of a lazily built list, under the fixed talk
+  /// panel: off screen, and so not built at all, on the test's 800x600.
+  Future<void> scrollToEnd(WidgetTester tester) async {
+    await tester.drag(find.byType(ListView), const Offset(0, -2000));
+    await tester.pumpAndSettle();
+  }
 
   testWidgets('the button reads busy while someone else talks', (tester) async {
     await pump(
@@ -297,6 +323,40 @@ void main() {
       ),
     );
     expect(sw.value, isFalse);
+  });
+
+  testWidgets('the personal calls switch reflects the state', (tester) async {
+    final fake = await pump(tester);
+    final tile = find.byKey(const ValueKey('radio-personal-tile'));
+
+    Switch personal() => tester.widget<Switch>(
+          find.descendant(of: tile, matching: find.byType(Switch)),
+        );
+
+    await scrollToEnd(tester);
+    expect(find.text('Приймай особисті виклики'), findsOneWidget);
+    expect(personal().value, isTrue, reason: 'on by default');
+
+    await tester.tap(tile);
+    await tester.pump();
+    expect(fake.calls, contains('personal false'));
+    expect(personal().value, isFalse);
+  });
+
+  testWidgets('the background hint shows when background mode is off',
+      (tester) async {
+    const hint = 'Із вимкненим екраном рацію чути, лише коли ввімкнено '
+        'роботу у фоні.';
+    await pump(tester, background: false);
+    await scrollToEnd(tester);
+    expect(find.text(hint), findsOneWidget);
+
+    // Nothing to warn about while the app stays alive in the background.
+    await tester.pumpWidget(const SizedBox());
+    await pump(tester);
+    await scrollToEnd(tester);
+    expect(find.byKey(const ValueKey('radio-personal-tile')), findsOneWidget);
+    expect(find.text(hint), findsNothing);
   });
 
   testWidgets('a press goes down on the pointer and up on the pointer',

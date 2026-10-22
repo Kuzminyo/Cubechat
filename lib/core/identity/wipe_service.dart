@@ -46,6 +46,7 @@ import '../../features/peers/data/typing_controller.dart';
 import '../../features/peers/data/presence_controller.dart';
 import '../../features/radio/data/radio_controller.dart';
 import '../../features/radio/data/radio_inbound.dart';
+import '../../features/radio/data/radio_ports.dart';
 import 'avatar_controller.dart';
 import '../theme/theme_controller.dart';
 import '../../features/profile/data/app_lock_controller.dart';
@@ -114,11 +115,23 @@ Future<void> emergencyWipe(WidgetRef ref, {bool releaseName = true}) async {
   await ref.read(channelDescriptionsControllerProvider.notifier).clear();
   await ref.read(channelRosterControllerProvider.notifier).clear();
   await ref.read(channelControllerProvider.notifier).clear();
-  // A radio group key is a channel key by another name. Only if the radio was
-  // ever opened - building it here would read the box the wipe is deleting -
-  // but its keys leave the transport's table either way.
+  // A radio group key is a channel key by another name, and the tuned channel
+  // and the `used` flag are traces of who you talked to. The app builds the
+  // controller at startup, so it normally exists and forgets all of it
+  // itself. If it somehow does not, the disk is cleared directly rather than
+  // building the controller here: a build would start a load from the boxes
+  // the wipe is deleting and subscribe to a transport about to be replaced.
+  // Its keys leave the transport's table either way.
   if (ref.exists(radioControllerProvider)) {
     await ref.read(radioControllerProvider.notifier).clear();
+  } else {
+    final store = ref.read(radioGroupStoreProvider);
+    try {
+      await store.clearGroups();
+      await store.clearSettings();
+    } catch (_) {
+      // HiveInit.wipeAll below deletes both boxes anyway.
+    }
   }
   ref.read(radioGroupKeysProvider.notifier).state = const {};
   ref.read(radioPairPeersProvider.notifier).state = const {};

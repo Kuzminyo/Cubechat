@@ -124,6 +124,9 @@ class _FakeSink implements RadioAudioSink {
 class _MemoryStore implements RadioGroupStore {
   final groups = <String, StoredRadioGroup>{};
   bool? silent;
+  String? active;
+  bool? personalCalls;
+  bool? used;
 
   @override
   Future<List<StoredRadioGroup>> loadGroups() async => groups.values.toList();
@@ -138,7 +141,30 @@ class _MemoryStore implements RadioGroupStore {
   Future<bool?> loadPlayInSilentMode() async => silent;
   @override
   Future<void> savePlayInSilentMode(bool value) async => silent = value;
+  @override
+  Future<String?> loadActive() async => active;
+  @override
+  Future<void> saveActive(String? channel) async => active = channel;
+  @override
+  Future<bool?> loadPersonalCalls() async => personalCalls;
+  @override
+  Future<void> savePersonalCalls(bool value) async => personalCalls = value;
+  @override
+  Future<bool?> loadUsed() async => used;
+  @override
+  Future<void> saveUsed(bool value) async => used = value;
+  @override
+  Future<void> clearSettings() async {
+    silent = null;
+    active = null;
+    personalCalls = null;
+    used = null;
+  }
 }
+
+/// The contacts a personal call may come from - what the known-peers roster
+/// says once blocked people are taken out - set by each test.
+final _contacts = StateProvider<Set<String>>((ref) => const {});
 
 /// Stands in for MessagingService, which owns the inbound stream: each build
 /// hands out a new one, as the real service does when it is rebuilt.
@@ -150,11 +176,15 @@ final _fakeService = Provider<StreamController<RadioInbound>>((ref) {
 
 /// Everything around the controller, faked, inside one fakeAsync zone.
 class _Rig {
-  _Rig(this.async) {
+  /// [store] carries the disk over from an earlier rig: a restart.
+  _Rig(this.async, {_MemoryStore? store, Set<String> contacts = const {}}) {
+    this.store = store ?? _MemoryStore();
     sender = _FakeSender(now);
     sink = _FakeSink(now);
     container = ProviderContainer(
       overrides: [
+        _contacts.overrideWith((ref) => contacts),
+        radioContactsProvider.overrideWith((ref) => ref.watch(_contacts)),
         radioInboundProvider.overrideWith(
           (ref) => ref.watch(_fakeService).stream,
         ),
@@ -164,7 +194,7 @@ class _Rig {
         radioAudioProvider.overrideWithValue(sink),
         radioClockProvider.overrideWithValue(now),
         radioCallBusyProvider.overrideWithValue(() => callBusy),
-        radioGroupStoreProvider.overrideWithValue(store),
+        radioGroupStoreProvider.overrideWithValue(this.store),
       ],
     );
     container.read(radioControllerProvider);
@@ -187,7 +217,7 @@ class _Rig {
   }
 
   final mic = _FakeMic();
-  final store = _MemoryStore();
+  late final _MemoryStore store;
   late final _FakeSender sender;
   late final _FakeSink sink;
   late final ProviderContainer container;
@@ -198,6 +228,13 @@ class _Rig {
 
   RadioController get ctl => container.read(radioControllerProvider.notifier);
   RadioState get state => container.read(radioControllerProvider);
+  Set<String> get peers => container.read(radioPairPeersProvider);
+
+  set contacts(Set<String> ids) {
+    container.read(_contacts.notifier).state = ids;
+    // Riverpod refreshes a listened dependent on its scheduler's next turn.
+    async.elapse(Duration.zero);
+  }
 
   RadioRoom join(String name) {
     RadioRoom? g;
@@ -899,6 +936,219 @@ void main() {
     });
   });
 
+  // Stage 2 (Rulings 25-27): the radio lives from app start, keeps its channel
+  // across restarts, and an idle radio answers a contact who talks to it.
+  group('a radio that outlives the screen', () {
+    const alice = 'alice';
+    const carol = 'carol';
+
+    test('a tuned room is restored after a restart', () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final g = rig.join('#patrol');
+        rig.ctl.select(g);
+        async.flushMicrotasks();
+        expect(rig.store.active, 'room:${g.tagHex}');
+        rig.dispose();
+
+        final again = _Rig(async, store: rig.store);
+        expect(again.state.active, g);
+        expect(again.container.read(radioGroupKeysProvider).keys, [g.tagHex]);
+        again.hear('bob', g, _chunk(_txId(9), 0, again.nowMs, last: true));
+        async.elapse(const Duration(seconds: 2));
+        expect(again.sink.frameMarks, [for (var f = 0; f < 15; f++) f]);
+        again.dispose();
+
+        // A room that is gone by the time the radio starts is not an error:
+        // the radio simply comes up tuned to nothing.
+        rig.store.active = 'room:00112233445566ff';
+        final gone = _Rig(async, store: rig.store);
+        expect(gone.state.active, isNull);
+        expect(gone.container.read(radioGroupKeysProvider), isEmpty);
+        expect(rig.store.active, isNull);
+        gone.dispose();
+      });
+    });
+
+    test('turning the radio off forgets the channel', () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        rig.ctl.select(const RadioContact('bob'));
+        async.flushMicrotasks();
+        expect(rig.store.active, 'contact:bob');
+        rig.ctl.select(null);
+        async.flushMicrotasks();
+        expect(rig.store.active, isNull);
+        rig.dispose();
+
+        final again = _Rig(async, store: rig.store);
+        expect(again.state.active, isNull);
+        again.dispose();
+      });
+    });
+
+    test('leaving the tuned room forgets it', () {
+      fakeAsync((async) {
+        final rig = _Rig(async);
+        final g = rig.join('#patrol');
+        rig.ctl.select(g);
+        rig.ctl.leaveGroup(g.tagHex);
+        async.flushMicrotasks();
+        expect(rig.store.active, isNull);
+        rig.dispose();
+
+        final again = _Rig(async, store: rig.store);
+        expect(again.state.active, isNull);
+        expect(again.state.groups, isEmpty);
+        again.dispose();
+      });
+    });
+
+    test('the wipe forgets the channel and the used flag', () {
+      fakeAsync((async) {
+        final rig = _Rig(async, contacts: {alice});
+        final g = rig.join('#patrol');
+        rig.ctl.select(g);
+        rig.ctl.setPersonalCalls(false);
+        async.flushMicrotasks();
+        expect(rig.store.used, isTrue);
+
+        rig.ctl.clear();
+        async.flushMicrotasks();
+        expect(rig.state.active, isNull);
+        expect(rig.state.personalCalls, isTrue, reason: 'back to default');
+        expect(rig.store.active, isNull);
+        expect(rig.store.used, isNot(isTrue));
+        expect(rig.store.personalCalls, isNull);
+        // Wiped is never-used: nobody's pair tag is worked out.
+        expect(rig.peers, isEmpty);
+        rig.dispose();
+
+        final again = _Rig(async, store: rig.store, contacts: {alice});
+        expect(again.state.active, isNull);
+        expect(again.peers, isEmpty);
+        again.hear(alice, null, _chunk(_txId(9), 0, again.nowMs, last: true));
+        async.elapse(const Duration(seconds: 2));
+        expect(again.state.active, isNull);
+        expect(again.sink.written, isEmpty);
+        again.dispose();
+      });
+    });
+
+    test('a personal call tunes an idle radio to that contact', () {
+      fakeAsync((async) {
+        final rig = _Rig(async, contacts: {alice});
+        rig.join('#patrol');
+        expect(rig.state.active, isNull);
+        expect(rig.state.personalCalls, isTrue, reason: 'on by default');
+        // Idle and used: every contact is listened for.
+        expect(rig.peers, {alice});
+        rig.contacts = {alice, carol};
+        expect(rig.peers, {alice, carol});
+        rig.contacts = {alice};
+        expect(rig.peers, {alice}, reason: 'blocked carol is let go');
+
+        // Not during a call (Ruling 17): the call wins, the radio stays off.
+        rig.callBusy = true;
+        rig.hear(alice, null, _chunk(_txId(8), 0, rig.nowMs, last: true));
+        expect(rig.state.active, isNull);
+        rig.callBusy = false;
+
+        final tx = _txId(9);
+        final start = rig.nowMs;
+        rig.hear(alice, null, _chunk(tx, 0, start));
+        expect(rig.state.active, const RadioContact(alice));
+        expect(rig.state.floor, isA<Listening>());
+        rig.hear(alice, null, _chunk(tx, 1, start, last: true));
+        async.elapse(const Duration(seconds: 3));
+        expect(rig.sink.frameMarks, [
+          for (var s = 0; s < 2; s++)
+            for (var f = 0; f < RadioChunk.framesPerChunk; f++) s * 100 + f,
+        ]);
+        // Tuned now: only alice is opened, and the channel is kept.
+        expect(rig.peers, {alice});
+        expect(rig.store.active, 'contact:$alice');
+        rig.dispose();
+      });
+    });
+
+    test('a personal call does not interrupt a tuned room', () {
+      fakeAsync((async) {
+        final rig = _Rig(async, contacts: {alice});
+        final g = rig.join('#patrol');
+        rig.ctl.select(g);
+        expect(rig.peers, isEmpty);
+        rig.hear(alice, null, _chunk(_txId(9), 0, rig.nowMs, last: true));
+        async.elapse(const Duration(seconds: 2));
+        expect(rig.state.active, g);
+        expect(rig.sink.written, isEmpty);
+        rig.dispose();
+      });
+    });
+
+    test('with personal calls off an idle radio hears nothing', () {
+      fakeAsync((async) {
+        final rig = _Rig(async, contacts: {alice});
+        rig.join('#patrol');
+        expect(rig.peers, {alice});
+        rig.ctl.setPersonalCalls(false);
+        async.flushMicrotasks();
+        expect(rig.state.personalCalls, isFalse);
+        expect(rig.store.personalCalls, isFalse);
+        expect(rig.peers, isEmpty);
+        rig.hear(alice, null, _chunk(_txId(9), 0, rig.nowMs, last: true));
+        async.elapse(const Duration(seconds: 2));
+        expect(rig.state.active, isNull);
+        expect(rig.sink.written, isEmpty);
+        rig.dispose();
+
+        // And it stays off after a restart.
+        final again = _Rig(async, store: rig.store, contacts: {alice});
+        expect(again.state.personalCalls, isFalse);
+        expect(again.peers, isEmpty);
+        again.dispose();
+      });
+    });
+
+    test(
+        'a phone that never used the radio publishes no pair peers and runs '
+        'no timer', () {
+      fakeAsync((async) {
+        final rig = _Rig(async, contacts: {alice, carol});
+        expect(rig.store.used, isNot(isTrue));
+        expect(rig.peers, isEmpty);
+        expect(rig.container.read(radioGroupKeysProvider), isEmpty);
+        rig.hear(alice, null, _chunk(_txId(9), 0, rig.nowMs, last: true));
+        expect(async.periodicTimerCount, 0);
+        async.elapse(const Duration(minutes: 1));
+        expect(rig.state.active, isNull);
+        expect(rig.sink.events, isEmpty);
+        expect(async.periodicTimerCount, 0);
+        expect(rig.peers, isEmpty);
+        rig.dispose();
+      });
+    });
+
+    test('the controller exists without the screen', () {
+      fakeAsync((async) {
+        // What a restart after "tune to bob" leaves on disk; no screen is
+        // ever built, only the container the app reads the provider from.
+        final store = _MemoryStore()
+          ..used = true
+          ..active = 'contact:bob';
+        final rig = _Rig(async, store: store);
+        expect(rig.container.exists(radioControllerProvider), isTrue);
+        expect(rig.state.active, const RadioContact('bob'));
+        expect(rig.peers, {'bob'});
+        expect(async.periodicTimerCount, 0);
+        rig.hear('bob', null, _chunk(_txId(9), 0, rig.nowMs, last: true));
+        async.elapse(const Duration(seconds: 2));
+        expect(rig.sink.frameMarks, [for (var f = 0; f < 15; f++) f]);
+        rig.dispose();
+      });
+    });
+  });
+
   group('storage', () {
     late Directory tempDir;
     late StreamController<RadioInbound> inbound;
@@ -953,8 +1203,9 @@ void main() {
       final relaunched = fresh();
       await relaunched.read(radioControllerProvider.notifier).loaded;
       expect(relaunched.read(radioControllerProvider).groups, [g]);
-      expect(relaunched.read(radioGroupKeysProvider), isEmpty);
-      relaunched.read(radioControllerProvider.notifier).select(g);
+      // Still tuned after the restart (Ruling 26), so its key is back in the
+      // transport's table without anyone opening the screen.
+      expect(relaunched.read(radioControllerProvider).active, g);
       expect(relaunched.read(radioGroupKeysProvider), {tagHex: key});
 
       await relaunched

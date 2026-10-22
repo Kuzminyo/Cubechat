@@ -4017,4 +4017,15 @@ class AppLocalizationsUk extends AppLocalizations {
 
   @override
   String get radioTurnOff => 'Вимкнути рацію';
+
+  @override
+  String get radioPersonalCallsTitle => 'Приймай особисті виклики';
+
+  @override
+  String get radioPersonalCallsHint =>
+      'Коли рацію вимкнено, вона сама налаштовується на контакт, який до тебе заговорив.';
+
+  @override
+  String get radioBackgroundHint =>
+      'Із вимкненим екраном рацію чути, лише коли ввімкнено роботу у фоні.';
 }

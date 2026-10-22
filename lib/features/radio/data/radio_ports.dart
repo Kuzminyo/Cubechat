@@ -15,6 +15,7 @@ import '../../../core/util/audio_session.dart';
 import '../../../core/util/debug_log.dart';
 import '../../call/data/call_controller.dart';
 import '../../call/domain/call_state_machine.dart';
+import '../../peers/data/known_peers_controller.dart';
 import '../models/radio_channel.dart';
 
 // Everything the radio controller touches outside its own logic, each behind a
@@ -34,9 +35,8 @@ class MessagingRadioSender implements RadioSender {
 
   final Ref _ref;
 
-  // Read per call, not when this is made: the radio controller is built when
-  // the screen first asks for it, and that is no reason to build the whole
-  // transport in a test that never sends.
+  // Read per call, not when this is made: building the radio controller is no
+  // reason to build the whole transport in a test that never sends.
   @override
   Future<int> toContact(String canonicalId, RadioChunk chunk) => _ref
       .read(messagingServiceProvider)
@@ -177,7 +177,8 @@ class StoredRadioGroup {
   final DateTime joinedAt;
 }
 
-/// The radio's corner of the disk: joined groups, and the silent-mode switch.
+/// The radio's corner of the disk: joined groups, and its settings - the two
+/// switches, the tuned channel and whether the radio was ever used.
 abstract class RadioGroupStore {
   Future<List<StoredRadioGroup>> loadGroups();
   Future<void> putGroup(StoredRadioGroup stored);
@@ -187,10 +188,54 @@ abstract class RadioGroupStore {
   /// Null when it has never been set.
   Future<bool?> loadPlayInSilentMode();
   Future<void> savePlayInSilentMode(bool value);
+
+  /// The tuned channel as `room:<tagHex>` or `contact:<canonicalId>`
+  /// ([RadioChannelRef]); null when nothing is tuned.
+  Future<String?> loadActive();
+
+  /// Null forgets it.
+  Future<void> saveActive(String? channel);
+
+  /// The «Приймай особисті виклики» switch. Null when never set.
+  Future<bool?> loadPersonalCalls();
+  Future<void> savePersonalCalls(bool value);
+
+  /// Whether a room was ever added or a channel ever tuned. Null when never.
+  Future<bool?> loadUsed();
+  Future<void> saveUsed(bool value);
+
+  /// Forgets every setting above - Emergency Wipe.
+  Future<void> clearSettings();
+}
+
+/// How the tuned channel is written down: `room:<tagHex>` or
+/// `contact:<canonicalId>`. A string, not a map, because it lives in the
+/// shared settings box beside plain switches.
+abstract final class RadioChannelRef {
+  static const String _room = 'room:';
+  static const String _contact = 'contact:';
+
+  static String of(RadioChannel channel) => switch (channel) {
+        RadioRoom(:final tagHex) => '$_room$tagHex',
+        RadioContact(:final canonicalId) => '$_contact$canonicalId',
+      };
+
+  /// The room's tag hex, or null when [ref] is not a room.
+  static String? roomTag(String ref) =>
+      ref.startsWith(_room) && ref.length > _room.length
+          ? ref.substring(_room.length)
+          : null;
+
+  /// The contact's canonical id, or null when [ref] is not a contact.
+  static String? contactId(String ref) =>
+      ref.startsWith(_contact) && ref.length > _contact.length
+          ? ref.substring(_contact.length)
+          : null;
 }
 
 /// [HiveBoxes.radioGroups], encrypted like the channels box because a group
-/// key is a credential, keyed by tag hex; the switch lives in the settings box.
+/// key is a credential, keyed by tag hex; the settings live in the settings
+/// box.
 ///
 /// Both boxes are opened as `dynamic`, which is how a backup opens every box
 /// it has no special case for - opening one typed here would make the
@@ -199,6 +244,9 @@ class HiveRadioGroupStore implements RadioGroupStore {
   const HiveRadioGroupStore();
 
   static const String playInSilentKey = 'radio.playInSilentMode';
+  static const String activeKey = 'radio.active';
+  static const String personalCallsKey = 'radio.personalCalls';
+  static const String usedKey = 'radio.used';
 
   Future<Box<dynamic>> _groups() =>
       hiveCipherProvider.openEncryptedBox<dynamic>(HiveBoxes.radioGroups);
@@ -257,6 +305,51 @@ class HiveRadioGroupStore implements RadioGroupStore {
     await (await _settings()).put(playInSilentKey, value);
   }
 
+  @override
+  Future<String?> loadActive() async {
+    final v = (await _settings()).get(activeKey);
+    return v is String ? v : null;
+  }
+
+  @override
+  Future<void> saveActive(String? channel) async {
+    final box = await _settings();
+    if (channel == null) {
+      await box.delete(activeKey);
+    } else {
+      await box.put(activeKey, channel);
+    }
+  }
+
+  @override
+  Future<bool?> loadPersonalCalls() async {
+    final v = (await _settings()).get(personalCallsKey);
+    return v is bool ? v : null;
+  }
+
+  @override
+  Future<void> savePersonalCalls(bool value) async {
+    await (await _settings()).put(personalCallsKey, value);
+  }
+
+  @override
+  Future<bool?> loadUsed() async {
+    final v = (await _settings()).get(usedKey);
+    return v is bool ? v : null;
+  }
+
+  @override
+  Future<void> saveUsed(bool value) async {
+    await (await _settings()).put(usedKey, value);
+  }
+
+  @override
+  Future<void> clearSettings() async {
+    await (await _settings()).deleteAll(
+      const [playInSilentKey, activeKey, personalCallsKey, usedKey],
+    );
+  }
+
   static StoredRadioGroup _decode(Map<dynamic, dynamic> m) {
     final key = radioUnhex(m['keyHex'] as String);
     if (key.length != 32) throw const FormatException('key is not 32 bytes');
@@ -279,6 +372,19 @@ final radioGroupStoreProvider =
 /// The radio's clock. Every freshness rule in it - the 5 s age limit, the
 /// floor's tail, when to stop the speaker - reads this, so a test can move it.
 final radioClockProvider = Provider<DateTime Function()>((_) => DateTime.now);
+
+/// Canonical ids of the contacts a personal radio call may come from (Ruling
+/// 27): everyone in the roster who is not blocked. Listened to by the radio
+/// controller only while it is idle, used and taking personal calls - the
+/// roster changes with every presence beacon, and a radio that is tuned, off
+/// or never used has no business recomputing anything for it.
+final radioContactsProvider = Provider<Set<String>>((ref) {
+  final peers = ref.watch(knownPeersControllerProvider);
+  return Set.unmodifiable({
+    for (final p in peers.values)
+      if (!p.isBlocked) p.pubkeyHex,
+  });
+});
 
 /// Whether a voice call is up. Read, not watched: the controller asks on every
 /// chunk and every tick, and must not be rebuilt by a call's every change.

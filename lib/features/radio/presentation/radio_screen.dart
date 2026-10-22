@@ -1,8 +1,10 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/ble/background_mode_controller.dart';
 import '../../../core/identity/anon_name.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/theme/typography.dart';
@@ -216,10 +218,22 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
-                  _SilentTile(
+                  _SwitchTile(
+                    tileKey: const ValueKey('radio-silent-tile'),
+                    title: t.radioSilentTitle,
+                    hint: t.radioSilentHint,
                     value: state.playInSilentMode,
                     onChanged: (v) => unawaited(_radio.setPlayInSilentMode(v)),
                   ),
+                  const SizedBox(height: 8),
+                  _SwitchTile(
+                    tileKey: const ValueKey('radio-personal-tile'),
+                    title: t.radioPersonalCallsTitle,
+                    hint: t.radioPersonalCallsHint,
+                    value: state.personalCalls,
+                    onChanged: (v) => unawaited(_radio.setPersonalCalls(v)),
+                  ),
+                  const _BackgroundHint(),
                 ],
               ),
             ),
@@ -422,17 +436,27 @@ class _ContactTile extends ConsumerWidget {
   }
 }
 
-class _SilentTile extends StatelessWidget {
-  const _SilentTile({required this.value, required this.onChanged});
+/// A setting of the radio's own: a title, one line saying what it does, and
+/// the switch. The whole card toggles it, not only the switch.
+class _SwitchTile extends StatelessWidget {
+  const _SwitchTile({
+    required this.tileKey,
+    required this.title,
+    required this.hint,
+    required this.value,
+    required this.onChanged,
+  });
 
+  final Key tileKey;
+  final String title;
+  final String hint;
   final bool value;
   final ValueChanged<bool> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final t = AppLocalizations.of(context);
     return GlassCard(
-      key: const ValueKey('radio-silent-tile'),
+      key: tileKey,
       onTap: () => onChanged(!value),
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
       child: Row(
@@ -442,7 +466,7 @@ class _SilentTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  t.radioSilentTitle,
+                  title,
                   style: TextStyle(
                     color: AppColors.textOnGlass,
                     fontSize: 14,
@@ -451,7 +475,7 @@ class _SilentTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  t.radioSilentHint,
+                  hint,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
                     fontSize: 11.5,
@@ -466,6 +490,48 @@ class _SilentTile extends StatelessWidget {
             value: value,
             activeThumbColor: AppColors.brandPrimary,
             onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One line under the settings while the mesh's background mode is off
+/// (Ruling 29): without its foreground service Android kills the process
+/// once the screen goes dark, and a tuned radio then hears nobody. Android
+/// only - on iOS the screen-off radio is a different story (PushToTalk), and
+/// this sentence would promise something background mode does not do there.
+class _BackgroundHint extends ConsumerWidget {
+  const _BackgroundHint();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (defaultTargetPlatform != TargetPlatform.android) {
+      return const SizedBox.shrink();
+    }
+    if (ref.watch(backgroundModeProvider)) return const SizedBox.shrink();
+    return Padding(
+      key: const ValueKey('radio-background-hint'),
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.info_outline_rounded,
+            size: 15,
+            color: AppColors.textOnGlassDim,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              AppLocalizations.of(context).radioBackgroundHint,
+              style: TextStyle(
+                color: AppColors.textOnGlassDim,
+                fontSize: 12,
+                height: 1.35,
+              ),
+            ),
           ),
         ],
       ),

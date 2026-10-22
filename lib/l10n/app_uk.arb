@@ -1394,5 +1394,8 @@
   "radioBlockedMicrophone": "Немає доступу до мікрофона",
   "radioBlockedUnavailable": "Рація недоступна на цьому пристрої",
   "radioBlockedNoChannel": "Спершу обери групу або контакт",
-  "radioTurnOff": "Вимкнути рацію"
+  "radioTurnOff": "Вимкнути рацію",
+  "radioPersonalCallsTitle": "Приймай особисті виклики",
+  "radioPersonalCallsHint": "Коли рацію вимкнено, вона сама налаштовується на контакт, який до тебе заговорив.",
+  "radioBackgroundHint": "Із вимкненим екраном рацію чути, лише коли ввімкнено роботу у фоні."
 }

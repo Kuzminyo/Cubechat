@@ -6877,6 +6877,24 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Turn the radio off'**
   String get radioTurnOff;
+
+  /// No description provided for @radioPersonalCallsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Take personal calls'**
+  String get radioPersonalCallsTitle;
+
+  /// No description provided for @radioPersonalCallsHint.
+  ///
+  /// In en, this message translates to:
+  /// **'While the radio is off, a contact who talks to you tunes it to them.'**
+  String get radioPersonalCallsHint;
+
+  /// No description provided for @radioBackgroundHint.
+  ///
+  /// In en, this message translates to:
+  /// **'With the screen off the radio is heard only while background mode is on.'**
+  String get radioBackgroundHint;
 }
 
 class _AppLocalizationsDelegate

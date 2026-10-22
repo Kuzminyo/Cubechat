@@ -49,10 +49,12 @@ final radioGroupKeysProvider = StateProvider<Map<String, Uint8List>>(
   (ref) => const {},
 );
 
-/// The contact the radio is tuned to, if any, by canonical id. The transport
-/// works out 1:1 pair tags - an X25519 per contact - only for these, so a
-/// phone with nobody tuned in does no pair crypto at all, and a pair frame
-/// between two other people costs it nothing but the forward.
+/// The contact the radio is tuned to, if any, by canonical id - or, while an
+/// idle radio takes personal calls (Ruling 27), every contact not blocked.
+/// The transport works out 1:1 pair tags - an X25519 per contact, once - only
+/// for these, so a phone that never used the radio does no pair crypto at
+/// all, and a pair frame between two other people costs it nothing but the
+/// forward.
 final radioPairPeersProvider = StateProvider<Set<String>>(
   (ref) => const {},
 );
