@@ -235,6 +235,14 @@ class BumpController extends Notifier<BumpState> {
   /// Android-to-Android logs read, this gives -55: nothing changes there.
   static const int _rearmDrop = 10;
 
+  /// …but never lower than this. The drop alone sank too far for a phone
+  /// that fired on a quiet reading: 2026-10-22, Domovoy's phone answered a
+  /// bump at -56, which set its way out at -66, and across a room the two
+  /// phones never read below -64 — so the second bump was never answered.
+  /// -62 is still 5-8 dB under the iPhone's touch (-54..-57, 2026-10-09), so
+  /// phones left lying together do not fire again; arm's length gets under it.
+  static const int _rearmFloor = -62;
+
   /// Where each bumped person was read at the moment of the bump.
   final Map<String, int> _firedLevel = {};
 
@@ -291,7 +299,8 @@ class BumpController extends Notifier<BumpState> {
 
   int _rearmThreshold(String hex) {
     final fired = _firedLevel[hex];
-    return fired == null ? _rearmRssi : min(_rearmRssi, fired - _rearmDrop);
+    if (fired == null) return _rearmRssi;
+    return max(_rearmFloor, min(_rearmRssi, fired - _rearmDrop));
   }
   static const Duration dialEvery = Duration(seconds: 10);
 

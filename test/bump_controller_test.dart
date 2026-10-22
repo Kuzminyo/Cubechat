@@ -661,6 +661,37 @@ void main() {
     });
   });
 
+  test('a bump answered on a quiet reading re-arms by arm\'s length', () {
+    // 2026-10-22: Domovoy's phone answered at -56, so "ten dB under where it
+    // fired" put its way out at -66. Taken apart across the room the pair read
+    // -59..-64 and never got there, and the second bump went unanswered. The
+    // way out is floored at -62.
+    fakeAsync((async) {
+      final port = _Port()..direct.add(_bob);
+      final c = make(async, port);
+      feed(async, c, _bob, const Duration(milliseconds: 500), rssi: -56);
+      port.deliver(_bob, bump: _bump(73));
+      async.flushMicrotasks();
+      expect(event(c), isA<BumpContact>(), reason: 'answered at -56');
+      c.read(bumpControllerProvider.notifier).dismiss();
+
+      // Past the cooldown, still lying where it fired: not re-armed.
+      feed(async, c, _bob, const Duration(seconds: 6), rssi: -56);
+      feed(async, c, _bob, const Duration(milliseconds: 1200), rssi: -56);
+      port.deliver(_bob, bump: _bump(74));
+      async.flushMicrotasks();
+      expect(event(c), isNull, reason: 'lying together is the same bump');
+
+      // At arm's length — -64, the quietest the room gave — then back.
+      feed(async, c, _bob, const Duration(milliseconds: 2200), rssi: -64);
+      feed(async, c, _bob, const Duration(milliseconds: 1200), rssi: -56);
+      port.deliver(_bob, bump: _bump(75));
+      async.flushMicrotasks();
+      expect(event(c), isA<BumpContact>(), reason: 'a real second bump');
+      c.dispose();
+    });
+  });
+
   test('after one bump the two phones agree on the distance', () {
     // The iPhone side of 2026-10-09: it hears the Android at -55 from where
     // the Android hears it at -40. On its own, -55 is never "touching" here,
