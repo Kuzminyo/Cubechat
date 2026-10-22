@@ -185,6 +185,7 @@ class _Rig {
       overrides: [
         _contacts.overrideWith((ref) => contacts),
         radioContactsProvider.overrideWith((ref) => ref.watch(_contacts)),
+        radioContactsReadyProvider.overrideWithValue(() => Future.value()),
         radioInboundProvider.overrideWith(
           (ref) => ref.watch(_fakeService).stream,
         ),
@@ -1065,9 +1066,11 @@ void main() {
           for (var s = 0; s < 2; s++)
             for (var f = 0; f < RadioChunk.framesPerChunk; f++) s * 100 + f,
         ]);
-        // Tuned now: only alice is opened, and the channel is kept.
+        // Tuned now: only alice is opened - and by her call, not by the
+        // user, so nothing is kept for a restart (Ruling 32).
         expect(rig.peers, {alice});
-        expect(rig.store.active, 'contact:$alice');
+        expect(rig.state.callTuned, isTrue);
+        expect(rig.store.active, isNull);
         rig.dispose();
       });
     });
@@ -1136,7 +1139,7 @@ void main() {
         final store = _MemoryStore()
           ..used = true
           ..active = 'contact:bob';
-        final rig = _Rig(async, store: store);
+        final rig = _Rig(async, store: store, contacts: {'bob'});
         expect(rig.container.exists(radioControllerProvider), isTrue);
         expect(rig.state.active, const RadioContact('bob'));
         expect(rig.peers, {'bob'});
@@ -1144,6 +1147,171 @@ void main() {
         rig.hear('bob', null, _chunk(_txId(9), 0, rig.nowMs, last: true));
         async.elapse(const Duration(seconds: 2));
         expect(rig.sink.frameMarks, [for (var f = 0; f < 15; f++) f]);
+        rig.dispose();
+      });
+    });
+
+    test('a personal call off the sender clock does not tune the radio', () {
+      fakeAsync((async) {
+        final rig = _Rig(async, contacts: {alice, carol});
+        rig.join('#patrol');
+        // Alice's clock is 61 s out: the floor would drop her chunk, so it
+        // must not tune the radio to a voice it then cannot play.
+        rig.hear(alice, null, _chunk(_txId(9), 0, rig.nowMs - 61000));
+        async.elapse(const Duration(seconds: 2));
+        expect(rig.state.active, isNull);
+        expect(rig.state.callTuned, isFalse);
+        expect(rig.store.active, isNull);
+        expect(rig.sink.written, isEmpty);
+        // Still idle, so still listening for everyone - and Carol gets in.
+        expect(rig.peers, {alice, carol});
+        rig.hear(carol, null, _chunk(_txId(8), 0, rig.nowMs, last: true));
+        expect(rig.state.active, const RadioContact(carol));
+        rig.dispose();
+      });
+    });
+
+    test('a call-tuned radio returns to idle after two minutes of silence', () {
+      fakeAsync((async) {
+        final rig = _Rig(async, contacts: {alice, carol});
+        rig.join('#patrol');
+        rig.hear(alice, null, _chunk(_txId(9), 0, rig.nowMs, last: true));
+        expect(rig.state.active, const RadioContact(alice));
+        expect(rig.state.callTuned, isTrue);
+        expect(rig.peers, {alice});
+
+        async.elapse(const Duration(minutes: 1, seconds: 59));
+        expect(rig.state.active, const RadioContact(alice));
+        async.elapse(const Duration(seconds: 2));
+        expect(rig.state.active, isNull);
+        expect(rig.state.callTuned, isFalse);
+        expect(rig.store.active, isNull);
+        // Idle again: every contact listened for, and no timer of any kind.
+        expect(rig.peers, {alice, carol});
+        expect(async.periodicTimerCount, 0);
+        expect(async.nonPeriodicTimerCount, 0);
+        rig.dispose();
+      });
+    });
+
+    test('a reply within two minutes keeps a call-tuned radio tuned', () {
+      fakeAsync((async) {
+        final rig = _Rig(async, contacts: {alice});
+        rig.join('#patrol');
+        rig.hear(alice, null, _chunk(_txId(9), 0, rig.nowMs, last: true));
+        async.elapse(const Duration(minutes: 1, seconds: 30));
+
+        // I answer: the two minutes start again from the end of my press.
+        expect(rig.press(), isTrue);
+        rig.mic.emit(_pcm(300));
+        async.elapse(const Duration(milliseconds: 300));
+        rig.release();
+        expect(rig.sender.sent.map((s) => s.to).toSet(), {alice});
+        async.elapse(const Duration(minutes: 1, seconds: 30));
+        expect(rig.state.active, const RadioContact(alice));
+
+        // She answers back: heard, and the count starts over once more.
+        rig.hear(alice, null, _chunk(_txId(7), 0, rig.nowMs, last: true));
+        async.elapse(const Duration(minutes: 1, seconds: 50));
+        expect(rig.state.active, const RadioContact(alice));
+        expect(rig.state.callTuned, isTrue);
+
+        async.elapse(const Duration(seconds: 15));
+        expect(rig.state.active, isNull);
+        rig.dispose();
+      });
+    });
+
+    test('a restart while call-tuned comes back idle', () {
+      fakeAsync((async) {
+        final rig = _Rig(async, contacts: {alice});
+        rig.join('#patrol');
+        rig.hear(alice, null, _chunk(_txId(9), 0, rig.nowMs, last: true));
+        expect(rig.state.callTuned, isTrue);
+        rig.dispose();
+
+        final again = _Rig(async, store: rig.store, contacts: {alice});
+        expect(again.state.active, isNull);
+        expect(again.state.callTuned, isFalse);
+        expect(again.peers, {alice}, reason: 'idle, used: taking calls');
+        again.dispose();
+      });
+    });
+
+    test('choosing the call-tuned contact keeps the channel', () {
+      fakeAsync((async) {
+        final rig = _Rig(async, contacts: {alice});
+        rig.join('#patrol');
+        rig.hear(alice, null, _chunk(_txId(9), 0, rig.nowMs, last: true));
+        expect(rig.state.callTuned, isTrue);
+
+        // The user taps her: a choice now, not a call.
+        rig.ctl.select(const RadioContact(alice));
+        async.flushMicrotasks();
+        expect(rig.state.callTuned, isFalse);
+        expect(rig.store.active, 'contact:$alice');
+        async.elapse(const Duration(minutes: 10));
+        expect(rig.state.active, const RadioContact(alice));
+        rig.dispose();
+      });
+    });
+
+    test('turning the radio off mid-sentence is not undone by that sentence',
+        () {
+      fakeAsync((async) {
+        final rig = _Rig(async, contacts: {alice});
+        rig.join('#patrol');
+        final tx = _txId(9);
+        final start = rig.nowMs;
+        rig.hear(alice, null, _chunk(tx, 0, start));
+        expect(rig.state.active, const RadioContact(alice));
+
+        rig.ctl.select(null);
+        expect(rig.state.active, isNull);
+        // The rest of the sentence she is still saying does not come back
+        // as a personal call.
+        async.elapse(const Duration(milliseconds: 300));
+        rig.hear(alice, null, _chunk(tx, 1, start));
+        async.elapse(const Duration(milliseconds: 300));
+        rig.hear(alice, null, _chunk(tx, 2, start, last: true));
+        expect(rig.state.active, isNull);
+
+        // A new press of hers later still can.
+        async.elapse(const Duration(seconds: 5));
+        rig.hear(alice, null, _chunk(_txId(5), 0, rig.nowMs, last: true));
+        expect(rig.state.active, const RadioContact(alice));
+        expect(rig.state.callTuned, isTrue);
+        rig.dispose();
+      });
+    });
+
+    test('a phone upgraded with rooms on disk counts as having used the radio',
+        () {
+      fakeAsync((async) {
+        final first = _Rig(async);
+        first.join('#patrol');
+        first.dispose();
+        // What stage 1 left behind: the room, but no flag.
+        first.store.used = null;
+
+        final upgraded = _Rig(async, store: first.store, contacts: {alice});
+        expect(upgraded.peers, {alice});
+        expect(first.store.used, isTrue, reason: 'and the flag is written');
+        upgraded.dispose();
+      });
+    });
+
+    test('a restored contact who is gone or blocked comes up untuned', () {
+      fakeAsync((async) {
+        final store = _MemoryStore()
+          ..used = true
+          ..active = 'contact:$carol';
+        // Carol is not among the contacts any more - removed, or blocked,
+        // which takes her off the same list.
+        final rig = _Rig(async, store: store, contacts: {alice});
+        expect(rig.state.active, isNull);
+        expect(store.active, isNull);
+        expect(rig.peers, {alice}, reason: 'idle, taking calls');
         rig.dispose();
       });
     });

@@ -51,6 +51,7 @@ class RadioState {
     this.floor = const Idle(),
     this.playInSilentMode = true,
     this.personalCalls = true,
+    this.callTuned = false,
     this.blockedReason,
     this.speakerBusy = false,
   });
@@ -74,6 +75,11 @@ class RadioState {
   /// themselves and is heard - the radio's version of a phone ringing.
   final bool personalCalls;
 
+  /// [active] was tuned by a personal call, not by the user (Ruling 32): it
+  /// is not kept across a restart, and the radio goes back to idle after
+  /// [RadioController.callIdleAfter] with nothing heard or said on it.
+  final bool callTuned;
+
   /// Set when [RadioController.pressToTalk] refused, cleared by the next press
   /// that works and by [RadioController.select].
   final RadioBlockedReason? blockedReason;
@@ -94,6 +100,7 @@ class RadioState {
     FloorState? floor,
     bool? playInSilentMode,
     bool? personalCalls,
+    bool? callTuned,
     RadioBlockedReason? Function()? blockedReason,
     bool? speakerBusy,
   }) =>
@@ -103,6 +110,7 @@ class RadioState {
         floor: floor ?? this.floor,
         playInSilentMode: playInSilentMode ?? this.playInSilentMode,
         personalCalls: personalCalls ?? this.personalCalls,
+        callTuned: callTuned ?? this.callTuned,
         blockedReason:
             blockedReason != null ? blockedReason() : this.blockedReason,
         speakerBusy: speakerBusy ?? this.speakerBusy,
@@ -186,6 +194,12 @@ class RadioController extends Notifier<RadioState> {
   /// Open only while personal calls are being listened for - see
   /// [radioContactsProvider] for why not always.
   ProviderSubscription<Set<String>>? _contactsSub;
+
+  /// Fires [callIdleAfter] after the last transmission on a call-tuned
+  /// channel ([RadioState.callTuned]) and puts the radio back to idle. One
+  /// shot, re-armed by each transmission: nothing ticks while nobody talks
+  /// (Ruling 20).
+  Timer? _callIdle;
   bool _disposed = false;
   int _generation = 0;
 
@@ -286,6 +300,7 @@ class RadioController extends Notifier<RadioState> {
     } catch (e, st) {
       debugPrint('Radio groups load failed: $e\n$st');
     }
+    await _awaitContactsFor(activeRef);
     // A restore invalidates this controller while the read is in flight; the
     // rebuild has started its own, over the restored box.
     if (_disposed || generation != _generation) return;
@@ -299,7 +314,12 @@ class RadioController extends Notifier<RadioState> {
     _stored
       ..clear()
       ..addAll(merged);
-    if (!_usedTouched) _used = used ?? false;
+    if (!_usedTouched) {
+      // A phone upgraded from stage 1 has rooms on disk but no flag: it has
+      // used the radio, and its personal calls must work like anyone's.
+      _used = (used ?? false) || loaded.isNotEmpty;
+      if (_used && used != true) unawaited(_saveUsed());
+    }
     state = state.copyWith(
       groups: _groupList(),
       playInSilentMode:
@@ -312,16 +332,31 @@ class RadioController extends Notifier<RadioState> {
     _publishKeys();
   }
 
+  /// [RadioChannelRef.contactId] of [activeRef], once the roster it is to be
+  /// judged against has loaded - see [radioContactsReadyProvider].
+  Future<void> _awaitContactsFor(String? activeRef) async {
+    if (activeRef == null || RadioChannelRef.contactId(activeRef) == null) {
+      return;
+    }
+    try {
+      await ref.read(radioContactsReadyProvider)();
+    } catch (e) {
+      debugPrint('Radio contacts wait failed: $e');
+    }
+  }
+
   /// Tunes back to the channel the radio was on before the restart - quietly:
   /// it is the same choice, so nothing is written back. A room left (or
   /// wiped) since is not an error; the radio comes up tuned to nothing, and
-  /// the stale entry is dropped.
-  void _restore(String ref) {
-    final tag = RadioChannelRef.roomTag(ref);
-    final contact = RadioChannelRef.contactId(ref);
+  /// the stale entry is dropped. So is a contact who is no longer one, or is
+  /// blocked now: the transport would never hand over their voice, and a
+  /// radio tuned to them is a radio that hears nobody.
+  void _restore(String stored) {
+    final tag = RadioChannelRef.roomTag(stored);
+    final contact = RadioChannelRef.contactId(stored);
     final channel = tag != null
         ? _stored[tag]?.group
-        : contact != null
+        : contact != null && ref.read(radioContactsProvider).contains(contact)
             ? RadioContact(contact)
             : null;
     if (channel == null) {
@@ -513,36 +548,88 @@ class RadioController extends Notifier<RadioState> {
 
   /// A 1:1 chunk reached a radio tuned to nothing. When personal calls are
   /// being taken and it is from a contact listened for, the radio tunes to
-  /// them - persisted like any other choice - and the chunk is then handled
-  /// as on any tuned channel. Never during a call (Ruling 17): the call wins
-  /// and the radio stays off. Never for the rest of a transmission the user
-  /// just switched away from ([_closed]), or "turn off" would undo itself on
-  /// the next chunk of the sentence it cut.
+  /// them - call-tuned (Ruling 32): not persisted, and back to idle after
+  /// [callIdleAfter] of silence - and the chunk is then handled as on any
+  /// tuned channel.
+  ///
+  /// Never during a call (Ruling 17): the call wins and the radio stays off.
+  /// Never for the rest of a transmission the user just switched away from
+  /// ([_closed]), or "turn off" would undo itself on the next chunk of the
+  /// sentence it cut. Never on a chunk the new floor would refuse for its
+  /// timing ([RadioFloor.offClock]) - a sender whose clock is a minute out
+  /// would otherwise leave the radio tuned to a voice it then drops.
   bool _answerPersonalCall(RadioInbound m) {
     if (m.groupTag != null || !_takingPersonalCalls) return false;
     final contacts = _contactsSub?.read() ?? const <String>{};
     if (!contacts.contains(m.senderId)) return false;
     if (_callBusy()) return false;
     if (_closed.any((id) => _sameId(id, m.chunk.transmissionId))) return false;
+    if (RadioFloor.offClock(m.chunk, _clock()) != null) return false;
     DebugLog.instance.log('RADIO', 'personal call tunes the radio');
-    select(RadioContact(m.senderId));
+    _tune(RadioContact(m.senderId));
+    state = state.copyWith(callTuned: true);
+    _armCallIdle();
     return true;
+  }
+
+  /// How long a call-tuned radio stays on its caller after the last
+  /// transmission heard or sent on it (Ruling 32). Two minutes: a reply and
+  /// the answer to it fit easily; a radio left tuned to one person for good
+  /// by a single "you there?" would deafen it to every other personal call.
+  static const Duration callIdleAfter = Duration(minutes: 2);
+
+  /// (Re)starts the call-tuned countdown; harmless when not call-tuned.
+  void _armCallIdle() {
+    if (_disposed || !state.callTuned) return;
+    _callIdle?.cancel();
+    _callIdle = Timer(callIdleAfter, _callIdleFired);
+  }
+
+  void _callIdleFired() {
+    _callIdle = null;
+    if (_disposed || !state.callTuned) return;
+    // Somebody is still at it: wait another round rather than cut them off.
+    final floor = _floor?.state ?? const Idle();
+    if (_press != null || _heard != null || floor is! Idle) {
+      _armCallIdle();
+      return;
+    }
+    DebugLog.instance.log('RADIO', 'personal call over, radio idle again');
+    // Not select(null): nothing was stored for this tuning, so nothing is
+    // forgotten either, and the user did not choose it.
+    _tune(null);
   }
 
   // --------------------------------------------------------------- channel
 
   /// Tune to [channel], or to nothing. Whatever was being said or heard on
   /// the old one stops at once. Remembered across restarts (Ruling 26).
+  ///
+  /// Choosing the channel a personal call tuned the radio to is a choice like
+  /// any other: it stops being call-tuned and is kept (Ruling 32).
   void select(RadioChannel? channel) {
     _activeTouched = true;
-    if (channel == state.active) return;
+    if (channel == state.active) {
+      if (channel != null && state.callTuned) {
+        _endCallTuning();
+        unawaited(_saveActive(channel));
+      }
+      return;
+    }
     if (channel != null) _markUsed();
     _tune(channel);
     unawaited(_saveActive(channel));
   }
 
+  void _endCallTuning() {
+    _callIdle?.cancel();
+    _callIdle = null;
+    if (state.callTuned) state = state.copyWith(callTuned: false);
+  }
+
   void _tune(RadioChannel? channel) {
     if (channel == state.active) return;
+    _endCallTuning();
     final press = _press;
     if (press != null) unawaited(_endPress(press, sendLast: true));
     // What was being heard is over for this phone: its stragglers must not
@@ -618,6 +705,7 @@ class RadioController extends Notifier<RadioState> {
     );
     _press = press;
     _wake();
+    _armCallIdle();
     state = state.copyWith(floor: floor.state, blockedReason: () => null);
     // A timer, not a check on each piece of PCM: a microphone that stalls
     // must not hold the channel either.
@@ -740,6 +828,8 @@ class RadioController extends Notifier<RadioState> {
     press.encoder.dispose();
     press.floor.stopTalking();
     _syncFloor();
+    // A reply on a call-tuned channel: the two minutes count from here.
+    _armCallIdle();
 
     // Not awaited: nothing after this depends on the cancel having finished
     // (over is set, so a late sample is ignored), and the microphone is let go
@@ -797,6 +887,7 @@ class RadioController extends Notifier<RadioState> {
           chunk.startedAtMs,
           _clock(),
         );
+        _armCallIdle();
       }
       if (buffer.push(chunk)) heard.note(chunk, _clock());
     }
@@ -959,6 +1050,7 @@ class RadioController extends Notifier<RadioState> {
     final heard = _heard;
     if (heard != null) {
       _heard = null;
+      _armCallIdle();
       _buffer?.reset();
       heard.decoder?.dispose();
       if (over) _markClosed(heard.txId);
@@ -1041,6 +1133,8 @@ class RadioController extends Notifier<RadioState> {
     _ticker = null;
     _stopTimer?.cancel();
     _stopTimer = null;
+    _callIdle?.cancel();
+    _callIdle = null;
     final press = _press;
     _press = null;
     press?.cap?.cancel();

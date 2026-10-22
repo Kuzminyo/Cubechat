@@ -386,6 +386,14 @@ final radioContactsProvider = Provider<Set<String>>((ref) {
   });
 });
 
+/// Resolves once the roster behind [radioContactsProvider] is off the disk.
+/// The radio waits for it before restoring a `contact:` channel: both load at
+/// startup in a race, and judging the stored contact against a roster that
+/// has not arrived yet would drop every one of them as unknown.
+final radioContactsReadyProvider = Provider<Future<void> Function()>(
+  (ref) => () => ref.read(knownPeersControllerProvider.notifier).loaded,
+);
+
 /// Whether a voice call is up. Read, not watched: the controller asks on every
 /// chunk and every tick, and must not be rebuilt by a call's every change.
 final radioCallBusyProvider = Provider<bool Function()>(

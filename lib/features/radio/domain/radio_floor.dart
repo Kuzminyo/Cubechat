@@ -45,8 +45,33 @@ class RadioFloor {
     required DateTime Function() clock,
     this.tail = const Duration(seconds: 1),
     this.maxLate = const Duration(seconds: 5),
-    this.maxClockOffset = const Duration(seconds: 60),
+    this.maxClockOffset = defaultMaxClockOffset,
   }) : _clock = clock;
+
+  /// See [maxClockOffset].
+  static const Duration defaultMaxClockOffset = Duration(seconds: 60);
+
+  /// How far [chunk] is off the sender's clock when that is more than
+  /// [maxClockOffset], else null - the one timing test a floor made just now
+  /// applies to the first chunk it is shown (lateness needs an earlier chunk
+  /// of the same transmission to measure from, and a new floor has none).
+  ///
+  /// Static so a radio tuned to nothing can ask, before it tunes itself to a
+  /// personal call, whether the chunk that would tune it is one any floor
+  /// would take: a chunk refused here would leave it tuned to a caller it
+  /// cannot hear.
+  static Duration? offClock(
+    RadioChunk chunk,
+    DateTime now, {
+    Duration maxClockOffset = defaultMaxClockOffset,
+  }) {
+    final meantAtMs =
+        chunk.startedAtMs + chunk.seq * RadioChunk.chunkDuration.inMilliseconds;
+    final offMs = (now.millisecondsSinceEpoch - meantAtMs).abs();
+    return offMs > maxClockOffset.inMilliseconds
+        ? Duration(milliseconds: offMs)
+        : null;
+  }
 
   final DateTime Function() _clock;
 
@@ -170,12 +195,8 @@ class RadioFloor {
   /// sender's clock by more than [maxClockOffset], or more than [maxLate]
   /// behind when its transmission's first chunk says it should have come.
   Duration? _offBy(RadioChunk chunk, DateTime now) {
-    final meantAtMs =
-        chunk.startedAtMs + chunk.seq * RadioChunk.chunkDuration.inMilliseconds;
-    final offMs = (now.millisecondsSinceEpoch - meantAtMs).abs();
-    if (offMs > maxClockOffset.inMilliseconds) {
-      return Duration(milliseconds: offMs);
-    }
+    final off = offClock(chunk, now, maxClockOffset: maxClockOffset);
+    if (off != null) return off;
     for (final a in _anchors) {
       if (!_sameId(a.id, chunk.transmissionId)) continue;
       final expected =

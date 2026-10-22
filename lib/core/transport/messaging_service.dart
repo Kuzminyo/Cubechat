@@ -7363,11 +7363,15 @@ class MessagingService {
 
   /// Pair tag hex -> contact canonical id, for the three active epochs.
   ///
-  /// Only for the contact the radio is tuned to ([radioPairPeersProvider]) —
-  /// the only one whose voice would be played. Built on the first radio
+  /// Only for the contacts in [radioPairPeersProvider]: the one the radio is
+  /// tuned to, or — while an idle radio that has been used takes personal
+  /// calls (Ruling 27) — every contact not blocked. Built on the first radio
   /// frame whose tag is not a group's, and rebuilt only when the epoch turns,
-  /// the tuned contact changes or the contact list does — never per frame: a
+  /// that set changes or the contact list does — never per frame: a
   /// stranger's group three times a second must not cost a hash per chunk.
+  /// Each rebuild costs a tag per contact in the set (an X25519 the first
+  /// time a contact is seen, see [_radioPairKeys]), so with personal calls
+  /// on it scales with the contact list.
   Map<String, String> _radioPairTags = const {};
   int? _radioPairTagsEpoch;
   Set<String> _radioPairTagsPeers = const {};
