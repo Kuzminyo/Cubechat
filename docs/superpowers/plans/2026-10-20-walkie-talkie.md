@@ -325,15 +325,47 @@
 
 ## Этап 2 — Android с выключенным экраном
 
-### Task 10: Приём и передача в фоне на Android
+### Этап 2 — решения (2026-10-22, по просьбе владельца «доделывай всё по плану»)
+
+Что выяснилось в коде перед этапом 2: нативный проигрыватель уже зарегистрирован на кэшированном движке (`MainApplication`), а фоновую жизнь процесса держит `MeshForegroundService` (`connectedDevice|location`). Не хватает другого: `radioControllerProvider` создаётся **только когда открывается экран рации** (его читает только экран), и выбранный канал **не сохраняется** — после перезапуска или пока экран не открыт, рация никого не слышит.
+
+- **Передача с выключенным экраном по-прежнему вне объёма** (спека: не цели): нажать кнопку на выключенном экране нечем. Поэтому тип `microphone` у службы mesh **не добавляем** — запись идёт только при открытом приложении, как сейчас. Меняем **приём**.
+- **Ruling 25.** Контроллер рации создаётся при старте приложения (как `mapPresenceControllerProvider` в `lib/app.dart`), чтобы приём работал на любом экране и в фоне. Для тех, кто рацией не пользовался, он ничего не стоит: нечего слушать → нет таймера, нет ключей, нет криптографии (Ruling M6).
+- **Ruling 26.** Настроенный канал (группа по `tagHex` или контакт по каноническому id) **сохраняется** и восстанавливается после перезапуска; «Вимкнути рацію», выход из группы и экстренное стирание его очищают.
+- **Ruling 27 (входящий вызов рации, Ruling 23).** Тумблер «Приймати особисті виклики» (по умолчанию **включён**, хранится рядом с `playInSilentMode`). Пока рация **ни на что не настроена** и тумблер включён, контроллер публикует в `radioPairPeersProvider` всех не заблокированных контактов; если пришёл кусок 1:1 от контакта и ничего не настроено — рация **сама настраивается на этого контакта** и играет. Если уже настроено на что-то, чужой личный вызов **не** перебивает. Чтобы «рацией не пользовался — ничего не платит» оставалось верным, это включается только после того, как рацией хоть раз пользовались (группа добавлена, канал выбирался хоть раз — флаг `radio.used` в том же хранилище настроек).
+- **Ruling 28.** На Android проигрыватель держит `PARTIAL_WAKE_LOCK` на время приёма (с таймаутом, например 3 минуты, и снятием в `stop`): иначе процессор может уснуть между кусками. Разрешение `WAKE_LOCK` — проверить в манифесте, добавить, если нет.
+- **Ruling 29.** Если фоновый режим mesh выключен (`backgroundModeProvider`), на экране рации показывается одна строка-подсказка «С выключенным экраном рация слышна, только если включён фоновый режим» (uk/en), потому что без службы Android убьёт процесс.
+
+### Task 10: Приём рации с выключенным экраном на Android (Dart)
 
 **Files:**
-- Modify: `android/app/src/main/kotlin/com/cubechat/cubechat/` (сервис mesh — тип `microphone` добавлять только на время нажатия, `connectedDevice|location` остаются), `CubechatRadioAudioPlugin.kt` (игра из фона), `lib/features/radio/data/radio_controller.dart` (жизненный цикл)
-- Test: `test/radio_controller_test.dart` — `inbound keeps playing after the app leaves the screen` (фейковый `AppLifecycle`)
+- Modify: `lib/app.dart` (создать контроллер при старте), `lib/features/radio/data/radio_controller.dart` (сохранение канала, личные вызовы, флаг `used`), `lib/features/radio/data/radio_ports.dart` (хранение `active`, `personalCalls`, `used` в хранилище настроек радио), `lib/features/radio/presentation/radio_screen.dart` (тумблер и подсказка), `lib/l10n/app_uk.arb` и `app_en.arb`
+- Test: `test/radio_controller_test.dart`, `test/radio_screen_test.dart`
 
-- [ ] **Step 1:** Тест — FAIL. **Step 2:** Реализовать: приём не зависит от `AppLifecycle.isForeground`; проигрыватель — из процесса, который держит mesh-сервис. **Step 3:** PASS.
-- [ ] **Step 4:** Сборка (как Task 9) и шаги владельцу: экран Android выключен, телефон в кармане; со второго телефона говорить; повторить на беззвучном с тумблером вкл/выкл.
-- [ ] **Step 5:** Коммит: «Hear the radio with the screen off on Android».
+**Interfaces:**
+- Produces: `RadioState.personalCalls: bool`; `RadioController.setPersonalCalls(bool)`; сохранение `active` как `RadioChannelRef` (`room:<tagHex>` | `contact:<id>`) в `RadioSettingsStore`.
+
+- [ ] **Step 1: Тесты (FAIL).** В `radio_controller_test.dart`: `a tuned room is restored after a restart`; `turning the radio off forgets the channel`; `leaving the tuned room forgets it`; `the wipe forgets the channel and the used flag`; `a personal call tunes an idle radio to that contact` (ничего не настроено, `used`, тумблер включён → чужой 1:1 кусок настраивает на контакта и доходит до динамика); `a personal call does not interrupt a tuned room`; `with personal calls off an idle radio hears nothing`; `a phone that never used the radio publishes no pair peers and runs no timer` (флаг `used` ложен); `the controller exists without the screen` (провайдер читается из `ProviderContainer` без экрана и принимает кусок). В `radio_screen_test.dart`: `the personal calls switch reflects the state`; `the background hint shows when background mode is off`.
+- [ ] **Step 2:** Запустить — FAIL.
+- [ ] **Step 3:** Реализовать: `lib/app.dart` — `ref.watch(radioControllerProvider)` рядом с `ref.watch(mapPresenceControllerProvider)` (см. комментарий там про фоновый старт); сохранять `active` при каждом `select`; восстанавливать после загрузки групп (если сохранённой группы больше нет — молча `select(null)`); `_publishKeys` расширить Ruling 27; флаг `used` ставится при первом `joinGroup` или первом непустом `select`. Не нарушать Ruling M6 и ленивый таймер (Ruling 20).
+- [ ] **Step 4:** Тесты — PASS; общий анализатор чистый.
+- [ ] **Step 5:** Коммит: «Keep the radio tuned across restarts and let a personal call tune an idle radio».
+
+### Task 11: Приём рации с выключенным экраном на Android (нативная часть)
+
+**Files:**
+- Modify: `android/app/src/main/kotlin/com/cubechat/cubechat/CubechatRadioAudioPlugin.kt` (wake lock), `android/app/src/main/AndroidManifest.xml` (`WAKE_LOCK`, если нет)
+- Test: Dart-тест с моканным каналом не нужен (поведение нативное); проверка — только на телефоне.
+
+- [ ] **Step 1:** В `start` взять `PowerManager.PARTIAL_WAKE_LOCK` (тег `cubechat:radio`) с таймаутом 3 минуты; в `stop`/`release` снять; повторный `start` не копит замки; без исключения, если замок не дали.
+- [ ] **Step 2:** Проверить, что в манифесте есть `WAKE_LOCK`; добавить с комментарием, если нет. Проверить, что фоновый приём не требует нового `foregroundServiceType` (приём — это воспроизведение, не запись).
+- [ ] **Step 3:** Анализатор чистый; Kotlin сверить с SDK (minSdk 24).
+- [ ] **Step 4:** Коммит: «Hold the CPU awake while the radio is playing».
+
+### Task 12: Сборка и шаги владельцу (этап 2)
+
+- [ ] **Step 1:** Поднять `version:` и `appBuildStamp`, собрать APK `tool/build_apk.ps1` (в основной папке), проверить подпись и штамп.
+- [ ] **Step 2:** Шаги владельцу: настроить рацию на группу → заблокировать экран → со второго телефона говорить; повторить после «убить приложение из списка» и после перезапуска телефона; личный вызов: оба телефона с выключенным каналом, один говорит из чата → второй слышит сам; на беззвучном с тумблером вкл/выкл.
 
 ---
 
