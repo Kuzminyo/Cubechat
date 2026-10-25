@@ -40,19 +40,6 @@ import 'features/profile/data/call_routing_controller.dart';
 /// request to draw *more*, and the idle cost is unchanged because the aurora
 /// and the dots park when nothing is moving either way.
 ///
-/// Android only — deliberately. iOS caps at 60 Hz through
-/// `CADisableMinimumFrameDurationOnPhone` in Info.plist, which was set to hold
-/// ProMotion iPhones down for heat; this must not quietly undo that.
-/// Ask Android for the panel's real refresh rate.
-///
-/// On a 90/120 Hz Xiaomi the app looked *worse* than on a 60 Hz phone: MIUI
-/// leaves an app that never states a preference on the 60 Hz mode while the
-/// system UI around it runs at 90, so every scroll is a 60 Hz animation on a
-/// 90 Hz panel — uneven frame pacing, which reads as stutter even though no
-/// frame is being missed. Stating the preference is what fixes it; it isn't a
-/// request to draw *more*, and the idle cost is unchanged because the aurora
-/// and the dots park when nothing is moving either way.
-///
 /// **Do not "save heat" by asking for the low mode instead.** Tried on
 /// 2026-08-17 and reverted within the hour. The arithmetic looked sound —
 /// raster p90 was 9.6 ms, comfortably inside a 60 Hz budget and past a 120 Hz
@@ -64,9 +51,9 @@ import 'features/profile/data/call_routing_controller.dart';
 /// it is not "the same frames, fewer of them". The paragraph above was already
 /// the warning, and it was read as being about something else.
 ///
-/// Android only — deliberately. iOS caps at 60 Hz through
-/// `CADisableMinimumFrameDurationOnPhone` in Info.plist, which was set to hold
-/// ProMotion iPhones down for heat; this must not quietly undo that.
+/// Android only. iOS needs no call: ProMotion is opened by
+/// `CADisableMinimumFrameDurationOnPhone` in Info.plist, true since build 1181
+/// (it was held at 60 Hz for heat, and the iPhone read as slow beside Android).
 Future<void> _matchDisplayRefreshRate() async {
   if (kIsWeb || !Platform.isAndroid) return;
   try {
