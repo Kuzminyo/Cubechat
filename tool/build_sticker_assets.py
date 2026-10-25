@@ -51,18 +51,21 @@ ANIM_QUALITY = 58
 ANIM_METHOD = 4
 STILL_SIZE = 176
 
-# Where the timing actually is.
+# Cubi's source art deliberately contains poses and drawn in-betweens.  The
+# gallery export keeps its six-second presentation rhythm, but that rhythm is
+# wrong for an in-chat sticker: it held the key pose for 0.9–1.05 seconds, then
+# jumped through the in-betweens.  On a phone this reads as a frozen sticker,
+# not a living character.
 #
-# The 512 px WebP masters carry no per-frame duration — Pillow reads None for
-# every frame — while the 256 px GIF beside each one carries the rhythm the
-# animation was drawn to: 1050 ms on the pose, 450 on the beat, for 67 of the
-# 72, and two other patterns for the rest. Collapsing that to one number, which
-# is what a single `duration=` does, flattens the pause the drawing depends on.
-# So: pixels from the WebP, timing from the GIF.
+# The app therefore plays Cubi at 12.5 fps.  Eight-frame poses gain one blended
+# transition after every drawn frame, so they have the same cadence as the
+# sixteen-frame poses.  This changes no illustration or silhouette: it only
+# gives a short, even bridge between adjacent hand-drawn positions.
+CUBI_FRAME_MS = 80
 FALLBACK_FRAME_MS = 80
 
 
-def frames_of(path, step):
+def frames_of(path, step, *, smooth_cubi):
     im = Image.open(path)
     out = []
     for i, frame in enumerate(ImageSequence.Iterator(im)):
@@ -70,11 +73,21 @@ def frames_of(path, step):
             continue
         out.append(frame.convert("RGBA").resize(
             (ANIM_SIZE, ANIM_SIZE), Image.LANCZOS))
+    if smooth_cubi and len(out) <= 8:
+        bridged = []
+        for index, frame in enumerate(out):
+            bridged.append(frame)
+            # A half-way dissolve keeps the movement continuous without
+            # inventing a new pose, which avoids the rubbery look of a rig.
+            bridged.append(Image.blend(frame, out[(index + 1) % len(out)], .5))
+        return bridged
     return out
 
 
-def durations_of(gif_path, count, step):
-    """The per-frame timing, taken from the GIF beside the master."""
+def durations_of(gif_path, count, step, *, smooth_cubi):
+    """Return app playback timing; Cubi always uses an even animation beat."""
+    if smooth_cubi:
+        return [CUBI_FRAME_MS] * count
     if not os.path.exists(gif_path):
         return [FALLBACK_FRAME_MS] * count
     im = Image.open(gif_path)
@@ -91,9 +104,14 @@ def durations_of(gif_path, count, step):
 def build(name):
     animated_src = os.path.join(SRC, name + ".webp")
     still_src = os.path.join(SRC, name + ".png")
-    frames = frames_of(animated_src, ANIM_STEP)
+    is_cubi = name.startswith("cat-")
+    frames = frames_of(animated_src, ANIM_STEP, smooth_cubi=is_cubi)
     duration = durations_of(
-        os.path.join(SRC, name + ".gif"), len(frames), ANIM_STEP)
+        os.path.join(SRC, name + ".gif"),
+        len(frames),
+        ANIM_STEP,
+        smooth_cubi=is_cubi,
+    )
     animated_dst = os.path.join(OUT, name + ".webp")
     frames[0].save(
         animated_dst,
