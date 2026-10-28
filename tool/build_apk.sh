@@ -177,7 +177,16 @@ fi
 args=(build)
 if [ "$bundle" -eq 1 ]; then args+=(appbundle); else args+=(apk); fi
 args+=(--release)
-[ "$arm64_only" -eq 1 ] && args+=(--target-platform android-arm64)
+#
+# --target-platform alone is not arm64-only: it drops Flutter's own libraries
+# for the other ABIs and leaves the plugins' prebuilt ones. Measured on build
+# 1181 from this script before the property was added: a 128 MB "arm64" APK
+# with eight armeabi-v7a and eight x86_64 libraries in it, which a 32-bit phone
+# installs and then crashes on. cubechat.arm64Only is what build.gradle.kts
+# filters on, and what build_apk.ps1 -Arm64 has always passed.
+if [ "$arm64_only" -eq 1 ]; then
+  args+=(--target-platform android-arm64 --android-project-arg cubechat.arm64Only=true)
+fi
 
 step "flutter ${args[*]}"
 started=$(date +%s)
@@ -200,7 +209,9 @@ fi
 # so in a file browser a fresh APK looks exactly like the previous one and gets
 # skipped. Give every build a name that says what it is.
 tag="$(printf '%s' "$stamp" | sed 's/^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]-//')"
-named="$root/build/cubechat-$version_name-$version_code-$tag.$ext"
+abi_tag=""
+[ "$arm64_only" -eq 1 ] && abi_tag="-arm64"
+named="$root/build/cubechat-$version_name-$version_code-$tag$abi_tag.$ext"
 cp -f "$artifact" "$named"
 
 # --- Verify the stamp actually shipped ---------------------------------------
@@ -235,8 +246,18 @@ fi
 if [ "$bundle" -eq 0 ]; then
   apksigner="$(ls -1 "${ANDROID_HOME:-$HOME/Library/Android/sdk}"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1 || true)"
   if [ -n "$apksigner" ] && [ -x "$apksigner" ]; then
-    signer="$("$apksigner" verify --print-certs "$named" 2>/dev/null | sed -n 's/^Signer #1 certificate DN: //p' | head -1)"
-    sha256="$("$apksigner" verify --print-certs "$named" 2>/dev/null | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
+    # apksigner is a Java program that finds its JVM through JAVA_HOME or PATH,
+    # and a Mac set up with only `flutter config --jdk-dir` has neither — the
+    # /usr/bin/java stub answers "Unable to locate a Java Runtime". Under
+    # pipefail that killed the script here with exit 1 and no message, after a
+    # good build, on 2026-10-27. Hand it the JDK the build itself used, and say
+    # so out loud if verification still fails.
+    [ -n "$jdk_dir" ] && export JAVA_HOME="$jdk_dir"
+    certs="$("$apksigner" verify --print-certs "$named" 2>&1)" \
+      || die "apksigner could not verify $named:
+$certs"
+    signer="$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate DN: //p' | head -1)"
+    sha256="$(printf '%s\n' "$certs" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -1)"
     case "$signer" in
       *"CN=Android Debug"*)
         die "signed with the debug keystore ($signer).
