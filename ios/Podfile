@@ -33,6 +33,17 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+
+    # Xcode 27.1 made a pod deployment target below 15.0 an error, not a
+    # warning: on 2026-10-27 `flutter build ios --no-codesign` failed on
+    # SDWebImage, SwiftyGif, DKPhotoGallery and a dozen privacy bundles that
+    # still declare 9.0-13.0. Nothing below the app's own 15.5 can ship anyway.
+    target.build_configurations.each do |config|
+      if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 15.5
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.5'
+      end
+    end
+
     next unless target.name == 'permission_handler_apple'
 
     # Build 1043 refused an already-authorized iPhone microphone. The plugin
