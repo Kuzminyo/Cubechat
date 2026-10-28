@@ -211,6 +211,7 @@ class _KeptTile extends StatelessWidget {
       // corner button is the visible version of the same thing, for everyone
       // who never learned the gesture.
       onLongPress: onRemove,
+      onSecondaryTap: onRemove,
       child: Stack(
         children: [
           Padding(

@@ -254,6 +254,7 @@ class _MediaGrid extends StatelessWidget {
           clipBehavior: Clip.antiAlias,
           child: InkWell(
             onLongPress: () => onLongPress(message),
+            onSecondaryTap: () => onLongPress(message),
             onTap: openable
                 ? () => Navigator.of(context).push(
                       mediaRoute<void>(
@@ -316,6 +317,7 @@ class _VoiceList extends StatelessWidget {
       itemBuilder: (_, index) => GestureDetector(
         behavior: HitTestBehavior.translucent,
         onLongPress: () => onLongPress(voices[index]),
+        onSecondaryTap: () => onLongPress(voices[index]),
         child: GlassCard(
           strong: true,
           // With the header: stripped of the conversation, a voice note has

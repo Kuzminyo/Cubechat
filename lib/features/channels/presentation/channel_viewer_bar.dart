@@ -75,6 +75,7 @@ class ChannelViewerBar extends ConsumerWidget {
                     // common case is one loud evening, and a mute you have to
                     // remember to undo is one you will not.
                     onLongPress: () => _pickDuration(context, ref),
+                    onSecondaryTap: () => _pickDuration(context, ref),
                     child: SizedBox(
                       height: 52,
                       child: Center(

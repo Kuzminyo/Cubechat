@@ -803,6 +803,20 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         );
   }
 
+  /// A hold on the row, or a right click on a computer: the actions, or while
+  /// a selection is running, one more tick.
+  void _hold(Offset at, {required bool selecting}) {
+    if (selecting) {
+      ref
+          .read(messageSelectionProvider(widget.chatId).notifier)
+          .toggle(widget.message.id);
+      HapticFeedback.selectionClick();
+      return;
+    }
+    HapticFeedback.mediumImpact();
+    unawaited(_showActions(at));
+  }
+
   /// The whole keyboard, for the reaction the strip doesn't carry.
   Future<void> _reactFromPicker() async {
     final emoji = await showEmojiPicker(context);
@@ -1728,6 +1742,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         alignment: Alignment.centerLeft,
         child: GestureDetector(
           onLongPressStart: (details) => _showActions(details.globalPosition),
+          onSecondaryTapUp: (details) => _showActions(details.globalPosition),
           child: Container(
             margin: const EdgeInsets.symmetric(vertical: 3, horizontal: 12),
             padding: const EdgeInsets.fromLTRB(14, 4, 4, 4),
@@ -2502,17 +2517,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
               // than in front of all of them. While a selection is already
               // running the hold keeps its old meaning — tick another one —
               // because in that mode the row means one thing.
-              onLongPressStart: (details) {
-                if (selecting) {
-                  ref
-                      .read(messageSelectionProvider(widget.chatId).notifier)
-                      .toggle(message.id);
-                  HapticFeedback.selectionClick();
-                  return;
-                }
-                HapticFeedback.mediumImpact();
-                unawaited(_showActions(details.globalPosition));
-              },
+              onLongPressStart: (details) =>
+                  _hold(details.globalPosition, selecting: selecting),
+              // A mouse has no hold: on a computer the right button is it.
+              onSecondaryTapUp: (details) =>
+                  _hold(details.globalPosition, selecting: selecting),
               onTap: selecting
                   ? () => ref
                       .read(messageSelectionProvider(widget.chatId).notifier)

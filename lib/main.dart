@@ -216,8 +216,11 @@ Future<void> main() async {
   await _bootStep('media-paths', MediaPaths.init,
       limit: const Duration(seconds: 3));
   if (PlatformInfo.isMacOS) {
-    await _bootStep('mac-temp', _createMacTemporaryDirectory,
-        limit: const Duration(seconds: 3));
+    await _bootStep(
+      'mac-temp',
+      _createMacTemporaryDirectory,
+      limit: const Duration(seconds: 3),
+    );
   }
   await _bootStep('hive', HiveInit.ensureInitialized,
       limit: const Duration(seconds: 10));

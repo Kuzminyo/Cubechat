@@ -135,6 +135,8 @@ class _TransferCard extends ConsumerWidget {
     return GestureDetector(
       onLongPressStart: (details) =>
           unawaited(_menu(context, ref, details.globalPosition)),
+      onSecondaryTapUp: (details) =>
+          unawaited(_menu(context, ref, details.globalPosition)),
       child: GlassCard(
         onTap: task.status == FileTransferStatus.completed &&
                 task.filePath.isNotEmpty

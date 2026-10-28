@@ -109,6 +109,8 @@ class GlassCard extends StatelessWidget {
               child: InkWell(
                 onTap: onTap,
                 onLongPress: onLongPress,
+                // A mouse has no hold: on a computer the right button is it.
+                onSecondaryTap: onLongPress,
                 borderRadius: radius,
                 hoverColor: AppColors.glassHover,
                 child: Padding(padding: padding, child: child),

@@ -205,6 +205,7 @@ class _VideoBubbleState extends ConsumerState<VideoBubble> {
     return GestureDetector(
       onTap: () => unawaited(_tap()),
       onLongPress: widget.onLongPress,
+      onSecondaryTap: widget.onLongPress,
       child: _isCircle ? _circleWithButton() : _rectangle(),
     );
   }

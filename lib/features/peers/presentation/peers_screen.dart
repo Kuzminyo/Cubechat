@@ -824,6 +824,8 @@ class _PeerCard extends StatelessWidget {
     return GestureDetector(
       onLongPressStart:
           hold == null ? null : (details) => hold(details.globalPosition),
+      onSecondaryTapUp:
+          hold == null ? null : (details) => hold(details.globalPosition),
       child: GlassCard(
         onTap: onTap,
         child: Row(

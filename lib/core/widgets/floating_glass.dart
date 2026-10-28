@@ -266,6 +266,8 @@ class FloatingGlass extends StatelessWidget {
       surface = GestureDetector(
         behavior: HitTestBehavior.opaque,
         onLongPressStart: (d) => onLongPressAt!(d.globalPosition),
+        // A mouse has no hold: on a computer the right button is it.
+        onSecondaryTapUp: (d) => onLongPressAt!(d.globalPosition),
         child: surface,
       );
     }

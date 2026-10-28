@@ -68,6 +68,7 @@ class FileBubble extends ConsumerWidget {
       borderRadius: BorderRadius.circular(12),
       onTap: () => _open(context, ref),
       onLongPress: onLongPress,
+      onSecondaryTap: onLongPress,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(

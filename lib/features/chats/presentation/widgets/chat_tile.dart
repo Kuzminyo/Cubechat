@@ -118,6 +118,7 @@ class ChatTile extends ConsumerWidget {
             // counts as the avatar rather than falling through to the row.
             behavior: HitTestBehavior.opaque,
             onLongPress: onAvatarLongPress,
+            onSecondaryTap: onAvatarLongPress,
             child: Stack(
               children: [
                 PeerAvatar(
