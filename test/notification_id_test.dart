@@ -29,8 +29,12 @@ void main() {
   test('the id depends on the platform', () {
     expect(
       source,
-      contains('PlatformInfo.isIOS\n          ? _nextIosId(threadKey)'),
-      reason: 'a single id per chat is right on Android and wrong on iOS',
+      contains(
+        'PlatformInfo.isIOS || PlatformInfo.isMacOS\n'
+        '          ? _nextIosId(threadKey)',
+      ),
+      reason: 'a single id per chat is right on Android and wrong on iOS '
+          'and macOS, which share UNUserNotificationCenter',
     );
     expect(
       source,

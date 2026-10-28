@@ -23,6 +23,8 @@ class HiveCipherProvider {
   })  : _storage = storage ??
             const FlutterSecureStorage(
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
+              // Login keychain on a Mac — see IdentityService.
+              mOptions: MacOsOptions(useDataProtectionKeyChain: false),
               iOptions: IOSOptions(
                 accessibility: KeychainAccessibility.first_unlock,
               ),

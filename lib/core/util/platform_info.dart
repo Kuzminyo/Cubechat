@@ -13,4 +13,6 @@ abstract final class PlatformInfo {
   static bool get isMobile => isAndroid || isIOS;
   static bool get isWindows =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+  static bool get isMacOS =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.macOS;
 }

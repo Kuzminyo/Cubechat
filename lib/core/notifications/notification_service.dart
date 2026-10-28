@@ -114,7 +114,8 @@ class NotificationService {
     );
     try {
       await _plugin.initialize(
-        InitializationSettings(android: android, iOS: ios),
+        // A Mac is the same Darwin plugin, category and Reply box included.
+        InitializationSettings(android: android, iOS: ios, macOS: ios),
         onDidReceiveNotificationResponse: _onResponse,
       );
       // Pre-create the channel so the first notification appears instantly with
@@ -230,6 +231,37 @@ class NotificationService {
       messages: thread.messages,
     );
 
+    // A Mac posts through the same UNUserNotificationCenter as an iPhone, so it
+    // takes these details and the iOS id below, for the same reasons.
+    final darwin = DarwinNotificationDetails(
+      // One thread per conversation, not one for the whole app.
+      //
+      // iOS stacks notifications that share a thread identifier, so a single
+      // constant here put every person into the same pile — three people
+      // writing looked like one conversation, and the stack had to be opened
+      // to find out who. Android has always grouped per chat, through
+      // `MessagingStyle` above; this is the same idea said in the way iOS
+      // understands.
+      //
+      // The push that arrives while the app is closed cannot do this and
+      // will not: the server sending it knows only that some npub has mail,
+      // never whose. That is deliberate, and it is why those still stack
+      // together under one heading.
+      threadIdentifier: threadKey,
+      categoryIdentifier: _categoryId,
+      // The number on the app icon, and the reason it never moved before:
+      // nothing was setting it. Android has carried a count per conversation
+      // since this was written (`number:` above, the figure Telegram shows
+      // beside a chat); iOS puts its count on the icon instead, and the icon
+      // said nothing at all.
+      //
+      // Summed across conversations because that is what the icon means on
+      // iOS — one number for the whole app, not one per chat. `clearForChat`
+      // drops a thread when its chat is opened, so reading takes the badge
+      // down the same way arriving put it up.
+      badgeNumber: _unreadTotal,
+    );
+
     final details = NotificationDetails(
       android: AndroidNotificationDetails(
         _channelId,
@@ -254,34 +286,8 @@ class NotificationService {
           ),
         ],
       ),
-      iOS: DarwinNotificationDetails(
-        // One thread per conversation, not one for the whole app.
-        //
-        // iOS stacks notifications that share a thread identifier, so a single
-        // constant here put every person into the same pile — three people
-        // writing looked like one conversation, and the stack had to be opened
-        // to find out who. Android has always grouped per chat, through
-        // `MessagingStyle` above; this is the same idea said in the way iOS
-        // understands.
-        //
-        // The push that arrives while the app is closed cannot do this and
-        // will not: the server sending it knows only that some npub has mail,
-        // never whose. That is deliberate, and it is why those still stack
-        // together under one heading.
-        threadIdentifier: threadKey,
-        categoryIdentifier: _categoryId,
-        // The number on the app icon, and the reason it never moved before:
-        // nothing was setting it. Android has carried a count per conversation
-        // since this was written (`number:` above, the figure Telegram shows
-        // beside a chat); iOS puts its count on the icon instead, and the icon
-        // said nothing at all.
-        //
-        // Summed across conversations because that is what the icon means on
-        // iOS — one number for the whole app, not one per chat. `clearForChat`
-        // drops a thread when its chat is opened, so reading takes the badge
-        // down the same way arriving put it up.
-        badgeNumber: _unreadTotal,
-      ),
+      iOS: darwin,
+      macOS: darwin,
     );
     try {
       // One id per conversation on Android, one per message on iOS.
@@ -297,7 +303,7 @@ class NotificationService {
       // which is why the number on an iPhone never matched what arrived.
       // Grouping is already handled: `threadIdentifier` above stacks them per
       // conversation, which is the thing the shared id was standing in for.
-      final id = PlatformInfo.isIOS
+      final id = PlatformInfo.isIOS || PlatformInfo.isMacOS
           ? _nextIosId(threadKey)
           : threadKey.hashCode & 0x7fffffff;
       thread.notePosted(id);

@@ -19,6 +19,12 @@ class IdentityService {
       : _storage = storage ??
             const FlutterSecureStorage(
               aOptions: AndroidOptions(encryptedSharedPreferences: true),
+              // A Mac keeps these in the login keychain, not the data-protection
+              // one: that needs a keychain-access-groups entitlement, which only
+              // a build signed with the team can carry, and without it every
+              // write failed with -34018 and the identity lived in memory only
+              // (first macOS run, 2026-10-28). Same rule in the other two stores.
+              mOptions: MacOsOptions(useDataProtectionKeyChain: false),
               iOptions:
                   IOSOptions(accessibility: KeychainAccessibility.first_unlock),
             ),

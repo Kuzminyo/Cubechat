@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'app.dart';
 import 'core/notifications/ios_background_refresh.dart';
@@ -170,6 +171,15 @@ String _originOf(StackTrace? stack) {
   return first.isEmpty ? 'no stack' : first;
 }
 
+/// On a Mac, path_provider's temporary directory is `Caches/<bundle id>`, and
+/// unlike Application Support the plugin never creates it. Every other
+/// platform hands back a folder that exists, so the ten callers here never
+/// check: the first one on a Mac was the phone-account link, which took the
+/// whole 270 MB copy and then failed on `PathNotFoundException` (2026-10-28).
+Future<void> _createMacTemporaryDirectory() async {
+  await (await getTemporaryDirectory()).create(recursive: true);
+}
+
 Future<void> main() async {
   final sinceMain = Stopwatch()..start();
   WidgetsFlutterBinding.ensureInitialized();
@@ -205,6 +215,10 @@ Future<void> main() async {
   // and needs to know where the app lives before the first row is decoded.
   await _bootStep('media-paths', MediaPaths.init,
       limit: const Duration(seconds: 3));
+  if (PlatformInfo.isMacOS) {
+    await _bootStep('mac-temp', _createMacTemporaryDirectory,
+        limit: const Duration(seconds: 3));
+  }
   await _bootStep('hive', HiveInit.ensureInitialized,
       limit: const Duration(seconds: 10));
   // Kept ahead of runApp for iOS, where this call is what raises the very first

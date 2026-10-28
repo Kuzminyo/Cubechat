@@ -76,6 +76,7 @@ import '../util/cost_meter.dart';
 import '../util/cpu_probe.dart';
 import '../util/debug_log.dart';
 import '../radio_spike.dart';
+import '../util/platform_capabilities.dart';
 import '../util/platform_info.dart';
 import 'announcement.dart';
 import 'ble_gatt_client.dart';
@@ -13886,6 +13887,9 @@ class MessagingService {
   final _relayMeter = TrafficMeter('MESH', 'relayed');
 
   void _wirePeripheralEvents() {
+    // A computer has no peripheral side: nothing answers the channel, and
+    // listening to it raised a MissingPluginException on every start.
+    if (!_ref.read(platformCapabilitiesProvider).bluetooth) return;
     final peripheral = _ref.read(blePeripheralProvider);
     // SOLE subscriber to peripheral.events() — see comment on PeripheralController
     // about why EventChannel.receiveBroadcastStream() doesn't tolerate multiple
