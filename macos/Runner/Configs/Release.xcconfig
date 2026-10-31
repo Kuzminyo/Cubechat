@@ -1,2 +1,10 @@
 #include "../../Flutter/Flutter-Release.xcconfig"
 #include "Warnings.xcconfig"
+
+// Apple silicon only, for now. Xcode 27.2's lipo takes one architecture per
+// -verify_arch ("requires exactly one input file"), and Flutter 3.41's
+// thinFramework passes both, so a universal release build stops at
+// release_unpack_macos claiming FlutterMacOS lacks "arm64 x86_64" while
+// `lipo -info` lists both (2026-10-31). Each arch verifies on its own. Put
+// x86_64 back when Flutter checks one arch at a time.
+ARCHS = arm64
