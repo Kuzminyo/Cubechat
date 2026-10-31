@@ -1,5 +1,10 @@
 // Offline marketing capture using the current production router and widgets.
 // All names/messages/radio discoveries below are fictional fixture data.
+//
+// Run with `flutter test`, so the test-only hooks are legitimate here; the
+// analyzer only counts files under test/ as tests, and its warnings on this
+// one kept the Android CI gate red from 2026-10-25 to 2026-10-31.
+// ignore_for_file: invalid_use_of_visible_for_testing_member
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
