@@ -524,14 +524,13 @@ flutter build web --release   # → build/web/ (any static host)
 > to PATH. Building for Android on Windows needs symlink support — enable
 > Developer Mode (`start ms-settings:developers`).
 
-### iOS without a Mac (GitHub Actions + Sideloadly)
+### iOS builds
 
-`.github/workflows/ios.yml` builds an unsigned `.ipa` on a GitHub-hosted macOS
-runner. Push to `main` (or run the workflow manually) → download the
-`cubechat-ios-unsigned-<sha>` artifact → sideload with
-[Sideloadly](https://sideloadly.io/)/[AltStore](https://altstore.io/) and a free
-Apple ID (7-day re-sign cycle) → trust the profile under
-`Settings → General → VPN & Device Management`.
+iPhones get builds through TestFlight: run `.github/workflows/ios-testflight.yml`
+by hand (`gh workflow run ios-testflight.yml -f notes="…"`). The unsigned-IPA
+job that ran on every push was removed on 2026-10-31 — the repository is
+private, a macOS runner minute counts ten times against the free allowance, and
+that job alone was most of every push's minutes.
 
 ### Branding
 

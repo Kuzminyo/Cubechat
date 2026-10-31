@@ -105,7 +105,8 @@ cannot be fixed by signing harder.
 
 ## CI
 
-`.github/workflows/android.yml` and `ios.yml`. Both gate on `verify` first:
+`.github/workflows/android.yml`, `windows.yml` and the manual
+`ios-testflight.yml`. They gate on `verify` first:
 analyze, then `flutter test --exclude-tags golden`. A build is not published
 from a tree that fails its own tests.
 
@@ -124,9 +125,13 @@ from a tree that fails its own tests.
 - `GOOGLE_MAPS_API_KEY` is a repository secret and the Android job fails fast if
   it is empty. Without it the map draws nothing but the Google logo on release
   builds, and the iOS Map tab crashes.
-- iOS builds an unsigned IPA on a macOS runner for Sideloadly/AltStore. A red iOS
-  build right after an action bump is usually the macOS cache service
-  (`ENOTFOUND`, exit 28) — re-run before reverting anything.
+- **There is no iOS CI on push any more** (removed 2026-10-31). The repository
+  went private, where a macOS minute counts as ten against the free 2000, and
+  the unsigned-IPA job on every push was ~200 of a push's ~250 minutes. iPhones
+  get builds through TestFlight, run by hand: `gh workflow run
+  ios-testflight.yml -f notes="…"`. A red macOS job right after an action bump
+  is usually the macOS cache service (`ENOTFOUND`, exit 28) — re-run before
+  reverting anything.
 
 Sideloadly appends the Apple team id to the bundle id, so an iOS-restricted Maps
 key must list the suffixed name. Read the `[BUILD]` boot line to see which
