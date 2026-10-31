@@ -20,6 +20,15 @@ test('only cubechat frames are stored', () => {
   assert.equal(note.id, 'b');
 });
 
+test('walkie-talkie events pass, but only at the size the app sends', () => {
+  const state = new Map();
+  const radio = (id, content) => ({ id, kind: 21059, content, tags: [['y', '0'.repeat(16)]] });
+  assert.equal(run(req(radio('r1', 'cr1:' + 'A'.repeat(3000))), state).action, 'accept');
+  const big = run(req(radio('r2', 'A'.repeat(20_000))), state);
+  assert.equal(big.action, 'reject');
+  assert.match(big.msg, /too large/);
+});
+
 test('one address is held to its events a minute, others are not', () => {
   const state = new Map();
   for (const id of ['1', '2', '3']) assert.equal(run(req(frame(id)), state).action, 'accept');

@@ -8,9 +8,13 @@
 // and a full LMDB takes the text lane down with the media one.
 //
 // Three rules, cheapest first:
-//   1. Only kind 1059. It is the one kind the app publishes to a relay
-//      (`kCubechatFrameKind`); 24242/24243 go to the HTTP servers and 22242 is
-//      an AUTH message, which never reaches a write policy.
+//   1. Only kind 1059, and the walkie-talkie's 21059. 1059 is every frame the
+//      app keeps on a relay (`kCubechatFrameKind`); 24242/24243 go to the HTTP
+//      servers and 22242 is an AUTH message, which never reaches a write
+//      policy. 21059 (`kRadioEventKind`, 2026-10-31) is ephemeral — strfry
+//      hands it to whoever is subscribed and stores nothing — and is held to
+//      RADIO_MAX_BYTES, since voice is at most three 300 ms chunks an event
+//      (~3 KB) and anything larger is not the app.
 //   2. Per source address: events a minute and bytes an hour. Sized for a real
 //      transfer — a 115 MB video is ~1800 chunks of ~87 KB on the wire, a few
 //      minutes of sending — with room for a carrier NAT that puts many phones
@@ -28,13 +32,16 @@ import { statfsSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 
-const ALLOWED_KINDS = new Set([1059]);
+const FRAME_KIND = 1059;
+const RADIO_KIND = 21059;
+const ALLOWED_KINDS = new Set([FRAME_KIND, RADIO_KIND]);
 
 export const defaults = {
   eventsPerMinute: Number(process.env.EVENTS_PER_IP_MINUTE || 3000),
   bytesPerHour: Number(process.env.BYTES_PER_IP_HOUR || 1024 ** 3),
   minFreeBytes: Number(process.env.MIN_FREE_BYTES || 3 * 1024 ** 3),
   dbPath: process.env.DB_PATH || '.',
+  radioMaxBytes: Number(process.env.RADIO_MAX_BYTES || 16 * 1024),
 };
 
 const MINUTE_MS = 60_000;
@@ -59,6 +66,9 @@ export function decide(request, state, { now, freeBytes, limits = defaults }) {
 
   const ip = String(request.sourceInfo || 'unknown');
   const size = Buffer.byteLength(JSON.stringify(event));
+  if (event.kind === RADIO_KIND && size > (limits.radioMaxBytes ?? defaults.radioMaxBytes)) {
+    return answer('reject', 'invalid: radio event too large');
+  }
   let entry = state.get(ip);
   if (!entry) {
     entry = { minuteAt: now, events: 0, hourAt: now, bytes: 0 };

@@ -24,6 +24,12 @@ a recipient tag and a timestamp. That is the same metadata every public relay in
 the list already sees, which is why moving to our own is a straight improvement
 and not a new exposure — one fewer stranger holding it.
 
+The one exception, since 2026-10-31, is the walkie-talkie: kind **21059**,
+ephemeral, so strfry forwards it to whoever is subscribed and stores nothing.
+It carries a radio channel tag (`y`) instead of a recipient, and a throwaway
+author key. `write-policy.mjs` caps it at 16 KiB an event
+(`RADIO_MAX_BYTES`). See `lib/core/transport/nostr/radio_relay_link.dart`.
+
 It does mean **we** hold it. The honest reading: cubechat's operator can see
 which npub sent how much to which npub and when, on the media lane. The mesh
 still leaks none of that, and the relay lanes always leaked it to somebody.
@@ -291,7 +297,8 @@ rate, kept for one to two weeks on a droplet with ~21 GB free. A full LMDB is
 the text lane down as well as the media one.
 
 `write-policy.mjs` (tests: `node --test` in this directory) stores only kind
-1059, holds each source address to 3000 events a minute and 1 GiB an hour —
+1059 and passes the walkie-talkie's ephemeral 21059 up to 16 KiB an event
+(`RADIO_MAX_BYTES`, since 2026-10-31), holds each source address to 3000 events a minute and 1 GiB an hour —
 a 115 MB video is ~1800 chunks over a few minutes — and refuses every write
 while the disk has less than 3 GiB free. strfry's own imports and syncs pass.
 The three numbers are environment variables (`EVENTS_PER_IP_MINUTE`,

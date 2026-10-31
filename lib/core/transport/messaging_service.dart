@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hive/hive.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'package:cryptography/cryptography.dart';
 
@@ -108,6 +109,7 @@ import 'channel_history.dart';
 import 'peer_id.dart';
 import 'nostr/nostr_signer.dart';
 import 'nostr/nostr_transport.dart';
+import 'nostr/radio_relay_link.dart';
 import 'nostr/relay_watermark_store.dart';
 import 'nostr/websocket_relay_client.dart';
 import '../crypto/media_fs_cipher.dart';
@@ -7396,12 +7398,15 @@ class MessagingService {
     return mesh < _radioTtl ? mesh : _radioTtl;
   }
 
-  /// Send one walkie-talkie chunk to a contact over Bluetooth, and only
-  /// Bluetooth. Returns how many links it went out on; 0 means nobody was in
-  /// reach and the chunk is gone.
+  /// Send one walkie-talkie chunk to a contact over Bluetooth, and — while the
+  /// radio is tuned to them with the internet up — through our relay as an
+  /// ephemeral event ([RadioRelayLink], stage 4a). Returns how many roads it
+  /// went out on, the relay counting as one; 0 means nobody was in reach and
+  /// the chunk is gone.
   ///
   /// **Nothing is kept.** Not in the outbox, not in the store-and-forward
-  /// cache, not on a relay, and no relay is woken for it. A chunk is 300 ms
+  /// cache, not stored on a relay (the relay's event is ephemeral: handed to
+  /// whoever listens at that moment and dropped), and no push is sent for it. A chunk is 300 ms
   /// of voice and worth nothing after its moment, while each of those holds a
   /// frame for minutes to an hour and then hands it over as noise — in the
   /// slot of a message that did need carrying. Nor is it written into the
@@ -7422,7 +7427,7 @@ class MessagingService {
   Future<int> sendRadioToContact(String canonicalId, RadioChunk chunk) async {
     // Before any crypto: with nobody in range this would otherwise be a seal
     // and a signature three times a second, for nothing.
-    if (!_hasAnyLink && !debugAssumeLinkUp) return 0;
+    if (!_hasAnyLink && !_radioInternetUp && !debugAssumeLinkUp) return 0;
     final pubHex =
         _ref.read(knownPeersControllerProvider)[canonicalId]?.pubkeyHex ??
             _findSessionByPubkeyHex(canonicalId)?.remotePubkeyHex;
@@ -7446,8 +7451,82 @@ class MessagingService {
     Uint8List tag,
     RadioChunk chunk,
   ) async {
-    if (!_hasAnyLink && !debugAssumeLinkUp) return 0;
+    if (!_hasAnyLink && !_radioInternetUp && !debugAssumeLinkUp) return 0;
     return _sendRadioBroadcast(key, tag, chunk);
+  }
+
+  /// The walkie-talkie's own socket to our relay, made on the first
+  /// [setRadioInternetTags] that names anything. See [RadioRelayLink].
+  RadioRelayLink? _radioRelay;
+
+  /// Where a radio frame heard from the relay says it came from: not a
+  /// Bluetooth peer, and not [_nostrPeerId], which [_handleRadioBody] refuses.
+  static const String _radioInternetPeerId = 'radio:internet';
+
+  bool get _radioInternetUp => _radioRelay?.connected ?? false;
+
+  /// Test seam: the socket factory the radio's relay link dials with.
+  @visibleForTesting
+  WebSocketChannel Function(Uri)? debugRadioRelayConnect;
+
+  /// Test seam: where the radio's relay link dials.
+  @visibleForTesting
+  Uri? debugRadioRelayUrl;
+
+  /// Listen to the radio over the internet on exactly [tagHexes] (lowercase
+  /// hex of group or pair tags), or stop with an empty set. Written by
+  /// `radioInternetProvider`, which knows what the radio is tuned to.
+  void setRadioInternetTags(Set<String> tagHexes) {
+    if (_disposed) return;
+    if (tagHexes.isEmpty && _radioRelay == null) return;
+    final link = _radioRelay ??= RadioRelayLink(
+      url: debugRadioRelayUrl ??
+          Uri.parse(RelaySettings.meetingPointUrl),
+      connect: debugRadioRelayConnect,
+      onFrame: (frame) => unawaited(_handleRadioFromInternet(frame)),
+    );
+    link.setTags(tagHexes);
+  }
+
+  /// The 1:1 radio tags with [canonicalId] for the previous, current and next
+  /// hour — the epochs [_radioPairContactForTag] accepts on Bluetooth — as
+  /// lowercase hex. Empty when there is no key to derive them from.
+  Future<Set<String>> radioPairTagsFor(String canonicalId) async {
+    final pubHex =
+        _ref.read(knownPeersControllerProvider)[canonicalId]?.pubkeyHex ??
+            _findSessionByPubkeyHex(canonicalId)?.remotePubkeyHex;
+    if (pubHex == null) return const {};
+    final key = await _radioPairKeyFor(pubHex);
+    if (key == null) return const {};
+    final now = PeerId.epochAt(DateTime.now());
+    return {
+      for (final e in [now - 1, now, now + 1])
+        _hexOf(await RadioCrypto.derivePairTag(key, e)),
+    };
+  }
+
+  /// A radio frame the relay handed us. The same checks a Bluetooth copy
+  /// meets — duplicate by (origin, msgId) first, so a chunk heard both ways
+  /// plays once — and then [_handleRadioBody]. Never forwarded onto the mesh:
+  /// a voice from across the city is for the phone that tuned in to it, not
+  /// for everybody within three hops of that phone.
+  Future<void> _handleRadioFromInternet(Uint8List frameBytes) async {
+    if (_disposed) return;
+    final TransportEnvelope env;
+    try {
+      final frame = Frame.decode(frameBytes);
+      if (frame.type != FrameType.transport) return;
+      env = TransportEnvelope.decode(frame.payload);
+    } catch (_) {
+      return;
+    }
+    if (env.body.isEmpty || env.body[0] != _cipherRadio) return;
+    if (!_dedup.acceptEnvelope(env)) return;
+    await _handleRadioBody(
+      env: env,
+      peerId: _radioInternetPeerId,
+      radioBody: Uint8List.sublistView(env.body, 1),
+    );
   }
 
   Future<int> _sendRadioBroadcast(
@@ -7472,7 +7551,9 @@ class MessagingService {
     final bytes =
         Frame(type: FrameType.transport, payload: env.encode()).encode();
     debugRadioFrames?.add(bytes);
-    return _fanoutAllLinks(bytes, excludePeerId: null);
+    final viaInternet = _radioRelay?.publish(_hexOf(tag), bytes) ?? false;
+    final links = await _fanoutAllLinks(bytes, excludePeerId: null);
+    return links + (viaInternet ? 1 : 0);
   }
 
   /// The envelope every radio chunk travels in, a group's or a pair's:
@@ -7676,8 +7757,9 @@ class MessagingService {
     required String peerId,
     required Uint8List radioBody,
   }) async {
-    // A radio frame is a broadcast and travels by Bluetooth only. Addressed
-    // to somebody, or arriving from the relay, it is nothing we sent.
+    // A radio frame is a broadcast, on Bluetooth or on the radio's own relay
+    // socket ([_handleRadioFromInternet]). Addressed to somebody, or arriving
+    // through the mail relay, it is nothing we sent.
     if (!env.isBroadcast || peerId == _nostrPeerId) return;
     if (radioBody.length < RadioCrypto.tagLen) return;
 
@@ -14128,6 +14210,8 @@ class MessagingService {
 
   Future<void> dispose() async {
     _disposed = true;
+    unawaited(_radioRelay?.dispose());
+    _radioRelay = null;
     _announcementTimer?.cancel();
     _announcementTimer = null;
     _presenceTimer?.cancel();

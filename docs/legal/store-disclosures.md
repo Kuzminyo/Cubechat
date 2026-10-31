@@ -94,7 +94,11 @@ Ordinary encrypted content is not collected. Distinguish it from explicitly subm
 - **Messages** — ordinary traffic is not collected; selected text in a submitted report is collected.
 - **Photos and videos / Audio files / Files and docs** — not collected. They
   travel encrypted between devices and are stored in the app's private
-  container.
+  container. Walkie-talkie voice with relays on also passes through
+  `relay.cubechat.tech` as ephemeral, end-to-end encrypted Nostr events
+  (kind 21059) that the relay forwards in real time and never stores, signed
+  with a throwaway key per connection — not collected
+  (`lib/core/transport/nostr/radio_relay_link.dart`, `relay/write-policy.mjs`).
 - **Location (approximate and precise)** — not collected. Shared only with
   contacts the user picks, end-to-end encrypted, expiring after six minutes.
   Sharing stays off until switched on; the permission is requested at the end

@@ -56,6 +56,7 @@ import 'features/peers/data/peer_discovery_controller.dart';
 import 'features/peers/data/peripheral_controller.dart';
 import 'features/profile/data/ui_scale_controller.dart';
 import 'features/radio/data/radio_controller.dart';
+import 'features/radio/data/radio_internet.dart';
 import 'features/cube_id/data/cube_id_controller.dart';
 import 'features/cube_id/domain/cubechat_link.dart';
 import 'core/util/debug_log.dart';
@@ -862,6 +863,9 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // crypto. Listened, not watched: its floor changes several times a second
     // while somebody talks, and the app has no business rebuilding for that.
     ref.listen(radioControllerProvider, (_, __) {});
+    // The radio's socket to our relay follows what it is tuned to; built here
+    // so it does whether or not the radio screen was ever opened this run.
+    ref.listen(radioInternetProvider, (_, __) {});
     // Built at startup so an offer is answered whatever tab is open.
     // Listened, not watched: its state changes with every transfer, and the
     // whole app has no business rebuilding for that.

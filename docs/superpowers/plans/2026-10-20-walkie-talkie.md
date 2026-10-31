@@ -372,4 +372,4 @@
 ## Этапы 3–4 — отдельными планами
 
 - **Этап 3 (iOS, экран выключен)** — план пишется по итогу Task 0.4 (вариант А/Б/В).
-- **Этап 4 (через интернет)** — свой план: эфемерные события на нашем relay (`relay/write-policy.mjs` + тесты), push `pushtotalk`/FCM с `push/`, правки `docs/legal/` (privacy uk/en, store-disclosures).
+- **Этап 4 (через интернет)** — свой план: эфемерные события на нашем relay (`relay/write-policy.mjs` + тесты), push `pushtotalk`/FCM с `push/`, правки `docs/legal/` (privacy uk/en, store-disclosures). Этап 4а (relay, без push) — `2026-10-31-walkie-talkie-internet.md`; push будит телефон в этапе 4б, после пробы Task 0.4.

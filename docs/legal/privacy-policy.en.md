@@ -1,6 +1,6 @@
 # Cubechat Privacy Policy
 
-**Last updated: 21 October 2026**
+**Last updated: 31 October 2026**
 
 Cubechat is a peer-to-peer messenger. Messages travel directly between phones
 over Bluetooth Low Energy, and optionally through public relays that carry them
@@ -284,11 +284,22 @@ captured in the background, and nothing is uploaded anywhere except to the
 conversation you send it to, encrypted.
 
 The **walkie-talkie** uses the microphone only while you hold its button. What
-you say goes, in 300 ms pieces as you speak, only to phones nearby over
-Bluetooth, end-to-end encrypted with the key of the radio group (from its name
-and password) or of the contact you are talking to. It is never sent to a
-server or a relay, never kept in a store-and-forward queue, and never saved on
-your phone or theirs: it is played as it arrives and then gone.
+you say goes, in 300 ms pieces as you speak, to phones nearby over Bluetooth,
+end-to-end encrypted with the key of the radio group (from its name and
+password) or of the contact you are talking to. It is never kept in a
+store-and-forward queue and never saved on your phone or theirs: it is played
+as it arrives and then gone.
+
+If you have switched relays on, the same encrypted pieces also go through our
+own relay (`relay.cubechat.tech`) while the walkie-talkie is tuned to a group
+or a contact, so people out of Bluetooth range can hear you. The relay hands
+each piece to whoever is listening on that channel at that moment and keeps
+nothing: it is sent as a Nostr ephemeral event, which the relay does not store.
+The relay sees an 8-byte channel label (fixed for a group; changing every hour
+for a contact), a one-time key made fresh for each connection rather than your
+identity, the size and time of each piece, and your IP address. It cannot hear
+what is said or tell who you are talking to. With relays off, the
+walkie-talkie stays on Bluetooth only.
 
 Media you receive is stored inside the app's private container.
 
