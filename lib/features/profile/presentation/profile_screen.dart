@@ -23,6 +23,7 @@ import '../../../core/util/app_build.dart';
 import '../../../core/util/haptics.dart';
 import 'package:saver_gallery/saver_gallery.dart';
 
+import '../../../core/widgets/action_strip.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/glass_card.dart';
@@ -2227,8 +2228,9 @@ class _ProfileCover extends ConsumerWidget {
   final ValueChanged<DragUpdateDetails> onFaceDrag;
 
   /// Height of the action row, shared by both states so the buttons do not
-  /// jump as the header grows.
-  static const double actionsHeight = 58;
+  /// jump as the header grows. The contact profile's strip since 2026-10-31
+  /// (was 58, three separate pills): the two screens are a tap apart.
+  static const double actionsHeight = ActionStrip.height;
 
   /// The circle at rest.
   ///
@@ -2640,10 +2642,6 @@ class _CoverBody extends ConsumerWidget {
             top: topInset + 20,
             right: 6,
             child: _CoverMenuButton(
-              // The scrim follows the cover: over a photo the icon needs
-              // something to sit on, and at rest — where the background is the
-              // app's own — a black disc would be a hole in it.
-              scrim: t,
               onPick: (anchor) => unawaited(_showProfileMenu(
                 context,
                 ref,
@@ -2659,40 +2657,32 @@ class _CoverBody extends ConsumerWidget {
             right: 12,
             bottom: 10,
             height: _ProfileCover.actionsHeight,
-            child: Row(
-              children: [
-                Expanded(
-                  child: _CoverAction(
-                    icon: Icons.add_a_photo_rounded,
-                    label: photo == null ? tt.avatarSet : tt.avatarChange,
-                    // Straight to the gallery, with a photo or without one.
-                    //
-                    // It used to open a preview first when there was already a
-                    // photo, because that screen was the only place that could
-                    // also remove one. So the pill meant "choose a picture" on
-                    // a fresh install and "here is a screen, decide what you
-                    // wanted" ever after — a question in the way of the answer.
-                    // Removing, saving and looking at it live in the three-dot
-                    // menu now, which is where anyone coming from another
-                    // messenger looks for them anyway.
-                    onTap: () => pickProfileAvatar(context, ref),
-                  ),
+            child: ActionStrip(
+              items: [
+                ActionStripItem(
+                  icon: Icons.add_a_photo_rounded,
+                  label: photo == null ? tt.avatarSet : tt.avatarChange,
+                  // Straight to the gallery, with a photo or without one.
+                  //
+                  // It used to open a preview first when there was already a
+                  // photo, because that screen was the only place that could
+                  // also remove one. So the pill meant "choose a picture" on a
+                  // fresh install and "here is a screen, decide what you
+                  // wanted" ever after — a question in the way of the answer.
+                  // Removing, saving and looking at it live in the three-dot
+                  // menu now, which is where anyone coming from another
+                  // messenger looks for them anyway.
+                  onTap: () => pickProfileAvatar(context, ref),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _CoverAction(
-                    icon: Icons.edit_rounded,
-                    label: tt.profileEditName,
-                    onTap: () => editNickname(context, ref, tt, nickname),
-                  ),
+                ActionStripItem(
+                  icon: Icons.edit_rounded,
+                  label: tt.profileEditName,
+                  onTap: () => editNickname(context, ref, tt, nickname),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _CoverAction(
-                    icon: Icons.qr_code_2_rounded,
-                    label: tt.profileMyCard,
-                    onTap: () => context.push('/contact'),
-                  ),
+                ActionStripItem(
+                  icon: Icons.qr_code_2_rounded,
+                  label: tt.profileMyCard,
+                  onTap: () => context.push('/contact'),
                 ),
               ],
             ),
@@ -2710,35 +2700,30 @@ class _CoverBody extends ConsumerWidget {
 /// there is no control, and it tells the two apart by whether the anchor has a
 /// width.
 class _CoverMenuButton extends StatelessWidget {
-  const _CoverMenuButton({required this.scrim, required this.onPick});
+  const _CoverMenuButton({required this.onPick});
 
-  /// 0 at rest, 1 when the cover is a full-bleed photo.
-  final double scrim;
   final void Function(Rect anchor) onPick;
 
+  // The shared three dots, on the shared disc. The disc used to fade in with
+  // the cover photo and be absent at rest; every header button has it since
+  // 2026-10-31, so this one has it in both states.
   @override
-  Widget build(BuildContext context) => Material(
-        color: Colors.black.withValues(alpha: 0.34 * scrim),
-        shape: const CircleBorder(),
-        // The shared three dots — same size and target as every other one —
-        // on the disc that keeps them legible over a photo.
-        child: MoreButton(
-          // Three dots and nothing else, so the only name this control has is
-          // the one given here — without it a screen reader reached a button
-          // and had nothing to call it. The other overflow buttons in the app
-          // are already labelled; this one was missed, and Flutter's
-          // `labeledTapTargetGuideline` is what noticed.
-          //
-          // "Photo options" rather than "More": every other menu in the app is
-          // "More", and a reader that says the same word on six screens has
-          // told you where the button is and not what it does.
-          tooltip: AppLocalizations.of(context).profileCoverMenu,
-          onPressed: () {
-            final box = context.findRenderObject() as RenderBox?;
-            if (box == null) return;
-            onPick(box.localToGlobal(Offset.zero) & box.size);
-          },
-        ),
+  Widget build(BuildContext context) => MoreButton(
+        // Three dots and nothing else, so the only name this control has is
+        // the one given here — without it a screen reader reached a button
+        // and had nothing to call it. The other overflow buttons in the app
+        // are already labelled; this one was missed, and Flutter's
+        // `labeledTapTargetGuideline` is what noticed.
+        //
+        // "Photo options" rather than "More": every other menu in the app is
+        // "More", and a reader that says the same word on six screens has
+        // told you where the button is and not what it does.
+        tooltip: AppLocalizations.of(context).profileCoverMenu,
+        onPressed: () {
+          final box = context.findRenderObject() as RenderBox?;
+          if (box == null) return;
+          onPick(box.localToGlobal(Offset.zero) & box.size);
+        },
       );
 }
 
@@ -2869,55 +2854,6 @@ Future<void> _copyMyLink(BuildContext context, WidgetRef ref) async {
   await Clipboard.setData(ClipboardData(text: card));
   if (!context.mounted) return;
   showCopiedToast(context, t.contactCopied);
-}
-
-/// One of the three pills sitting on the cover photo.
-class _CoverAction extends StatelessWidget {
-  const _CoverAction({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.glass(0.14),
-      borderRadius: BorderRadius.circular(14),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        // Sized to sit inside [_ProfileCover.actionsHeight] with room to spare;
-        // the row gives a fixed height, so anything taller is an overflow
-        // rather than a scroll.
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 19, color: Colors.white),
-              const SizedBox(height: 4),
-              Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 /// The rename dialog, at top level because two places open it now: the name in

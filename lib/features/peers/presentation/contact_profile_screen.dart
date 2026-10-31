@@ -15,6 +15,7 @@ import '../../../core/theme/typography.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/transport/shared_contact.dart';
 import '../../../core/utils/time_format.dart';
+import '../../../core/widgets/action_strip.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/context_popup.dart'
@@ -906,61 +907,44 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                           const SizedBox(height: 12),
                           GlassCard(
                             strong: true,
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 46,
-                                  height: 46,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.brandPrimary
-                                        .withValues(alpha: 0.14),
-                                    borderRadius: BorderRadius.circular(15),
-                                  ),
-                                  child: Icon(
-                                    peer?.isVerified == true
-                                        ? Icons.verified_rounded
-                                        : Icons.shield_rounded,
-                                    color: AppColors.brandPrimary,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        t.contactProfileSecurity,
-                                        style: TextStyle(
-                                          color: AppColors.textOnGlass,
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w700,
-                                        ),
+                            padding: EdgeInsets.zero,
+                            child: Semantics(
+                              button: true,
+                              label: t.contactProfileVerify,
+                              child: _GridRow(
+                                icon: peer?.isVerified == true
+                                    ? Icons.verified_rounded
+                                    : Icons.shield_rounded,
+                                // The whole card, not only the chevron: it
+                                // was a 48-point target in a 90-point card.
+                                onTap: () => context.push(_verifyRoute()),
+                                trailing: _chevron(),
+                                body: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      t.contactProfileSecurity,
+                                      style: TextStyle(
+                                        color: AppColors.textOnGlass,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
                                       ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        peer?.isVerified == true
-                                            ? t.verifyAlreadyDone
-                                            : t.contactProfileVerifyHint,
-                                        style: TextStyle(
-                                          color: AppColors.textOnGlassDim,
-                                          fontSize: 12,
-                                          height: 1.35,
-                                        ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      peer?.isVerified == true
+                                          ? t.verifyAlreadyDone
+                                          : t.contactProfileVerifyHint,
+                                      style: TextStyle(
+                                        color: AppColors.textOnGlass
+                                            .withValues(alpha: 0.8),
+                                        fontSize: 12,
+                                        height: 1.35,
                                       ),
-                                    ],
-                                  ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(width: 8),
-                                IconButton(
-                                  onPressed: () => context.push(_verifyRoute()),
-                                  tooltip: t.contactProfileVerify,
-                                  icon: Icon(
-                                    Icons.chevron_right_rounded,
-                                    color: AppColors.textOnGlassDim,
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -1472,55 +1456,45 @@ class _ProfileHero extends ConsumerWidget {
             left: 12,
             right: 12,
             bottom: 12,
-            child: GlassCard(
-              strong: true,
-              padding: EdgeInsets.zero,
-              borderRadius: 26,
-              child: SizedBox(
-                height: 84,
-                child: Row(
-                  children: [
-                    _QuickAction(
-                      icon: Icons.chat_bubble_rounded,
-                      label: chatLabel,
-                      onTap: onChat,
-                    ),
-                    // Beside the chat, where every messenger with calls puts
-                    // it. The first version hid it in the overflow sheet, one
-                    // tap and a scroll away from the thing it was asked for.
-                    if (onCall != null)
-                      _QuickAction(
-                        icon: Icons.call_rounded,
-                        label: callLabel,
-                        onTap: onCall!,
-                      ),
-                    // Next to the call, its sibling: the walkie-talkie lived
-                    // in the chat header, where it crowded search and retry
-                    // and was asked to move here (2026-10-22).
-                    if (onRadio != null)
-                      _QuickAction(
-                        icon: Icons.radio_rounded,
-                        label: radioLabel,
-                        onTap: onRadio!,
-                      ),
-                    _QuickAction(
-                      icon: muted
-                          ? Icons.notifications_active_rounded
-                          : Icons.notifications_off_rounded,
-                      label: muteLabel,
-                      onTap: onMute,
-                    ),
-                    _QuickAction(
-                      icon: blocked
-                          ? Icons.lock_open_rounded
-                          : Icons.block_rounded,
-                      label: blockLabel,
-                      tone: blocked ? AppColors.brandPrimary : AppColors.danger,
-                      onTap: onBlock,
-                    ),
-                  ],
+            child: ActionStrip(
+              items: [
+                ActionStripItem(
+                  icon: Icons.chat_bubble_rounded,
+                  label: chatLabel,
+                  onTap: onChat,
                 ),
-              ),
+                // Beside the chat, where every messenger with calls puts it.
+                // The first version hid it in the overflow sheet, one tap and
+                // a scroll away from the thing it was asked for.
+                if (onCall != null)
+                  ActionStripItem(
+                    icon: Icons.call_rounded,
+                    label: callLabel,
+                    onTap: onCall!,
+                  ),
+                // Next to the call, its sibling: the walkie-talkie lived in
+                // the chat header, where it crowded search and retry and was
+                // asked to move here (2026-10-22).
+                if (onRadio != null)
+                  ActionStripItem(
+                    icon: Icons.radio_rounded,
+                    label: radioLabel,
+                    onTap: onRadio!,
+                  ),
+                ActionStripItem(
+                  icon: muted
+                      ? Icons.notifications_active_rounded
+                      : Icons.notifications_off_rounded,
+                  label: muteLabel,
+                  onTap: onMute,
+                ),
+                ActionStripItem(
+                  icon: blocked ? Icons.lock_open_rounded : Icons.block_rounded,
+                  label: blockLabel,
+                  tone: blocked ? AppColors.brandPrimary : AppColors.danger,
+                  onTap: onBlock,
+                ),
+              ],
             ),
           ),
         ],
@@ -1541,68 +1515,80 @@ class _RoundButton extends StatelessWidget {
   final String? tooltip;
 
   @override
-  Widget build(BuildContext context) => Material(
-        color: Colors.black.withValues(alpha: 0.34),
-        shape: const CircleBorder(),
-        // The shared header button: one size and target with every other.
-        child: HeaderIconButton(
-          icon: icon,
-          onPressed: onTap,
-          tooltip: tooltip,
-        ),
+  // The shared header button, disc and all: one size, target and backing
+  // with every other.
+  Widget build(BuildContext context) => HeaderIconButton(
+        icon: icon,
+        onPressed: onTap,
+        tooltip: tooltip,
       );
 }
 
-class _QuickAction extends StatelessWidget {
-  const _QuickAction({
+/// One row of the cards under the hero — the ID, Security, Media, Voice,
+/// Files — on one grid: the same leading box, the same gap, and a trailing
+/// slot of one width, so every icon starts on one line and every chevron and
+/// copy button stands in one column. They were three layouts (an icon with no
+/// box, a 46-point box, a ListTile's 42) and the chevrons sat 23 points apart.
+class _GridRow extends StatelessWidget {
+  const _GridRow({
     required this.icon,
-    required this.label,
-    required this.onTap,
-    this.tone = Colors.white,
+    required this.body,
+    this.trailing,
+    this.onTap,
   });
 
+  static const double box = 42;
+  static const double gap = 14;
+  static const double trailingSlot = 40;
+  static const EdgeInsets padding =
+      EdgeInsets.symmetric(horizontal: 16, vertical: 14);
+
   final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final Color tone;
+  final Widget body;
+  final Widget? trailing;
+  final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => Expanded(
-        child: InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: tone, size: 25),
-                const SizedBox(height: 7),
-                // Shrunk to its cell rather than cut. Measured in Inter Bold
-                // at 11 px against the cell a 360 px phone gives five buttons
-                // (63 px): "Підтвердити" is 70, "Заблокувати" 72, and
-                // "Увімкнути звук" 86 — the last was already cut with four
-                // buttons (80 px), before the call button arrived. An ellipsis
-                // turns a word into a guess; a label a size smaller is still
-                // the word. English fits at full size everywhere.
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: tone,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
+  Widget build(BuildContext context) {
+    final row = Padding(
+      padding: padding,
+      child: Row(
+        children: [
+          Container(
+            width: box,
+            height: box,
+            decoration: BoxDecoration(
+              color: AppColors.brandPrimary.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(14),
             ),
+            child: Icon(icon, color: AppColors.brandPrimary, size: 22),
           ),
-        ),
-      );
+          const SizedBox(width: gap),
+          Expanded(child: body),
+          SizedBox(
+            width: trailingSlot,
+            child: Center(child: trailing),
+          ),
+        ],
+      ),
+    );
+    final tap = onTap;
+    if (tap == null) return row;
+    return InkWell(
+      onTap: tap,
+      borderRadius: BorderRadius.circular(18),
+      child: row,
+    );
+  }
 }
+
+/// The chevron in a [_GridRow]'s trailing slot: white, as every label on
+/// these cards now is — the dim grey read as disabled on the darker palettes.
+Widget _chevron() => Icon(
+      Icons.chevron_right_rounded,
+      color: AppColors.textOnGlass,
+      size: 24,
+    );
 
 class _ActionTile extends StatelessWidget {
   const _ActionTile({
@@ -1703,45 +1689,35 @@ class _ContentRow extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
-        leading: Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: AppColors.brandPrimary.withValues(alpha: 0.13),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Icon(icon, color: AppColors.brandPrimary, size: 22),
-        ),
-        title: Text(
-          label,
-          style: TextStyle(
-            color: AppColors.textOnGlass,
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
+  Widget build(BuildContext context) => _GridRow(
+        icon: icon,
+        onTap: onTap,
+        trailing: _chevron(),
+        body: Row(
           children: [
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: AppColors.textOnGlass,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
             Text(
               '$count',
               style: TextStyle(
-                color: AppColors.textOnGlassDim,
-                fontSize: 13,
+                color: AppColors.textOnGlass,
+                fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
             ),
-            const SizedBox(width: 5),
-            Icon(
-              Icons.chevron_right_rounded,
-              color: AppColors.textOnGlassDim,
-            ),
           ],
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        onTap: onTap,
       );
 }
 
@@ -1761,45 +1737,46 @@ class _InfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) => GlassCard(
         strong: true,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: AppColors.brandPrimary, size: 22),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: AppColors.textOnGlassDim,
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 7),
-                  Text(
-                    value,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.mono(
-                      size: 13,
-                      color: AppColors.textOnGlass,
-                      weight: FontWeight.w500,
-                    ),
-                  ),
-                ],
+        padding: EdgeInsets.zero,
+        child: _GridRow(
+          icon: icon,
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  color: AppColors.textOnGlass.withValues(alpha: 0.8),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-            IconButton(
-              onPressed: onCopy,
-              icon: Icon(
-                Icons.copy_rounded,
-                color: AppColors.textOnGlassDim,
-                size: 20,
+              const SizedBox(height: 5),
+              Text(
+                value,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppTypography.mono(
+                  size: 13,
+                  color: AppColors.textOnGlass,
+                  weight: FontWeight.w500,
+                ),
               ),
+            ],
+          ),
+          trailing: IconButton(
+            onPressed: onCopy,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(
+              width: _GridRow.trailingSlot,
+              height: _GridRow.trailingSlot,
             ),
-          ],
+            icon: Icon(
+              Icons.copy_rounded,
+              color: AppColors.textOnGlass,
+              size: 20,
+            ),
+          ),
         ),
       );
 }

@@ -10,6 +10,7 @@ import '../../peers/data/presence_controller.dart';
 import '../../channels/presentation/new_channel_screen.dart';
 import '../../../core/widgets/appear_animation.dart';
 import '../../../core/widgets/context_popup.dart';
+import '../../../core/widgets/cube_logo.dart';
 import '../../../core/widgets/floating_glass.dart';
 import '../../../core/widgets/freeze_when_offstage.dart';
 import '../../../core/widgets/more_button.dart';
@@ -316,11 +317,9 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen>
       top: false,
       child: TabPageFrame(
         header: TabHeader(
-          mark: Icon(
-            Icons.contacts_rounded,
-            color: AppColors.brandPrimary,
-            size: 30,
-          ),
+          // The app's mark, as on Chats (asked for 2026-10-31): the tab bar
+          // below already says which tab this is.
+          mark: const CubeLogo(size: 32),
           title: t.contactsTitle,
           subtitle: t.contactsSubtitle,
           actions: [

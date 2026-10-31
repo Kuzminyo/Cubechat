@@ -1893,10 +1893,19 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     // back one edge at a time. As soon as there is something else on that line
     // (a caption, a reaction) the row comes back and the clock joins it.
     final metaOnMedia = media && !reacted && _caption == null;
+    // Our own words on our own fill, in the palette's darkest. They were
+    // white on the bright green and blended into it, as did the white time and
+    // the light-blue read ticks ("стрелочки прочитаные ... сливаеться", "текст
+    // мой тоже надо сделать темнее", 2026-10-31). Stronger than
+    // [readingColor] below — this is the message, that is a note about it —
+    // and still not pure black, which an earlier report found harsh.
+    final ownInk =
+        mine && !bare ? AppColors.bgDeep.withValues(alpha: 0.88) : null;
     final meta = _BubbleMeta(
       message: message,
       pinned: pinned,
       onMedia: metaOnMedia,
+      onOwnFill: mine && !bare && !metaOnMedia,
       // Only in the saved chat does a tag exist, so only there is the map read.
       tag: isSavedChat(widget.chatId)
           ? ref.watch(savedTagsProvider.select((t) => t[message.id]))
@@ -2326,6 +2335,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     MentionText(
                       message.text,
                       highlight: searchQuery,
+                      ink: ownInk,
                       // Fewer of them, bigger — one on its own is the loudest and
                       // three are closer to a line of text than to a gesture.
                       // Sticker-sized at the top end rather than merely larger:
@@ -3983,10 +3993,15 @@ class _BubbleMeta extends StatelessWidget {
     required this.message,
     this.pinned = false,
     this.onMedia = false,
+    this.onOwnFill = false,
     this.tag,
   });
 
   final Message message;
+
+  /// True when this row sits on our own green fill, where white ink and the
+  /// light-blue read ticks blended in; it takes the palette's darkest instead.
+  final bool onOwnFill;
 
   /// The saved-note tag on this message, or null. Shown at the head of the
   /// meta line so a tagged note reads as tagged without opening it — the same
@@ -4005,8 +4020,11 @@ class _BubbleMeta extends StatelessWidget {
   static const _readColor = Color(0xFF66D9FF);
 
   /// The ink for everything in this row, given what it is drawn on.
-  Color _ink(double onBubble) =>
-      onMedia ? Colors.white.withValues(alpha: 0.95) : AppColors.ink(onBubble);
+  Color _ink(double onBubble) => onMedia
+      ? Colors.white.withValues(alpha: 0.95)
+      : onOwnFill
+          ? AppColors.bgDeep.withValues(alpha: onBubble)
+          : AppColors.ink(onBubble);
 
   @override
   Widget build(BuildContext context) {
@@ -4101,8 +4119,11 @@ class _BubbleMeta extends StatelessWidget {
             size: 12,
             color: switch (message.status) {
               MessageStatus.failed => AppColors.danger,
-              MessageStatus.read => _readColor,
-              _ => _ink(0.85),
+              // On our fill the read pair is the full dark, the delivered
+              // tick a shade lighter: the light blue vanished into the green.
+              MessageStatus.read =>
+                onOwnFill ? AppColors.bgDeep : _readColor,
+              _ => _ink(onOwnFill ? 0.6 : 0.85),
             },
             semanticLabel: switch (message.status) {
               MessageStatus.sending => message.route == MessageRoute.queued

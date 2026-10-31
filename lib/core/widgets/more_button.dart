@@ -16,7 +16,14 @@ class HeaderIconButton extends StatelessWidget {
     required this.onPressed,
     this.tooltip,
     this.color,
+    this.disc = true,
   });
+
+  /// The dark disc behind every header button, the one a contact's profile
+  /// drew for its back and three dots — asked for on the Contacts megaphone
+  /// and the other three-dot buttons too (2026-10-31), so the controls in a
+  /// header read as controls and not as a stray glyph on the aurora.
+  static Color get discColor => Colors.black.withValues(alpha: 0.34);
 
   /// The glyph size every header button draws at.
   static const double iconSize = 22;
@@ -32,9 +39,13 @@ class HeaderIconButton extends StatelessWidget {
   /// from the ones beside it, which none currently does.
   final Color? color;
 
+  /// False only where the caller draws a disc of its own, or where the button
+  /// sits in a row of a list rather than in a header.
+  final bool disc;
+
   @override
   Widget build(BuildContext context) {
-    return SizedBox.square(
+    final button = SizedBox.square(
       dimension: target,
       child: IconButton(
         onPressed: onPressed,
@@ -48,6 +59,13 @@ class HeaderIconButton extends StatelessWidget {
         icon: Icon(icon, size: iconSize, color: color ?? AppColors.textOnGlass),
       ),
     );
+    if (!disc) return button;
+    return Material(
+      color: discColor,
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: button,
+    );
   }
 }
 
@@ -58,6 +76,7 @@ class MoreButton extends StatelessWidget {
     required this.onPressed,
     this.tooltip,
     this.color,
+    this.disc = true,
   });
 
   static const double iconSize = HeaderIconButton.iconSize;
@@ -69,11 +88,15 @@ class MoreButton extends StatelessWidget {
   /// scrimmed buttons on a cover want.
   final Color? color;
 
+  /// See [HeaderIconButton.disc].
+  final bool disc;
+
   @override
   Widget build(BuildContext context) => HeaderIconButton(
         icon: Icons.more_vert_rounded,
         onPressed: onPressed,
         tooltip: tooltip,
         color: color,
+        disc: disc,
       );
 }

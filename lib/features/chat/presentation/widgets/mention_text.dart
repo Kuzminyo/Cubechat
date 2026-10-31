@@ -13,9 +13,20 @@ import '../../domain/message_search.dart';
 /// clients and searchable like any other words — nothing here changes what was
 /// sent, only what it looks like and what a tap on it does.
 class MentionText extends StatefulWidget {
-  const MentionText(this.text, {super.key, this.highlight = '', this.fontSize});
+  const MentionText(
+    this.text, {
+    super.key,
+    this.highlight = '',
+    this.fontSize,
+    this.ink,
+  });
 
   final String text;
+
+  /// The ink for the whole run — words, links and mentions — or null for the
+  /// glass text. Our own bubble passes a dark one: white, and a green link, on
+  /// the bright green fill blended into it (reported 2026-10-31).
+  final Color? ink;
 
   /// Overrides the body size. Only the emoji-only message uses it, and it uses
   /// it for the whole reason it exists: a message that is nothing but emoji is
@@ -104,8 +115,9 @@ class _MentionTextState extends State<MentionText> {
     }
     _recognizers.clear();
 
+    final ink = widget.ink;
     final base = TextStyle(
-      color: AppColors.textOnGlass,
+      color: ink ?? AppColors.textOnGlass,
       fontSize: widget.fontSize ?? 14.5,
       height: 1.35,
     );
@@ -193,9 +205,10 @@ class _MentionTextState extends State<MentionText> {
           match.start + shown.length,
           recognizer: recognizer,
           style: base.copyWith(
-            color: AppColors.brandPrimary,
+            color: ink ?? AppColors.brandPrimary,
             decoration: TextDecoration.underline,
-            decorationColor: AppColors.brandPrimary.withValues(alpha: 0.5),
+            decorationColor:
+                (ink ?? AppColors.brandPrimary).withValues(alpha: 0.5),
           ),
         );
         // Whatever was trimmed is still part of the message and is drawn as
@@ -207,7 +220,7 @@ class _MentionTextState extends State<MentionText> {
           match.start,
           match.end,
           style: base.copyWith(
-            color: AppColors.brandSecondary,
+            color: ink ?? AppColors.brandSecondary,
             fontWeight: FontWeight.w700,
           ),
         );
