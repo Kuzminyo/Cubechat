@@ -77,7 +77,10 @@ class _RadioRelay {
     return relay;
   }
 
-  int get listening => _wants.length;
+  /// Sockets whose REQ has arrived — not merely connected. Counting a socket
+  /// from its upgrade let a test publish before the listener had subscribed,
+  /// which the CI runner was slow enough to hit (2026-10-31).
+  int get listening => _wants.values.where((t) => t.isNotEmpty).length;
 
   Future<void> stop() => _server.close(force: true);
 }
