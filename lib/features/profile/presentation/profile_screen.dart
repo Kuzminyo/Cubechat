@@ -23,6 +23,8 @@ import '../../../core/util/app_build.dart';
 import '../../../core/util/haptics.dart';
 import 'package:saver_gallery/saver_gallery.dart';
 
+import '../../../core/desktop/desktop_autostart.dart';
+import '../../../core/desktop/desktop_presence.dart';
 import '../../../core/widgets/action_strip.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/widgets/context_popup.dart';
@@ -1423,6 +1425,24 @@ class _CallDirectTile extends ConsumerWidget {
       value: ref.watch(callAllowsDirectProvider),
       onChanged: (on) => unawaited(
         ref.read(callAllowsDirectProvider.notifier).set(on),
+      ),
+    );
+  }
+}
+
+class _DesktopAutostartTile extends ConsumerWidget {
+  const _DesktopAutostartTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    return _SettingSwitch(
+      icon: Icons.power_settings_new_rounded,
+      title: t.desktopAutostartTitle,
+      hint: t.desktopAutostartHint,
+      value: ref.watch(desktopAutostartProvider),
+      onChanged: (on) => unawaited(
+        ref.read(desktopAutostartProvider.notifier).set(on),
       ),
     );
   }

@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'app.dart';
+import 'core/desktop/desktop_autostart.dart';
 import 'core/notifications/ios_background_refresh.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/storage/hive_init.dart';
@@ -180,7 +181,7 @@ Future<void> _createMacTemporaryDirectory() async {
   await (await getTemporaryDirectory()).create(recursive: true);
 }
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
   final sinceMain = Stopwatch()..start();
   WidgetsFlutterBinding.ensureInitialized();
   DebugLog.install();
@@ -334,6 +335,10 @@ Future<void> main() async {
       child: CubechatApp(seenOnboarding: seenOnboarding),
     ),
   );
+
+  // A Windows computer keeps its relay open with the window closed, and
+  // starts with the system into the tray: no push can wake it.
+  unawaited(startDesktopPresence(args));
 
   // Deliberately after runApp, and deliberately not awaited.
   //

@@ -14,6 +14,10 @@ class NotificationsSectionScreen extends ConsumerWidget {
         SettingsGroup(
           children: [
             if (PlatformInfo.isMobile) _inset(const _PushWakeRow()),
+            // A computer's push is its process: this is what keeps one
+            // running for calls and messages with no window open.
+            if (desktopPresenceSupported)
+              _inset(const _DesktopAutostartTile()),
             _inset(const _QuietHoursRow()),
           ],
         ),

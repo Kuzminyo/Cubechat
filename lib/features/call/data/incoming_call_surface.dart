@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:local_notifier/local_notifier.dart';
 
+import '../../../core/desktop/desktop_presence.dart';
 import '../../../core/util/platform_info.dart';
 
 import '../../../core/util/debug_log.dart';
@@ -512,6 +513,9 @@ class WindowsIncomingCallSurface implements IncomingCallSurface {
   }) async {
     _shown = key;
     final words = labels();
+    // From the tray, where a closed window waits: the call screen comes up
+    // in front, as a phone's full-screen call does.
+    unawaited(DesktopPresence.instance?.reveal());
     await _tones.play(CallTone.incoming);
     try {
       await _toast.show(

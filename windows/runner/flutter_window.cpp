@@ -1,5 +1,6 @@
 #include "flutter_window.h"
 
+#include <cwchar>
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
@@ -27,8 +28,12 @@ bool FlutterWindow::OnCreate() {
   RegisterPlugins(flutter_controller_->engine());
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
-  flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    this->Show();
+  // Started by the autostart entry with --hidden: CubeChat comes up in the
+  // tray, keeping its relay socket open for calls and messages, and shows no
+  // window until asked (lib/core/desktop/desktop_presence.dart).
+  const bool hidden = wcsstr(GetCommandLineW(), L"--hidden") != nullptr;
+  flutter_controller_->engine()->SetNextFrameCallback([&, hidden]() {
+    if (!hidden) this->Show();
   });
 
   // Flutter can complete the first frame before the "show window" callback is

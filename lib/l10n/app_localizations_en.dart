@@ -1450,6 +1450,19 @@ class AppLocalizationsEn extends AppLocalizations {
       'The app does not request location and your pin stays hidden';
 
   @override
+  String get desktopAutostartTitle => 'Start with Windows';
+
+  @override
+  String get desktopAutostartHint =>
+      'CubeChat waits in the tray, so calls and messages reach this computer with its window closed';
+
+  @override
+  String get trayOpen => 'Open CubeChat';
+
+  @override
+  String get trayQuit => 'Quit';
+
+  @override
   String get callDirectTitle => 'Direct calls';
 
   @override

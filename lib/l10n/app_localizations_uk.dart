@@ -1460,6 +1460,19 @@ class AppLocalizationsUk extends AppLocalizations {
       'Застосунок не запитує геолокацію, а ваша точка прихована';
 
   @override
+  String get desktopAutostartTitle => 'Запускати разом із Windows';
+
+  @override
+  String get desktopAutostartHint =>
+      'CubeChat чекає в треї, тож дзвінки й повідомлення доходять до комп\'ютера із закритим вікном';
+
+  @override
+  String get trayOpen => 'Відкрити CubeChat';
+
+  @override
+  String get trayQuit => 'Вийти';
+
+  @override
   String get callDirectTitle => 'Прямі дзвінки';
 
   @override

@@ -2600,6 +2600,30 @@ abstract class AppLocalizations {
   /// **'The app does not request location and your pin stays hidden'**
   String get profileMapLocationOffHint;
 
+  /// No description provided for @desktopAutostartTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Start with Windows'**
+  String get desktopAutostartTitle;
+
+  /// No description provided for @desktopAutostartHint.
+  ///
+  /// In en, this message translates to:
+  /// **'CubeChat waits in the tray, so calls and messages reach this computer with its window closed'**
+  String get desktopAutostartHint;
+
+  /// No description provided for @trayOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open CubeChat'**
+  String get trayOpen;
+
+  /// No description provided for @trayQuit.
+  ///
+  /// In en, this message translates to:
+  /// **'Quit'**
+  String get trayQuit;
+
   /// No description provided for @callDirectTitle.
   ///
   /// In en, this message translates to:

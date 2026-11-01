@@ -210,7 +210,12 @@ When a computer is signed in with your phone's account, a call rings on both,
 and only one call can be on at a time: the device that has a call tells your
 other devices so, with a short message sent through the internet relays to
 your own key and encrypted to it. It says only that a call is on, declined or
-over, and when; nobody but your own devices can read it.
+over, and when; nobody but your own devices can read it. Because nothing can
+wake a computer the way a push wakes a phone, CubeChat for Windows starts when
+you sign in to Windows and keeps running in the notification area with its
+window closed, until you choose Quit there; you can switch the start off in
+Profile → Notifications & calls. This sends nothing anywhere new: it only keeps
+the same relay connection open.
 
 **Your devices.** The devices signed in with one account tell each other they
 exist — each one's name, kind (Android, iPhone, Windows) and when it was last

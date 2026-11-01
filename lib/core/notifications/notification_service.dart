@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:local_notifier/local_notifier.dart';
 
+import '../desktop/desktop_presence.dart';
 import '../util/debug_log.dart';
 import '../util/platform_info.dart';
 import 'avatar_bitmap.dart';
@@ -187,8 +188,12 @@ class NotificationService {
     if (PlatformInfo.isWindows) {
       // One toast per message, no stacked thread: Windows groups an app's
       // toasts in its own action centre. A click opens the chat.
+      // The window may be hidden in the tray; the click brings it back.
       final toast = LocalNotification(title: title, body: body)
-        ..onClick = () => onSelectChat?.call(threadKey);
+        ..onClick = () {
+          unawaited(DesktopPresence.instance?.reveal());
+          onSelectChat?.call(threadKey);
+        };
       await toast.show();
       return;
     }

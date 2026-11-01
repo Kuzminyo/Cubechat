@@ -157,6 +157,16 @@ dependencies:
   # Windows side; this plugin has no Android or iOS side, so the phones carry
   # none of it.
   local_notifier: ^0.1.6
+  # A computer stays on the line with its window closed: the cross hides it to
+  # the tray (Windows) and it starts with the system, since there is no push to
+  # wake it (docs/superpowers/specs/2026-11-01-desktop-tray-design.md). None of
+  # the three has a phone side; every call is behind a platform check. Pinned:
+  # window_manager 0.6 and tray_manager 0.7+ want Flutter 3.47, and this tree is
+  # on 3.41 to match CI (see the release-build skill); tray_manager 0.6.x was
+  # retracted by its author.
+  window_manager: 0.5.2
+  tray_manager: 0.5.3
+  launch_at_startup: 0.5.1
 
 # CameraX must mirror the encoded front-camera clip as well as its preview.
 # The small native patch is documented in third_party/camera_android_camerax.
@@ -217,6 +227,10 @@ flutter:
     - assets/illustrations/
     - assets/stickers/
     - assets/sounds/
+    # The Windows tray icon: a copy of windows/runner/resources/app_icon.ico,
+    # which tray_manager can only load from the app's assets. 60 KB on the
+    # phones too, where nothing reads it.
+    - assets/tray/
     - .codex/fonts/
 
 
