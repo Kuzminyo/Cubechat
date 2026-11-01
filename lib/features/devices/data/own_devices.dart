@@ -223,6 +223,11 @@ class OwnDevicesService extends ChangeNotifier {
       case OwnDeviceKind.profile:
         // The account's profile, not this list — see [OwnProfileSync].
         break;
+      case OwnDeviceKind.mirror:
+      case OwnDeviceKind.read:
+      case OwnDeviceKind.contact:
+        // The conversation, not this list — see [DeviceSync].
+        break;
     }
   }
 

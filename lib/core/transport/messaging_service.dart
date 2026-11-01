@@ -1941,6 +1941,7 @@ class MessagingService {
       if (chatId != canonicalId) {
         messages.append(chatId, msg);
       }
+      _noteSentText(canonicalId, text, replyTarget, msgId);
     }
 
     try {
@@ -4023,6 +4024,7 @@ class MessagingService {
       targetMsgId: target,
     );
     final body = reaction.encode();
+    _noteSent(chatId, InnerPayloadType.reaction, body);
     try {
       if (chatId.startsWith('#')) {
         final channel =
@@ -4117,6 +4119,99 @@ class MessagingService {
   /// Notices from this account's other devices, from our own key only.
   Stream<OwnDeviceNotice> get ownDeviceNotices => _ownDeviceNotices.stream;
   final _ownDeviceNotices = StreamController<OwnDeviceNotice>.broadcast();
+
+  /// What this device just sent a contact or a channel, before sealing — for
+  /// `DeviceSync` to mirror to the account's other devices, which cannot open
+  /// a frame sealed to the contact. Only what the conversation keeps: text,
+  /// edits, deletes, reactions, pins, a cleared chat. See
+  /// `docs/superpowers/specs/2026-11-01-device-sync-design.md`.
+  Stream<SentToPeer> get sentToPeers => _sentToPeers.stream;
+  final _sentToPeers = StreamController<SentToPeer>.broadcast();
+
+  void _noteSent(
+    String chatId,
+    InnerPayloadType type,
+    Uint8List body, {
+    Uint8List? msgId,
+  }) {
+    if (_disposed || !_sentToPeers.hasListener) return;
+    _sentToPeers.add(
+      SentToPeer(
+        chatId: chatId,
+        type: type,
+        body: body,
+        msgId: msgId ?? TransportEnvelope.newMsgId(initialTtl: _meshTtl),
+        at: DateTime.now(),
+      ),
+    );
+  }
+
+  /// A text as [sendText] files it: unpadded, a reply when it quotes.
+  void _noteSentText(
+    String chatId,
+    String text,
+    Uint8List? replyTarget,
+    Uint8List msgId,
+  ) {
+    if (!_sentToPeers.hasListener) return;
+    final inner = unpackInnerPayload(
+      _buildTextInner(
+        Uint8List.fromList(utf8.encode(text)),
+        replyTarget,
+        bucket: 0,
+      ),
+    );
+    _noteSent(chatId, inner.type, inner.body, msgId: msgId);
+  }
+
+  /// Frames for this phone that arrived over Bluetooth and nowhere else: a
+  /// contact's message sealed to our key, which the account's other devices
+  /// can open with their copy of it but never saw. `DeviceSync` decides
+  /// whether they go on (relays on, another device exists) through
+  /// [publishToOwnDevices].
+  Stream<Uint8List> get heardOverBluetooth => _heardOverBluetooth.stream;
+  final _heardOverBluetooth = StreamController<Uint8List>.broadcast();
+
+  /// What a Bluetooth-only frame may be passed on as: something the
+  /// conversation keeps. Presence, typing and their like are a moment's
+  /// state, not history, and media chunks are stage 2 of the sync spec.
+  static bool _forwardsToOwnDevices(InnerPayloadType type) => switch (type) {
+        InnerPayloadType.text ||
+        InnerPayloadType.textReply ||
+        InnerPayloadType.edit ||
+        InnerPayloadType.delete ||
+        InnerPayloadType.reaction ||
+        InnerPayloadType.pin ||
+        InnerPayloadType.receipt ||
+        InnerPayloadType.conversationClear ||
+        InnerPayloadType.forwardedFrom =>
+          true,
+        _ => false,
+      };
+
+  /// Publish [frameBytes] — a frame already sealed to our own key — to our own
+  /// Nostr key, for the account's other devices. The same frame the phone
+  /// heard; nothing is re-encrypted. Our own copy coming back is a duplicate
+  /// the dedup cache already holds.
+  Future<ControlDelivery> publishToOwnDevices(Uint8List frameBytes) async {
+    final transport = _nostr;
+    if (transport == null || _disposed) return ControlDelivery.notSent;
+    if (!await _ensureRelayAwakeForSend()) return ControlDelivery.notSent;
+    try {
+      final receipt = await transport.sendFrame(
+        recipientNpubHex: transport.npubHex,
+        frameBytes: frameBytes,
+      );
+      return combineControlDelivery(
+        meshLinks: 0,
+        direct: false,
+        relay: RelayPublishOutcome.fromReceipt(receipt),
+      );
+    } catch (e) {
+      DebugLog.instance.log('SYNC', 'passing a frame on failed: $e');
+      return ControlDelivery.notSent;
+    }
+  }
 
   Future<ControlDelivery> _sendToOwnDevices(
     InnerPayloadType type,
@@ -4821,6 +4916,7 @@ class MessagingService {
     if (canonicalId.startsWith('#')) return false;
     final peerPub = _resolvePeerPub(canonicalId);
     if (peerPub == null) return false;
+    _noteSent(canonicalId, InnerPayloadType.conversationClear, Uint8List(0));
     try {
       final fanout = await _sendControlToPeer(
         canonicalId: canonicalId,
@@ -5050,6 +5146,7 @@ class MessagingService {
     if (!messages.editMine(chatId, targetWireId, newText)) return;
 
     final body = MessageEdit(targetMsgId: target, text: newText).encode();
+    _noteSent(chatId, InnerPayloadType.edit, body);
     try {
       if (chatId.startsWith('#')) {
         final channel =
@@ -5096,6 +5193,7 @@ class MessagingService {
     if (!messages.deleteMineByWireId(chatId, targetWireId)) return;
 
     final body = MessageDelete(targetMsgId: target).encode();
+    _noteSent(chatId, InnerPayloadType.delete, body);
     try {
       if (chatId.startsWith('#')) {
         final channel =
@@ -5156,6 +5254,7 @@ class MessagingService {
       op: pinned ? PinOp.pin : PinOp.unpin,
       targetMsgId: target,
     ).encode();
+    _noteSent(chatId, InnerPayloadType.pin, body);
     try {
       if (chatId.startsWith('#')) {
         final channel =
@@ -5484,6 +5583,7 @@ class MessagingService {
           if (decoded.length == replyTargetLen) replyTarget = decoded;
         } catch (_) {}
       }
+      _noteSentText(canonicalId, text, replyTarget, msgId);
       final frame = replyTarget == null
           ? await _buildChannelFrame(
               channel, InnerPayloadType.text, inner, msgId)
@@ -8456,6 +8556,15 @@ class MessagingService {
                   ))) {
         DebugLog.instance.log('MESH', 'drop inbound from blocked peer');
         return;
+      }
+
+      // Heard over Bluetooth, so the account's other devices never saw it —
+      // offered to `DeviceSync`, which passes the very frame on when relays
+      // are on. After the block check: a blocked sender goes nowhere.
+      if (peerId != _nostrPeerId &&
+          _heardOverBluetooth.hasListener &&
+          _forwardsToOwnDevices(unpacked.type)) {
+        _heardOverBluetooth.add(frame.encode());
       }
 
       // First message from a peer we'd only heard about via an announcement
@@ -14250,6 +14359,8 @@ class MessagingService {
     _clients.clear();
     await _callSignals.close();
     await _ownDeviceNotices.close();
+    await _sentToPeers.close();
+    await _heardOverBluetooth.close();
     await _nearbyInbound.close();
     await _radioInbound.close();
   }
@@ -14429,4 +14540,26 @@ class _HeldAttribution {
 
   final String name;
   final String? authorId;
+}
+
+/// One thing this device sent a contact or a channel, as
+/// [MessagingService.sentToPeers] reports it: the payload before sealing and
+/// the id it went out under — a text's transport msgId, so the mirror files it
+/// under the same wireId; a fresh one for a control payload, whose own target
+/// id is inside [body].
+@immutable
+class SentToPeer {
+  const SentToPeer({
+    required this.chatId,
+    required this.type,
+    required this.body,
+    required this.msgId,
+    required this.at,
+  });
+
+  final String chatId;
+  final InnerPayloadType type;
+  final Uint8List body;
+  final Uint8List msgId;
+  final DateTime at;
 }

@@ -36,6 +36,7 @@ import 'features/moderation/data/ban_list_controller.dart';
 import 'core/util/platform_info.dart';
 import 'features/desktop/desktop_split_view.dart' show DesktopOpenChat, desktopOpenChatProvider;
 import 'features/desktop/touchpad_swipe.dart';
+import 'features/devices/data/device_sync.dart';
 import 'features/devices/data/own_devices.dart';
 import 'features/devices/data/own_devices_controller.dart';
 import 'features/devices/data/own_profile_sync.dart';
@@ -326,6 +327,8 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // lazily, and after a wipe nothing would read it again — the profile
     // would stop arriving until the next launch.
     ref.listenManual<OwnProfileSync>(ownProfileSyncProvider, (_, __) {});
+    // The same, for the conversation itself.
+    ref.listenManual<DeviceSync>(deviceSyncProvider, (_, __) {});
   }
 
   /// The microphone, asked once the app is up rather than on the first call -

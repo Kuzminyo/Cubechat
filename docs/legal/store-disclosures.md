@@ -99,6 +99,12 @@ Ordinary encrypted content is not collected. Distinguish it from explicitly subm
   (kind 21059) that the relay forwards in real time and never stores, signed
   with a throwaway key per connection — not collected
   (`lib/core/transport/nostr/radio_relay_link.dart`, `relay/write-policy.mjs`).
+  The devices of one account keep one conversation by sending each other
+  copies of what they send, read positions and contacts' keys, through the
+  relays sealed to the account's own key; with relays on, a message that
+  reached the phone only over Bluetooth is passed on the same way. The
+  developer cannot read any of it — not collected
+  (`lib/features/devices/data/device_sync.dart`).
 - **Location (approximate and precise)** — not collected. Shared only with
   contacts the user picks, end-to-end encrypted, expiring after six minutes.
   Sharing stays off until switched on; the permission is requested at the end

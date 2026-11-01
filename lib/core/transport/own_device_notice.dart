@@ -11,7 +11,16 @@ import 'dart:typed_data';
 ///   goodbye  body = —
 ///   profile  body = [seq:1][total:1][nickLen:1][nick:nickLen]
 ///                   [avatarLen:4][avatarSha256:32][part]
+///   mirror   body = [chatIdLen:1][chatId][innerType:1][msgId:16]
+///                   [innerLen:4][inner:innerLen]
+///   read     body = [chatIdLen:1][chatId][upToMs:8]
+///   contact  body = [pubkey:32][signPub:32][flags:1]
+///                   [prekey:32 if flags&1][nostr:32 if flags&2]
+///                   [nameLen:1][name:nameLen]
 /// ```
+///
+/// mirror, read and contact keep the conversation one across the devices
+/// (`docs/superpowers/specs/2026-11-01-device-sync-design.md`).
 ///
 /// The moment travels inside, as an invite's does: relays hand stored events
 /// over again on every reconnect, and only this says how old one is.
@@ -36,7 +45,23 @@ enum OwnDeviceKind {
   /// a FormatException on the kind byte and the receive branch drops the
   /// notice with a log line. Hello, sign-out and goodbye are notices of their
   /// own, so nothing they do changes.
-  profile(0x04);
+  profile(0x04),
+
+  /// Something this device sent a contact or a channel —
+  /// [OwnDeviceNotice.innerType] and [OwnDeviceNotice.inner] exactly as they
+  /// went out, before sealing — for the other devices to keep as their own
+  /// outgoing. Sealed to the contact, the original is one they cannot open.
+  /// Added 2026-11-01; an older build drops the kind, as above.
+  mirror(0x05),
+
+  /// The chat [OwnDeviceNotice.chatId] was read on this device up to
+  /// [OwnDeviceNotice.upToMs].
+  read(0x06),
+
+  /// A contact this device knows: their keys, as the roster holds them, and
+  /// the name we show. Believed because it comes from our own key — the same
+  /// trust as the device that sent it, which holds this whole account.
+  contact(0x07);
 
   const OwnDeviceKind(this.tag);
   final int tag;
@@ -84,7 +109,73 @@ class OwnDeviceNotice {
     this.avatarLen = 0,
     this.avatarHash,
     this.part,
+    this.chatId,
+    this.innerType = 0,
+    this.msgId,
+    this.inner,
+    this.upToMs = 0,
+    this.contactPub,
+    this.contactSignPub,
+    this.contactPrekey,
+    this.contactNostr,
   });
+
+  /// See [OwnDeviceKind.mirror]. [msgId] is the message's id in our store, so
+  /// a repeat and our own echo are recognised.
+  factory OwnDeviceNotice.mirror({
+    required Uint8List deviceId,
+    required int sentAtMs,
+    required String chatId,
+    required int innerType,
+    required Uint8List msgId,
+    required Uint8List inner,
+  }) =>
+      OwnDeviceNotice._(
+        kind: OwnDeviceKind.mirror,
+        deviceId: deviceId,
+        sentAtMs: sentAtMs,
+        chatId: chatId,
+        innerType: innerType,
+        msgId: msgId,
+        inner: inner,
+      );
+
+  /// See [OwnDeviceKind.read].
+  factory OwnDeviceNotice.read({
+    required Uint8List deviceId,
+    required int sentAtMs,
+    required String chatId,
+    required int upToMs,
+  }) =>
+      OwnDeviceNotice._(
+        kind: OwnDeviceKind.read,
+        deviceId: deviceId,
+        sentAtMs: sentAtMs,
+        chatId: chatId,
+        upToMs: upToMs,
+      );
+
+  /// See [OwnDeviceKind.contact]: an X25519 identity key and an Ed25519
+  /// signing key, 32 bytes each, the signed prekey and Nostr key when known.
+  factory OwnDeviceNotice.contact({
+    required Uint8List deviceId,
+    required int sentAtMs,
+    required Uint8List pubkey,
+    required Uint8List signPub,
+    Uint8List? prekey,
+    Uint8List? nostr,
+    required String name,
+  }) =>
+      OwnDeviceNotice._(
+        kind: OwnDeviceKind.contact,
+        deviceId: deviceId,
+        sentAtMs: sentAtMs,
+        contactPub: pubkey,
+        contactSignPub: signPub,
+        contactPrekey: prekey,
+        contactNostr: nostr,
+        name: name,
+      );
 
   factory OwnDeviceNotice.hello({
     required Uint8List deviceId,
@@ -177,6 +268,18 @@ class OwnDeviceNotice {
 
   static const int hashLen = 32;
 
+  /// A chat id on the wire, at most: a contact's 64 hex characters, or a
+  /// channel's `#name`, which is shorter.
+  static const int maxChatIdBytes = 128;
+
+  /// A mirrored payload, at most. Text is padded to small buckets and every
+  /// control payload is smaller still; 60 KiB keeps one notice inside one
+  /// relay event after base64 (the relays take 128 KiB).
+  static const int maxInnerBytes = 60 * 1024;
+
+  /// Every key a contact notice carries is this long.
+  static const int keyLen = 32;
+
   final OwnDeviceKind kind;
   final Uint8List deviceId;
   final int sentAtMs;
@@ -193,6 +296,23 @@ class OwnDeviceNotice {
   final int avatarLen;
   final Uint8List? avatarHash;
   final Uint8List? part;
+
+  /// Mirror and read: the chat, as the message store keys it.
+  final String? chatId;
+
+  /// Mirror only: the payload type's byte, its body, and our message id.
+  final int innerType;
+  final Uint8List? msgId;
+  final Uint8List? inner;
+
+  /// Read only: read up to this moment, in epoch milliseconds.
+  final int upToMs;
+
+  /// Contact only: their keys. The prekey and Nostr key may be unknown.
+  final Uint8List? contactPub;
+  final Uint8List? contactSignPub;
+  final Uint8List? contactPrekey;
+  final Uint8List? contactNostr;
 
   Uint8List encode() {
     if (deviceId.length != idLen) {
@@ -229,6 +349,56 @@ class OwnDeviceNotice {
           ..add(len.buffer.asUint8List())
           ..add(hash)
           ..add(bytes);
+      case OwnDeviceKind.mirror:
+        final id = msgId!;
+        final payload = inner!;
+        if (id.length != idLen) {
+          throw const FormatException('a message id is 16 bytes');
+        }
+        if (payload.length > maxInnerBytes) {
+          throw const FormatException('a mirrored payload past the cap');
+        }
+        if (innerType < 0 || innerType > 0xFF) {
+          throw const FormatException('a payload type is one byte');
+        }
+        _addChatId(body, chatId);
+        final len = ByteData(4)..setUint32(0, payload.length);
+        body
+          ..addByte(innerType)
+          ..add(id)
+          ..add(len.buffer.asUint8List())
+          ..add(payload);
+      case OwnDeviceKind.read:
+        _addChatId(body, chatId);
+        final at = ByteData(8);
+        at.setUint32(0, upToMs ~/ 0x100000000);
+        at.setUint32(4, upToMs % 0x100000000);
+        body.add(at.buffer.asUint8List());
+      case OwnDeviceKind.contact:
+        final pub = contactPub!;
+        final sign = contactSignPub!;
+        final prekey = contactPrekey;
+        final nostr = contactNostr;
+        for (final key in [
+          pub,
+          sign,
+          if (prekey != null) prekey,
+          if (nostr != null) nostr,
+        ]) {
+          if (key.length != keyLen) {
+            throw const FormatException('a contact key is 32 bytes');
+          }
+        }
+        final nameBytes = _cut(name ?? '', maxNicknameBytes);
+        body
+          ..add(pub)
+          ..add(sign)
+          ..addByte((prekey != null ? 1 : 0) | (nostr != null ? 2 : 0));
+        if (prekey != null) body.add(prekey);
+        if (nostr != null) body.add(nostr);
+        body
+          ..addByte(nameBytes.length)
+          ..add(nameBytes);
     }
     final head = Uint8List(_headerLen);
     head[0] = version;
@@ -312,7 +482,99 @@ class OwnDeviceNotice {
           avatarHash: hash,
           part: part,
         );
+      case OwnDeviceKind.mirror:
+        final (chat, at) = _readChatId(body);
+        final idAt = at + 1;
+        final lenAt = idAt + idLen;
+        final innerAt = lenAt + 4;
+        if (body.length < innerAt) {
+          throw const FormatException('a mirror is truncated');
+        }
+        final innerLen = ByteData.sublistView(body, lenAt, innerAt).getUint32(0);
+        if (innerLen > maxInnerBytes || body.length != innerAt + innerLen) {
+          throw const FormatException('a mirror runs past its end');
+        }
+        return OwnDeviceNotice.mirror(
+          deviceId: deviceId,
+          sentAtMs: sentAtMs,
+          chatId: chat,
+          innerType: body[at],
+          msgId: Uint8List.fromList(body.sublist(idAt, lenAt)),
+          inner: Uint8List.fromList(body.sublist(innerAt)),
+        );
+      case OwnDeviceKind.read:
+        final (chat, at) = _readChatId(body);
+        if (body.length != at + 8) {
+          throw const FormatException('a read notice is the wrong length');
+        }
+        final v = ByteData.sublistView(body, at);
+        return OwnDeviceNotice.read(
+          deviceId: deviceId,
+          sentAtMs: sentAtMs,
+          chatId: chat,
+          upToMs: v.getUint32(0) * 0x100000000 + v.getUint32(4),
+        );
+      case OwnDeviceKind.contact:
+        const flagsAt = 2 * keyLen;
+        if (body.length < flagsAt + 2) {
+          throw const FormatException('a contact notice is truncated');
+        }
+        final flags = body[flagsAt];
+        if (flags & ~0x03 != 0) {
+          throw const FormatException('unknown contact flags');
+        }
+        var at = flagsAt + 1;
+        Uint8List? take() {
+          if (body.length < at + keyLen) {
+            throw const FormatException('a contact key runs past its end');
+          }
+          final key = Uint8List.fromList(body.sublist(at, at + keyLen));
+          at += keyLen;
+          return key;
+        }
+
+        final prekey = flags & 1 != 0 ? take() : null;
+        final nostr = flags & 2 != 0 ? take() : null;
+        if (body.length < at + 1) {
+          throw const FormatException('a contact notice has no name');
+        }
+        final nameLen = body[at];
+        if (nameLen > maxNicknameBytes || body.length != at + 1 + nameLen) {
+          throw const FormatException('a contact name runs past its end');
+        }
+        return OwnDeviceNotice.contact(
+          deviceId: deviceId,
+          sentAtMs: sentAtMs,
+          pubkey: Uint8List.fromList(body.sublist(0, keyLen)),
+          signPub: Uint8List.fromList(body.sublist(keyLen, flagsAt)),
+          prekey: prekey,
+          nostr: nostr,
+          name: utf8.decode(
+            body.sublist(at + 1, at + 1 + nameLen),
+            allowMalformed: true,
+          ),
+        );
     }
+  }
+
+  static void _addChatId(BytesBuilder body, String? chatId) {
+    final bytes = utf8.encode(chatId ?? '');
+    if (bytes.isEmpty || bytes.length > maxChatIdBytes) {
+      throw const FormatException('a chat id outside its size');
+    }
+    body
+      ..addByte(bytes.length)
+      ..add(bytes);
+  }
+
+  /// The chat id at the head of [body], and where what follows it starts.
+  static (String, int) _readChatId(Uint8List body) {
+    if (body.isEmpty) throw const FormatException('no chat id');
+    final len = body[0];
+    if (len == 0 || len > maxChatIdBytes || body.length < 1 + len) {
+      throw const FormatException('a chat id runs past its end');
+    }
+    return (utf8.decode(body.sublist(1, 1 + len)), 1 + len);
   }
 
   /// Parts needed for an avatar of [avatarLen] bytes — one for none.

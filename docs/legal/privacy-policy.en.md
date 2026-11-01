@@ -1,6 +1,6 @@
 # Cubechat Privacy Policy
 
-**Last updated: 31 October 2026**
+**Last updated: 1 November 2026**
 
 Cubechat is a peer-to-peer messenger. Messages travel directly between phones
 over Bluetooth Low Energy, and optionally through public relays that carry them
@@ -221,6 +221,16 @@ does the next time it goes online. When you change your nickname or profile
 picture on one of them, the new name and picture are sent to the others the
 same way — through the relays, to your own key, encrypted to it — so every
 device shows the same profile.
+
+The conversation is kept the same on all of them in the same way. What you
+send from one device — a message, an edit, a deletion, a reaction, a pin —
+is also sent to your other devices, together with how far you have read each
+chat and the keys and names of the contacts you write to, all through the
+relays to your own key and encrypted to it. When relays are on, a message
+that reached your phone only over Bluetooth is passed on to your other
+devices the same way, as the same encrypted message it arrived as. With
+relays off, nothing that arrived over Bluetooth leaves the phone. None of
+this happens on a device that is the only one on its account.
 
 ---
 
