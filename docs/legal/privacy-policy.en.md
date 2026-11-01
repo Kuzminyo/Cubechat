@@ -382,6 +382,18 @@ card at all. There is no reverse lookup from a key to a name, and no directory
 of names. The name and your Nostr key are also answered under the Nostr NIP-05
 standard (`id.cubechat.tech/.well-known/nostr.json`).
 
+**A recovery e-mail, if you give one.** In Cube ID you can add an e-mail
+address so the name can come back to a new phone if you lose this one. The
+server keeps that address next to your name and uses it for two letters only:
+one to confirm the address, and one when somebody asks to move the name to a
+new phone — the name moves 48 hours after the link in it is opened, and your
+old phone, if you still have it, can cancel within those 48 hours. The letters
+are sent through Resend (Resend, Inc., USA), which receives the address and the
+letter's text to deliver it. An address nobody confirmed is deleted after a
+day; a confirmed one is deleted when you remove it, release the name, or the
+name expires. A recovery request answers the same whether or not the address
+matches, so it cannot be used to find out whose address is whose.
+
 **Your IP address** is used only in the server's memory to limit request
 rates, and is not written to the name database.
 

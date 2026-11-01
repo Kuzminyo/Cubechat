@@ -40,7 +40,7 @@ reports identifiable within the app. The iOS manifest declares the same categori
 
 | Category | Answer | Basis |
 |---|---|---|
-| Contact Info (name, email, phone, address) | Not collected | No account exists — `README.md` §"Status"; there is no registration screen |
+| **Contact Info → Email address** | **Collected, optional** — App Functionality; linked to the user (their Cube ID @name); not used for tracking | Only if the user adds a recovery e-mail in Cube ID: stored on `id.cubechat.tech` beside the name and sent to Resend to deliver the confirmation and recovery letters (`id/src/registry.js`, `id/src/mail.js`, privacy policy §7b). Name, phone and postal address: not collected |
 | Health & Fitness | Not collected | No such API is used |
 | Financial Info | Not collected | No payments |
 | **Location** | **Not collected** | Position is end-to-end encrypted to chosen contacts only and never reaches us — `lib/features/map/data/map_presence_controller.dart` |

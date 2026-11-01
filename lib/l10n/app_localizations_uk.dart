@@ -3866,6 +3866,52 @@ class AppLocalizationsUk extends AppLocalizations {
   String get cubeIdChange => 'Змінити';
 
   @override
+  String get cubeIdEmail => 'Пошта для відновлення';
+
+  @override
+  String get cubeIdEmailHint =>
+      'Якщо телефон загубиться, ім\'я можна повернути листом на цю адресу';
+
+  @override
+  String get cubeIdEmailField => 'Пошта';
+
+  @override
+  String cubeIdEmailSent(String email) {
+    return 'Лист надіслано на $email. Відкрийте посилання в ньому.';
+  }
+
+  @override
+  String get cubeIdEmailRemove => 'Прибрати пошту';
+
+  @override
+  String get cubeIdEmailUnavailable =>
+      'Пошта зараз недоступна. Спробуйте пізніше.';
+
+  @override
+  String get cubeIdEmailInvalid => 'Це не схоже на адресу пошти';
+
+  @override
+  String get cubeIdSave => 'Зберегти';
+
+  @override
+  String get cubeIdRecover => 'Відновити ім\'я через пошту';
+
+  @override
+  String get cubeIdRecoverSent =>
+      'Якщо адреса збігається, прийде лист. Ім\'я перейде на цей телефон через 48 годин після того, як ви відкриєте посилання.';
+
+  @override
+  String cubeIdRecoveryWarning(String name, String when) {
+    return 'Хтось відновлює @$name на іншому телефоні через пошту. Ім\'я перейде $when, якщо не скасувати.';
+  }
+
+  @override
+  String get cubeIdRecoveryCancel => 'Скасувати відновлення';
+
+  @override
+  String get cubeIdRecoveryCancelled => 'Відновлення скасовано';
+
+  @override
   String get cubeIdRelease => 'Звільнити';
 
   @override

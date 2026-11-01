@@ -3823,6 +3823,52 @@ class AppLocalizationsEn extends AppLocalizations {
   String get cubeIdChange => 'Change';
 
   @override
+  String get cubeIdEmail => 'Recovery email';
+
+  @override
+  String get cubeIdEmailHint =>
+      'If this phone is lost, the name comes back through a letter to this address';
+
+  @override
+  String get cubeIdEmailField => 'Email';
+
+  @override
+  String cubeIdEmailSent(String email) {
+    return 'A letter went to $email. Open the link in it.';
+  }
+
+  @override
+  String get cubeIdEmailRemove => 'Remove email';
+
+  @override
+  String get cubeIdEmailUnavailable =>
+      'Email is unavailable right now. Try later.';
+
+  @override
+  String get cubeIdEmailInvalid => 'That does not look like an email address';
+
+  @override
+  String get cubeIdSave => 'Save';
+
+  @override
+  String get cubeIdRecover => 'Recover a name by email';
+
+  @override
+  String get cubeIdRecoverSent =>
+      'If the address matches, a letter comes. The name moves to this phone 48 hours after you open its link.';
+
+  @override
+  String cubeIdRecoveryWarning(String name, String when) {
+    return 'Somebody is recovering @$name on another phone by email. It moves on $when unless you cancel.';
+  }
+
+  @override
+  String get cubeIdRecoveryCancel => 'Cancel the recovery';
+
+  @override
+  String get cubeIdRecoveryCancelled => 'Recovery cancelled';
+
+  @override
   String get cubeIdRelease => 'Release';
 
   @override

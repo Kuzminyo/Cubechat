@@ -127,6 +127,137 @@ class _CubeIdScreenState extends ConsumerState<CubeIdScreen> {
     await ref.read(cubeIdControllerProvider.notifier).release();
   }
 
+  /// One or two fields in a dialog; null when dismissed. [second] null asks
+  /// for one.
+  Future<List<String>?> _ask({
+    required String title,
+    String? hint,
+    required String first,
+    String firstValue = '',
+    String? second,
+    String? extraLabel,
+  }) {
+    final t = AppLocalizations.of(context);
+    final a = TextEditingController(text: firstValue);
+    final b = TextEditingController();
+    return showDialog<List<String>>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.bgTop,
+        title: Text(title, style: TextStyle(color: AppColors.textOnGlass)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (hint != null)
+              Text(
+                hint,
+                style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
+              ),
+            TextField(
+              controller: a,
+              autocorrect: false,
+              autofocus: true,
+              style: TextStyle(color: AppColors.textOnGlass),
+              decoration: InputDecoration(hintText: first),
+            ),
+            if (second != null)
+              TextField(
+                controller: b,
+                autocorrect: false,
+                keyboardType: TextInputType.emailAddress,
+                style: TextStyle(color: AppColors.textOnGlass),
+                decoration: InputDecoration(hintText: second),
+              ),
+          ],
+        ),
+        actions: [
+          if (extraLabel != null)
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(const <String>[]),
+              child: Text(extraLabel),
+            ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(MaterialLocalizations.of(ctx).cancelButtonLabel),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop([a.text, b.text]),
+            child: Text(t.cubeIdSave),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _toastFor(CubeIdResult result, String okText) {
+    final t = AppLocalizations.of(context);
+    final (text, tone) = switch (result) {
+      CubeIdOk() => (okText, ToastTone.neutral),
+      CubeIdRefused(code: 'bad-email') => (t.cubeIdEmailInvalid, ToastTone.danger),
+      CubeIdRefused(code: 'rate') => (t.cubeIdFailed, ToastTone.danger),
+      CubeIdRefused() => (t.cubeIdFailed, ToastTone.danger),
+      // 503 and 502 reach here as offline: the server is up, its post is not.
+      CubeIdOffline() => (t.cubeIdEmailUnavailable, ToastTone.danger),
+    };
+    showGlassToast(
+      context,
+      text,
+      tone: tone,
+      duration: const Duration(seconds: 4),
+    );
+  }
+
+  Future<void> _editEmail() async {
+    final t = AppLocalizations.of(context);
+    final ctl = ref.read(cubeIdControllerProvider.notifier);
+    final current = await ctl.email();
+    if (!mounted) return;
+    final answer = await _ask(
+      title: t.cubeIdEmail,
+      hint: t.cubeIdEmailHint,
+      first: t.cubeIdEmailField,
+      firstValue: current ?? '',
+      extraLabel: current == null ? null : t.cubeIdEmailRemove,
+    );
+    if (answer == null || !mounted) return;
+    if (answer.isEmpty) {
+      await ctl.removeEmail();
+      return;
+    }
+    final address = answer.first.trim();
+    final result = await ctl.setEmail(address);
+    if (mounted) _toastFor(result, t.cubeIdEmailSent(address));
+  }
+
+  Future<void> _recover() async {
+    final t = AppLocalizations.of(context);
+    final answer = await _ask(
+      title: t.cubeIdRecover,
+      first: t.cubeIdFieldHint,
+      second: t.cubeIdEmailField,
+    );
+    if (answer == null || answer.length < 2 || !mounted) return;
+    final result = await ref
+        .read(cubeIdControllerProvider.notifier)
+        .recover(answer[0], answer[1]);
+    if (mounted) _toastFor(result, t.cubeIdRecoverSent);
+  }
+
+  Future<void> _cancelRecovery() async {
+    final t = AppLocalizations.of(context);
+    final result =
+        await ref.read(cubeIdControllerProvider.notifier).cancelRecovery();
+    if (mounted) _toastFor(result, t.cubeIdRecoveryCancelled);
+  }
+
+  static String _when(BuildContext context, DateTime at) {
+    final l = MaterialLocalizations.of(context);
+    final local = at.toLocal();
+    return '${l.formatMediumDate(local)}, '
+        '${l.formatTimeOfDay(TimeOfDay.fromDateTime(local), alwaysUse24HourFormat: true)}';
+  }
+
   String? _statusText(AppLocalizations t) => switch (_status) {
         _Status.idle || _Status.checking => null,
         _Status.invalid => t.cubeIdInvalid,
@@ -143,6 +274,7 @@ class _CubeIdScreenState extends ConsumerState<CubeIdScreen> {
     final showField = name == null || _editing;
     final statusText = _statusText(t);
     final good = _status == _Status.available;
+    final recoveryAt = ref.watch(cubeIdRecoveryProvider);
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -155,6 +287,42 @@ class _CubeIdScreenState extends ConsumerState<CubeIdScreen> {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
+            // Before everything: somebody is taking the name, and only this
+            // phone, while it still holds the key, can stop it.
+            if (name != null && recoveryAt != null) ...[
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: AppColors.danger.withValues(alpha: 0.5),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      t.cubeIdRecoveryWarning(name, _when(context, recoveryAt)),
+                      style: TextStyle(
+                        color: AppColors.textOnGlass,
+                        fontSize: 14,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.danger,
+                      ),
+                      onPressed: () => unawaited(_cancelRecovery()),
+                      child: Text(t.cubeIdRecoveryCancel),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+            ],
             Text(
               t.cubeIdExplainer,
               style: TextStyle(
@@ -222,6 +390,16 @@ class _CubeIdScreenState extends ConsumerState<CubeIdScreen> {
                     : const Icon(Icons.alternate_email_rounded),
                 label: Text(_busy ? t.cubeIdWorking : t.cubeIdClaim),
               ),
+              // A new phone after a lost one: the name comes back through the
+              // address it was given, rather than being taken again.
+              if (name == null) ...[
+                const SizedBox(height: 12),
+                _Action(
+                  icon: Icons.restore_rounded,
+                  label: t.cubeIdRecover,
+                  onTap: () => unawaited(_recover()),
+                ),
+              ],
             ],
             if (name != null && !_editing) ...[
               _Action(
@@ -233,6 +411,11 @@ class _CubeIdScreenState extends ConsumerState<CubeIdScreen> {
                 icon: Icons.ios_share_rounded,
                 label: t.cubeIdShare,
                 onTap: () => unawaited(Share.share(t.cubeIdShareText(name))),
+              ),
+              _Action(
+                icon: Icons.mail_outline_rounded,
+                label: t.cubeIdEmail,
+                onTap: () => unawaited(_editEmail()),
               ),
               _Action(
                 icon: Icons.delete_outline_rounded,

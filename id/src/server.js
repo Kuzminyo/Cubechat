@@ -7,11 +7,12 @@ import { timingSafeEqual } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { parseCard } from './card.js';
 import { POW_BITS, difficulty, verifyEvent } from './events.js';
+import { makeMailer } from './mail.js';
 import { normalizeName } from './names.js';
 import { openRegistry } from './registry.js';
 
 /// What /health reports. Bump it in the same commit as any change here.
-export const VERSION = '2026-10-14-forwarded-for';
+export const VERSION = '2026-11-01-email-recovery';
 
 function limiter(max, windowMs, now) {
   const hits = new Map();
@@ -29,6 +30,15 @@ function limiter(max, windowMs, now) {
     }
     return true;
   };
+}
+
+/// The one HTML the server writes: the answer to a link in a letter.
+function page(res, message) {
+  const safe = String(message).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+  res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">` +
+    `<title>Cube ID</title><body style="font:16px system-ui;margin:3em auto;max-width:32em;padding:0 1em">` +
+    `<p>${safe}</p></body>`);
 }
 
 function send(res, status, body, headers = {}) {
@@ -78,7 +88,9 @@ function tokenOk(header, expected) {
   return given.length === want.length && timingSafeEqual(given, want);
 }
 
-export function createIdServer({ registry, adminToken, bannedPath, now = () => Date.now() }) {
+export function createIdServer({
+  registry, adminToken, bannedPath, now = () => Date.now(), mailer = makeMailer(),
+}) {
   const opsByIp = limiter(5, 3_600_000, now);
   const opsByKey = limiter(5, 3_600_000, now);
   const lookupsByIp = limiter(60, 60_000, now);
@@ -137,8 +149,31 @@ export function createIdServer({ registry, adminToken, bannedPath, now = () => D
             return send(res, 429, { error: 'rate' });
           }
         }
+        if (op === 'recover' || op === 'email-set') {
+          if (!opsByIp(ip)) return send(res, 429, { error: 'rate' });
+          if (!mailer.ready) return send(res, 503, { error: 'mail-unavailable' });
+        }
         const result = registry.apply(event);
+        if (result.mail) {
+          const sent = await mailer(result.mail);
+          // A recovery answers the same either way (see registry), so only a
+          // binding that could not be mailed says so.
+          if (!sent && op === 'email-set') return send(res, 502, { error: 'mail-failed' });
+        }
         return send(res, result.status, result.body);
+      }
+      if (req.method === 'GET' && url.pathname === '/v1/email/verify') {
+        const okay = registry.verifyEmail(url.searchParams.get('t'));
+        return page(res, okay
+          ? 'Пошту підтверджено. / Email confirmed.'
+          : 'Посилання недійсне або застаріле. / This link is not valid any more.');
+      }
+      if (req.method === 'GET' && url.pathname === '/v1/recover/confirm') {
+        const confirmed = registry.confirmRecovery(url.searchParams.get('t'));
+        return page(res, confirmed
+          ? `Ім'я @${confirmed.name} перейде на новий телефон через 48 годин. / ` +
+            `@${confirmed.name} moves to the new phone in 48 hours.`
+          : 'Посилання недійсне або застаріле. / This link is not valid any more.');
       }
       if (req.method === 'POST' && url.pathname === '/admin/revoke') {
         if (!loopback(req.socket.remoteAddress ?? '') || !tokenOk(req.headers.authorization, adminToken)) {
@@ -184,6 +219,11 @@ async function main() {
     const swept = registry.sweep();
     if (swept.expired || swept.unheld) console.log('[id] sweep', swept);
   }, 3_600_000).unref();
+  // A recovery's 48 hours end on the clock, not on a request.
+  setInterval(() => {
+    const moved = registry.completeRecoveries();
+    if (moved.length) console.log('[id] recovered', moved);
+  }, 600_000).unref();
   const port = Number(process.env.PORT || 8090);
   server.listen(port, '127.0.0.1', () =>
     console.log(`[id] ${VERSION} on 127.0.0.1:${port}, ${registry.count()} names`));

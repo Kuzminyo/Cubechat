@@ -141,8 +141,13 @@ void main() {
     await ctl.loaded;
     await ctl.claim('dima');
     ops.clear();
+    // Once a run whatever the week says: that renew is what tells this phone
+    // somebody is recovering its name by e-mail, which has 48 hours to be seen.
     await ctl.maintain();
-    expect(ops, isEmpty);
+    expect(ops, ['renew']);
+    ops.clear();
+    await ctl.maintain();
+    expect(ops, isEmpty, reason: 'once a run, not every time');
     ctl.debugSetRenewedAt(DateTime.now().subtract(const Duration(days: 8)));
     await ctl.maintain();
     expect(ops, ['renew']);
@@ -150,6 +155,55 @@ void main() {
     ops.clear();
     await ctl.maintain();
     expect(ops, ['update']);
+  });
+
+  test('the old phone is told of a recovery and can cancel it', () async {
+    final ops = <String>[];
+    var moves = true;
+    final c = containerWith((m, u, {body}) async {
+      if (body != null) ops.add(opOf(body));
+      return (
+        status: 200,
+        body: moves
+            ? '{"name":"dima","recoveryMovesAt":1790172800}'
+            : '{"name":"dima"}',
+      );
+    });
+    final ctl = c.read(cubeIdControllerProvider.notifier);
+    await ctl.loaded;
+    await ctl.claim('dima');
+    await ctl.maintain();
+    expect(
+      c.read(cubeIdRecoveryProvider),
+      DateTime.fromMillisecondsSinceEpoch(1790172800 * 1000),
+    );
+    moves = false;
+    await ctl.cancelRecovery();
+    expect(ops.last, 'cancel-recovery');
+    expect(c.read(cubeIdRecoveryProvider), isNull);
+  });
+
+  test('a new phone asks, then takes the name once the server gives it',
+      () async {
+    final ops = <String>[];
+    var ours = false;
+    final c = containerWith((m, u, {body}) async {
+      if (body != null) ops.add(opOf(body));
+      final op = body == null ? '' : opOf(body);
+      if (op == 'renew' && !ours) {
+        return (status: 404, body: '{"error":"no-name"}');
+      }
+      return (status: 200, body: ours ? '{"name":"dima"}' : '{"recovery":"requested"}');
+    });
+    final ctl = c.read(cubeIdControllerProvider.notifier);
+    await ctl.loaded;
+    expect(await ctl.recover('Dima', 'dima@example.com'), isA<CubeIdOk>());
+    expect(ops, ['recover']);
+    await ctl.maintain();
+    expect(c.read(cubeIdControllerProvider).name, isNull, reason: 'not yet');
+    ours = true;
+    await ctl.maintain();
+    expect(c.read(cubeIdControllerProvider).name, 'dima');
   });
 
   test('a claim carries "nobody", and maintain re-sends a reach that never '

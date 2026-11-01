@@ -19,8 +19,13 @@ sealed class CubeIdResult {
 }
 
 class CubeIdOk extends CubeIdResult {
-  const CubeIdOk(this.name);
+  const CubeIdOk(this.name, {this.recoveryMovesAt});
   final String? name;
+
+  /// Somebody confirmed a recovery of our name by e-mail, and it moves to
+  /// their key at this moment unless we cancel. Told on every renew and
+  /// update (docs/superpowers/specs/2026-09-29-cube-id-names-design.md §4).
+  final DateTime? recoveryMovesAt;
 }
 
 class CubeIdRefused extends CubeIdResult {
@@ -75,8 +80,15 @@ class CubeIdClient {
       body: jsonEncode(event.toJson()),
     );
     if (r.status == 200) {
-      final name = _json(r.body)['name'];
-      return CubeIdOk(name is String ? name : null);
+      final json = _json(r.body);
+      final name = json['name'];
+      final moves = json['recoveryMovesAt'];
+      return CubeIdOk(
+        name is String ? name : null,
+        recoveryMovesAt: moves is int
+            ? DateTime.fromMillisecondsSinceEpoch(moves * 1000)
+            : null,
+      );
     }
     if (r.status == -1 || r.status >= 500) return const CubeIdOffline();
     final code = _json(r.body)['error'];

@@ -6614,6 +6614,84 @@ abstract class AppLocalizations {
   /// **'Change'**
   String get cubeIdChange;
 
+  /// No description provided for @cubeIdEmail.
+  ///
+  /// In en, this message translates to:
+  /// **'Recovery email'**
+  String get cubeIdEmail;
+
+  /// No description provided for @cubeIdEmailHint.
+  ///
+  /// In en, this message translates to:
+  /// **'If this phone is lost, the name comes back through a letter to this address'**
+  String get cubeIdEmailHint;
+
+  /// No description provided for @cubeIdEmailField.
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get cubeIdEmailField;
+
+  /// No description provided for @cubeIdEmailSent.
+  ///
+  /// In en, this message translates to:
+  /// **'A letter went to {email}. Open the link in it.'**
+  String cubeIdEmailSent(String email);
+
+  /// No description provided for @cubeIdEmailRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove email'**
+  String get cubeIdEmailRemove;
+
+  /// No description provided for @cubeIdEmailUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Email is unavailable right now. Try later.'**
+  String get cubeIdEmailUnavailable;
+
+  /// No description provided for @cubeIdEmailInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'That does not look like an email address'**
+  String get cubeIdEmailInvalid;
+
+  /// No description provided for @cubeIdSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get cubeIdSave;
+
+  /// No description provided for @cubeIdRecover.
+  ///
+  /// In en, this message translates to:
+  /// **'Recover a name by email'**
+  String get cubeIdRecover;
+
+  /// No description provided for @cubeIdRecoverSent.
+  ///
+  /// In en, this message translates to:
+  /// **'If the address matches, a letter comes. The name moves to this phone 48 hours after you open its link.'**
+  String get cubeIdRecoverSent;
+
+  /// No description provided for @cubeIdRecoveryWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'Somebody is recovering @{name} on another phone by email. It moves on {when} unless you cancel.'**
+  String cubeIdRecoveryWarning(String name, String when);
+
+  /// No description provided for @cubeIdRecoveryCancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel the recovery'**
+  String get cubeIdRecoveryCancel;
+
+  /// No description provided for @cubeIdRecoveryCancelled.
+  ///
+  /// In en, this message translates to:
+  /// **'Recovery cancelled'**
+  String get cubeIdRecoveryCancelled;
+
   /// No description provided for @cubeIdRelease.
   ///
   /// In en, this message translates to:

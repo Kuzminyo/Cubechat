@@ -83,6 +83,10 @@ class LookupOffline extends LookupResult {
 
 final cubeIdClientProvider = Provider<CubeIdClient>((_) => CubeIdClient());
 
+/// When our name moves to somebody who recovered it by e-mail, unless we
+/// cancel — null when nobody is. Set by [CubeIdController.maintain].
+final cubeIdRecoveryProvider = StateProvider<DateTime?>((_) => null);
+
 /// Takes, keeps and gives back this phone's @name, and finds other people's.
 ///
 /// The server keeps a name alive only while it is renewed (six months), and
@@ -268,7 +272,10 @@ class CubeIdController extends Notifier<CubeIdState> {
   Future<void> maintain() async {
     try {
       await loaded;
-      if (state.name == null) return;
+      if (state.name == null) {
+        await _claimRecovered();
+        if (state.name == null) return;
+      }
       final card = await _card();
       final digest = _digest(card);
       await ref.read(privacySettingsProvider.notifier).loaded;
@@ -307,6 +314,17 @@ class CubeIdController extends Notifier<CubeIdState> {
           }
         }
       }
+      // Once a run at least, whatever the weekly renewal says: the answer is
+      // what tells this phone that somebody is recovering its name by e-mail,
+      // and that has 48 hours to be seen, not seven days.
+      if (result == null && !_checkedThisRun) {
+        result = await _send({'op': 'renew'});
+      }
+      _checkedThisRun = true;
+      if (result is CubeIdOk) {
+        ref.read(cubeIdRecoveryProvider.notifier).state =
+            result.recoveryMovesAt;
+      }
       if (result is CubeIdRefused && result.code == 'no-name') {
         // Expired or revoked on the server: showing it here would be a lie.
         DebugLog.instance.log('CUBEID', 'server no longer has our name');
@@ -314,6 +332,82 @@ class CubeIdController extends Notifier<CubeIdState> {
       }
     } catch (e) {
       DebugLog.instance.log('CUBEID', 'maintain failed: $e');
+    }
+  }
+
+  bool _checkedThisRun = false;
+
+  static const _emailKey = 'cubeId.email';
+  static const _recoveringKey = 'cubeId.recovering';
+
+  /// The address given for recovering our name, as far as this phone knows;
+  /// null when none was given here.
+  Future<String?> email() async {
+    await loaded;
+    final v = _box?.get(_emailKey);
+    return v is String ? v : null;
+  }
+
+  /// Give [address] for recovering our name. The server mails a link to it,
+  /// and only once that is opened can the address recover the name.
+  Future<CubeIdResult> setEmail(String address) async {
+    await loaded;
+    if (state.name == null) return const CubeIdRefused('no-name');
+    final result = await _send({'op': 'email-set', 'email': address.trim()});
+    if (result is CubeIdOk) await _box?.put(_emailKey, address.trim());
+    return result;
+  }
+
+  Future<CubeIdResult> removeEmail() async {
+    await loaded;
+    final result = await _send({'op': 'email-remove'});
+    if (result is CubeIdOk) await _box?.delete(_emailKey);
+    return result;
+  }
+
+  /// On a new phone: ask for the name [raw] back through the address it was
+  /// given with. The server answers the same whether or not they match; a
+  /// letter goes when they do, and the name moves 48 hours after its link is
+  /// opened. This phone then learns it at [maintain], through [_claimRecovered].
+  Future<CubeIdResult> recover(String raw, String address) async {
+    await loaded;
+    if (state.name != null) return const CubeIdRefused('has-name');
+    final name = normalizeCubeName(raw);
+    final problem = cubeNameProblem(name);
+    if (problem != null) return CubeIdRefused(problem.name);
+    final card = await _card();
+    final result = await _send({
+      'op': 'recover',
+      'name': name,
+      'email': address.trim(),
+      'card': _b64(card),
+    });
+    if (result is CubeIdOk) await _box?.put(_recoveringKey, name);
+    return result;
+  }
+
+  /// Our name is being recovered by somebody else: say no.
+  Future<CubeIdResult> cancelRecovery() async {
+    await loaded;
+    final result = await _send({'op': 'cancel-recovery'});
+    if (result is CubeIdOk) {
+      ref.read(cubeIdRecoveryProvider.notifier).state = null;
+    }
+    return result;
+  }
+
+  /// After a recovery was asked for here: once the server says the name is
+  /// this key's, take it as ours. Called by [maintain] while nothing is ours.
+  Future<void> _claimRecovered() async {
+    final waiting = _box?.get(_recoveringKey);
+    if (waiting is! String) return;
+    final result = await _send({'op': 'renew'});
+    if (result is CubeIdOk && result.name != null) {
+      await _box?.delete(_recoveringKey);
+      await _set(
+        CubeIdState(name: result.name, renewedAt: DateTime.now()),
+      );
+      DebugLog.instance.log('CUBEID', 'recovered @${result.name}');
     }
   }
 
