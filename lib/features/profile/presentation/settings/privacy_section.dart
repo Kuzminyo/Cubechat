@@ -53,6 +53,9 @@ class PrivacySectionScreen extends ConsumerWidget {
             _inset(const _FilterTile()),
             _inset(const _DeadMansRow()),
             _inset(const _FingerprintTile()),
+            // The phone only: a computer that rotated could not bring the
+            // phone back, since linking goes phone to computer.
+            if (PlatformInfo.isMobile) _inset(const _RotateKeysTile()),
           ],
         ),
       ],

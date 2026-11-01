@@ -4172,6 +4172,45 @@ class MessagingService {
   Stream<Uint8List> get heardOverBluetooth => _heardOverBluetooth.stream;
   final _heardOverBluetooth = StreamController<Uint8List>.broadcast();
 
+  /// Tell every contact this account has new keys — the [body] of a signed
+  /// `KeyRotation` — under the identity it still has. Called before the old
+  /// keys are destroyed: once they are, nothing this device seals is signed
+  /// by the key the contacts have on file. Bluetooth and the relays, which
+  /// keep it for a contact who is off today. Blocked contacts are not told.
+  /// Returns how many contacts it left this device for, of how many.
+  Future<({int sent, int total})> sendKeyRotationToContacts(
+    Uint8List body,
+  ) async {
+    final peers = [
+      for (final p in _ref.read(knownPeersControllerProvider).values)
+        if (!p.isBlocked) p,
+    ];
+    var sent = 0;
+    await Future.wait([
+      for (final peer in peers)
+        () async {
+          final peerPub = _resolvePeerPub(peer.pubkeyHex);
+          if (peerPub == null) return;
+          try {
+            final delivery = await _deliverControlToPeer(
+              canonicalId: peer.pubkeyHex,
+              peerPub: peerPub,
+              type: InnerPayloadType.keyRotation,
+              innerBody: body,
+            );
+            if (!delivery.isNotSent) sent++;
+          } catch (e) {
+            DebugLog.instance.log(
+              'KEYS',
+              'rotation to ${peer.pubkeyHex.substring(0, 8)} failed: $e',
+            );
+          }
+        }(),
+    ]);
+    DebugLog.instance.log('KEYS', 'rotation sent to $sent of ${peers.length}');
+    return (sent: sent, total: peers.length);
+  }
+
   /// "My account has new keys" from a contact, as the frame's signature
   /// identified them — for `KeyRotationReceiver` to check and act on.
   Stream<ReceivedKeyRotation> get keyRotations => _keyRotations.stream;

@@ -755,6 +755,35 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get rotateKeysTitle => 'Change account keys';
+
+  @override
+  String get rotateKeysHint =>
+      'If a device with your account was lost or stolen';
+
+  @override
+  String get rotateKeysConfirmTitle => 'Change your account keys?';
+
+  @override
+  String get rotateKeysConfirmBody =>
+      'Your contacts get your new keys and keep your chats, but each of them will be asked to check your keys again. Every other device of your account signs out; link the ones you keep again from this phone. Contacts on an older CubeChat will not reach you until they update. Channels keep their keys.';
+
+  @override
+  String get rotateKeysConfirmAction => 'Change keys';
+
+  @override
+  String get rotateKeysWorking => 'Changing keys…';
+
+  @override
+  String rotateKeysDone(int sent, int total) {
+    return 'New keys. $sent of $total contacts told';
+  }
+
+  @override
+  String get rotateKeysSlow =>
+      'New keys. Not every contact confirmed in time; the relays keep it for them';
+
+  @override
   String get profileEmergencyWipe => 'Emergency wipe';
 
   @override

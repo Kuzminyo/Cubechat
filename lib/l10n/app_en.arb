@@ -385,6 +385,20 @@
       }
     }
   },
+  "rotateKeysTitle": "Change account keys",
+  "rotateKeysHint": "If a device with your account was lost or stolen",
+  "rotateKeysConfirmTitle": "Change your account keys?",
+  "rotateKeysConfirmBody": "Your contacts get your new keys and keep your chats, but each of them will be asked to check your keys again. Every other device of your account signs out; link the ones you keep again from this phone. Contacts on an older CubeChat will not reach you until they update. Channels keep their keys.",
+  "rotateKeysConfirmAction": "Change keys",
+  "rotateKeysWorking": "Changing keys…",
+  "rotateKeysDone": "New keys. {sent} of {total} contacts told",
+  "@rotateKeysDone": {
+    "placeholders": {
+      "sent": {"type": "int"},
+      "total": {"type": "int"}
+    }
+  },
+  "rotateKeysSlow": "New keys. Not every contact confirmed in time; the relays keep it for them",
   "profileEmergencyWipe": "Emergency wipe",
   "profileEmergencyWipeConfirm": "Erase everything?",
   "profileEmergencyWipeConfirmHint": "This will remove your identity, peer list, and conversation history. Cannot be undone.",

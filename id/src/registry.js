@@ -16,7 +16,8 @@ export const HOLD_SECONDS = 30 * DAY;
 /// A name nobody renewed for six months belongs to a lost key; it goes free.
 export const EXPIRE_SECONDS = 182 * DAY;
 const REACH = new Set(['all', 'request', 'none']);
-const OPS = new Set(['claim', 'rename', 'update', 'renew', 'release']);
+const OPS = new Set(['claim', 'rename', 'update', 'renew', 'release', 'rotate']);
+const HEX64 = /^[0-9a-f]{64}$/;
 
 const fail = (status, error) => ({ status, body: { error } });
 const ok = (body = { ok: true }) => ({ status: 200, body });
@@ -53,6 +54,8 @@ export function openRegistry({ path = ':memory:', now = () => Date.now() } = {})
     unholdOwn: db.prepare('DELETE FROM held WHERE nostr_pub = ?'),
     update: db.prepare('UPDATE names SET card = ?, reach = ? WHERE nostr_pub = ?'),
     renew: db.prepare('UPDATE names SET renewed_at = ? WHERE nostr_pub = ?'),
+    rotate: db.prepare('UPDATE names SET nostr_pub = ?, renewed_at = ? WHERE nostr_pub = ?'),
+    rotateHeld: db.prepare('UPDATE held SET nostr_pub = ? WHERE nostr_pub = ?'),
   };
 
   function blocked(name, pub) {
@@ -130,6 +133,27 @@ export function openRegistry({ path = ':memory:', now = () => Date.now() } = {})
       result = ok({ name: mine.name });
     } else if (op === 'renew') {
       q.renew.run(t, pub);
+      result = ok({ name: mine.name });
+    } else if (op === 'rotate') {
+      // The account changed its keys (docs/superpowers/specs/2026-11-01-key-
+      // rotation-design.md). Signed by the key that owns the name, naming the
+      // key that will: the name moves at once, with any name it still holds
+      // after a rename, so nobody can take it in between. The card stays the
+      // old one until the new key sends `update` a moment later — the old key
+      // is destroyed by then and cannot sign a card for the new one.
+      const next = String(content.newPub ?? '');
+      if (!HEX64.test(next) || next === pub) return fail(400, 'bad-request');
+      if (q.byPub.get(next)) return fail(409, 'has-name');
+      if (banned.has(next)) return fail(403, 'banned');
+      db.exec('BEGIN');
+      try {
+        q.rotate.run(next, t, pub);
+        q.rotateHeld.run(next, pub);
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
       result = ok({ name: mine.name });
     } else {
       q.del.run(pub);

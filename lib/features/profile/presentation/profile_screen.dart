@@ -24,6 +24,7 @@ import '../../../core/util/haptics.dart';
 import 'package:saver_gallery/saver_gallery.dart';
 
 import '../../../core/desktop/desktop_autostart.dart';
+import '../../../core/identity/account_key_rotation.dart';
 import '../../../core/desktop/desktop_presence.dart';
 import '../../../core/widgets/action_strip.dart';
 import '../../../core/widgets/confirm_dialog.dart';
@@ -1985,6 +1986,104 @@ class _FingerprintTile extends ConsumerWidget {
             ),
           ),
           const SizedBox(width: 2),
+          Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
+        ],
+      ),
+    );
+  }
+}
+
+/// «Змінити ключі акаунта» — see [rotateAccountKeys]. Beside the fingerprint
+/// it changes.
+class _RotateKeysTile extends ConsumerStatefulWidget {
+  const _RotateKeysTile();
+
+  @override
+  ConsumerState<_RotateKeysTile> createState() => _RotateKeysTileState();
+}
+
+class _RotateKeysTileState extends ConsumerState<_RotateKeysTile> {
+  bool _working = false;
+
+  Future<void> _rotate() async {
+    final t = AppLocalizations.of(context);
+    final ok = await confirmAction(
+      context,
+      title: t.rotateKeysConfirmTitle,
+      message: t.rotateKeysConfirmBody,
+      confirmLabel: t.rotateKeysConfirmAction,
+    );
+    if (!ok || !mounted) return;
+    setState(() => _working = true);
+    final KeyRotationResult result;
+    try {
+      result = await rotateAccountKeys(
+        read: ref.read,
+        invalidate: ref.invalidate,
+      );
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+    if (!mounted) return;
+    showGlassToast(
+      context,
+      result.total < 0
+          ? t.rotateKeysSlow
+          : t.rotateKeysDone(result.sent, result.total),
+      duration: const Duration(seconds: 4),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: _working ? null : () => unawaited(_rotate()),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.glass(0.08),
+              border: Border.all(color: AppColors.glass(0.18)),
+            ),
+            child: _working
+                ? Padding(
+                    padding: const EdgeInsets.all(9),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.brandPrimary,
+                    ),
+                  )
+                : Icon(
+                    Icons.key_rounded,
+                    color: AppColors.brandPrimary,
+                    size: 19,
+                  ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _working ? t.rotateKeysWorking : t.rotateKeysTitle,
+                  style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  t.rotateKeysHint,
+                  style: TextStyle(
+                    color: AppColors.textOnGlassDim,
+                    fontSize: 11.5,
+                  ),
+                ),
+              ],
+            ),
+          ),
           Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
         ],
       ),

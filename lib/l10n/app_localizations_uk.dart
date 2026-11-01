@@ -763,6 +763,35 @@ class AppLocalizationsUk extends AppLocalizations {
   }
 
   @override
+  String get rotateKeysTitle => 'Змінити ключі акаунта';
+
+  @override
+  String get rotateKeysHint =>
+      'Якщо пристрій із вашим акаунтом загубили чи вкрали';
+
+  @override
+  String get rotateKeysConfirmTitle => 'Змінити ключі акаунта?';
+
+  @override
+  String get rotateKeysConfirmBody =>
+      'Контакти отримають ваші нові ключі й збережуть листування, але кожного попросять перевірити ваші ключі знову. Усі інші пристрої акаунта вийдуть; потрібні під\'єднайте знову з цього телефона. Контакти зі старою версією CubeChat не зможуть вам писати, доки не оновляться. Ключі каналів не зміняться.';
+
+  @override
+  String get rotateKeysConfirmAction => 'Змінити ключі';
+
+  @override
+  String get rotateKeysWorking => 'Змінюємо ключі…';
+
+  @override
+  String rotateKeysDone(int sent, int total) {
+    return 'Нові ключі. Повідомлено $sent з $total контактів';
+  }
+
+  @override
+  String get rotateKeysSlow =>
+      'Нові ключі. Не всі контакти встигли підтвердити; ретранслятори збережуть повідомлення для них';
+
+  @override
   String get profileEmergencyWipe => 'Аварійне очищення';
 
   @override

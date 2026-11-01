@@ -237,6 +237,13 @@ devices the same way, as the same encrypted message it arrived as. With
 relays off, nothing that arrived over Bluetooth leaves the phone. None of
 this happens on a device that is the only one on its account.
 
+**Changing your keys.** If you choose Change account keys on your phone, each
+of your contacts is sent your new public keys, signed with your old and new
+keys and encrypted to them, so their copy of your chat moves to the new keys;
+your other devices are signed out; and, if you have a @name, our name server
+moves it to your new key. Your old private keys are then deleted from the
+phone.
+
 ---
 
 ## 6. Location

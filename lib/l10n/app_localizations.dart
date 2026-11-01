@@ -1412,6 +1412,54 @@ abstract class AppLocalizations {
   /// **'Version {v}'**
   String profileVersion(String v);
 
+  /// No description provided for @rotateKeysTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Change account keys'**
+  String get rotateKeysTitle;
+
+  /// No description provided for @rotateKeysHint.
+  ///
+  /// In en, this message translates to:
+  /// **'If a device with your account was lost or stolen'**
+  String get rotateKeysHint;
+
+  /// No description provided for @rotateKeysConfirmTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Change your account keys?'**
+  String get rotateKeysConfirmTitle;
+
+  /// No description provided for @rotateKeysConfirmBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Your contacts get your new keys and keep your chats, but each of them will be asked to check your keys again. Every other device of your account signs out; link the ones you keep again from this phone. Contacts on an older CubeChat will not reach you until they update. Channels keep their keys.'**
+  String get rotateKeysConfirmBody;
+
+  /// No description provided for @rotateKeysConfirmAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Change keys'**
+  String get rotateKeysConfirmAction;
+
+  /// No description provided for @rotateKeysWorking.
+  ///
+  /// In en, this message translates to:
+  /// **'Changing keys…'**
+  String get rotateKeysWorking;
+
+  /// No description provided for @rotateKeysDone.
+  ///
+  /// In en, this message translates to:
+  /// **'New keys. {sent} of {total} contacts told'**
+  String rotateKeysDone(int sent, int total);
+
+  /// No description provided for @rotateKeysSlow.
+  ///
+  /// In en, this message translates to:
+  /// **'New keys. Not every contact confirmed in time; the relays keep it for them'**
+  String get rotateKeysSlow;
+
   /// No description provided for @profileEmergencyWipe.
   ///
   /// In en, this message translates to:

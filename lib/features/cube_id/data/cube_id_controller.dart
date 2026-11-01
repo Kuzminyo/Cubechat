@@ -213,6 +213,37 @@ class CubeIdController extends Notifier<CubeIdState> {
 
   Future<CubeIdResult> rename(String raw) => claim(raw);
 
+  /// The account is changing its keys: hand our name to the Nostr key
+  /// [newNostrHex], signed by the key that owns it now — which is destroyed
+  /// right after. The card is the old one until [maintain] sends the new key's
+  /// a moment later (docs/superpowers/specs/2026-11-01-key-rotation-design.md).
+  /// The local digest is cleared so that [maintain] does.
+  Future<CubeIdResult> rotateTo(
+    String newNostrHex, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    await loaded;
+    if (state.name == null) return const CubeIdOk(null);
+    CubeIdResult result;
+    try {
+      result = await _send({'op': 'rotate', 'newPub': newNostrHex})
+          .timeout(timeout, onTimeout: () => const CubeIdOffline());
+    } catch (e) {
+      result = const CubeIdOffline();
+    }
+    if (result is CubeIdOk) {
+      await _set(
+        CubeIdState(
+          name: state.name,
+          renewedAt: DateTime.now(),
+          cardDigest: '',
+          reachSent: state.reachSent,
+        ),
+      );
+    }
+    return result;
+  }
+
   /// Give the name back. Local state is cleared whatever the server says:
   /// the person asked for it gone, and a server that cannot be reached frees
   /// it on its own after six months.

@@ -127,3 +127,28 @@ test('operations on a key without a name are 404', () => {
   const { r } = reg();
   assert.equal(r.apply(signedOp({ op: 'renew' }, { key: A, powBits: 0 })).status, 404);
 });
+
+test('rotate moves the name, and a rename-held name, to the new key at once', () => {
+  const { r } = reg();
+  r.apply(claim(A, 'dima'));
+  r.apply(signedOp({ op: 'rename', name: 'dmytro', card: b64u(cardFor(nostrPub(A))) }, { key: A, createdAt: T0 + 1 }));
+  const rotate = signedOp({ op: 'rotate', newPub: nostrPub(B) }, { key: A, powBits: 0, createdAt: T0 + 2 });
+  assert.equal(r.apply(rotate).status, 200);
+  // The old key owns nothing now; the new one may update the card.
+  assert.equal(r.apply(signedOp({ op: 'renew' }, { key: A, powBits: 0, createdAt: T0 + 3 })).status, 404);
+  const update = signedOp({ op: 'update', card: b64u(cardFor(nostrPub(B))) }, { key: B, powBits: 0, createdAt: T0 + 4 });
+  assert.equal(r.apply(update).status, 200);
+  assert.equal(b64u(r.lookup('dmytro').card), JSON.parse(update.content).card);
+  // The held old name still points at the account, now under its new key.
+  assert.equal(b64u(r.lookup('dima').card), JSON.parse(update.content).card);
+});
+
+test('rotate is refused onto a key that has a name, or a malformed one', () => {
+  const { r } = reg();
+  r.apply(claim(A, 'dima'));
+  r.apply(claim(B, 'olga'));
+  const onto = signedOp({ op: 'rotate', newPub: nostrPub(B) }, { key: A, powBits: 0, createdAt: T0 + 1 });
+  assert.equal(r.apply(onto).body.error, 'has-name');
+  const junk = signedOp({ op: 'rotate', newPub: 'zz' }, { key: A, powBits: 0, createdAt: T0 + 2 });
+  assert.equal(r.apply(junk).body.error, 'bad-request');
+});
