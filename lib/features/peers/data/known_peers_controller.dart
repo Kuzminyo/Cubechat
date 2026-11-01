@@ -425,6 +425,43 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
     }
   }
 
+  /// Move a contact to the keys they rotated to: everything we hold about
+  /// them — name, block, mute, picture — goes over under [newHex], with the
+  /// new signing and Nostr keys, no prekey until their announcement brings
+  /// one, and "verified" dropped for a rotation warning. A rotation signed
+  /// with the old key proves the holder of that key sent it, not that the
+  /// owner did (docs/superpowers/specs/2026-11-01-key-rotation-design.md).
+  Future<void> rekey(
+    String oldHex,
+    String newHex, {
+    required Uint8List signPublicKey,
+    required Uint8List nostrPubkey,
+  }) async {
+    final old = state[oldHex];
+    if (old == null || oldHex == newHex) return;
+    final moved = KnownPeer(
+      pubkeyHex: newHex,
+      displayName: old.displayName,
+      lastSeen: DateTime.now(),
+      lastPresenceAt: old.lastPresenceAt,
+      hidesLastSeen: old.hidesLastSeen,
+      signPublicKey: signPublicKey,
+      signKeyRotatedAt: DateTime.now(),
+      nostrPubkey: nostrPubkey,
+      blockedAt: old.blockedAt,
+      mutedAt: old.mutedAt,
+      allowsForwardLink: old.allowsForwardLink,
+      avatarHash: old.avatarHash,
+    );
+    state = {...state, newHex: moved}..remove(oldHex);
+    await _persist(moved);
+    try {
+      await _box?.delete(oldHex);
+    } catch (e) {
+      debugPrint('KnownPeers delete($oldHex) failed: $e');
+    }
+  }
+
   /// Drop a single peer.
   Future<void> forget(String pubkeyHex) async {
     if (!state.containsKey(pubkeyHex)) return;

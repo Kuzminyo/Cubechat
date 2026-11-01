@@ -4172,6 +4172,11 @@ class MessagingService {
   Stream<Uint8List> get heardOverBluetooth => _heardOverBluetooth.stream;
   final _heardOverBluetooth = StreamController<Uint8List>.broadcast();
 
+  /// "My account has new keys" from a contact, as the frame's signature
+  /// identified them — for `KeyRotationReceiver` to check and act on.
+  Stream<ReceivedKeyRotation> get keyRotations => _keyRotations.stream;
+  final _keyRotations = StreamController<ReceivedKeyRotation>.broadcast();
+
   /// What a Bluetooth-only frame may be passed on as: something the
   /// conversation keeps. Presence, typing and their like are a moment's
   /// state, not history, and media chunks are stage 2 of the sync spec.
@@ -7231,6 +7236,9 @@ class MessagingService {
         case InnerPayloadType.nearbyAnswer:
         case InnerPayloadType.nearbyBump:
         case InnerPayloadType.ownDevice:
+        // A key rotation is told to each contact on its own; inside a room
+        // frame it would be any member claiming to speak for somebody else.
+        case InnerPayloadType.keyRotation:
           // Not carried in channels — ignore. (An invite is addressed to one
           // peer; broadcasting one to the channel would be circular, presence
           // is per-peer, an avatar answers a request from one peer — a
@@ -9015,6 +9023,23 @@ class MessagingService {
           } on FormatException catch (e) {
             DebugLog.instance.log('DEVICES', 'drop own-device notice: $e');
           }
+
+        case InnerPayloadType.keyRotation:
+          // Only from a contact whose signature this frame carried: the
+          // rotation must be signed by the very key the frame was, and that
+          // is checked again, with the stored key, by [KeyRotationReceiver].
+          if (senderPub == null || verifiedSenderEdPub == null) {
+            DebugLog.instance
+                .log('KEYS', 'drop key rotation from $peerId: unsigned sender');
+            break;
+          }
+          _keyRotations.add(
+            ReceivedKeyRotation(
+              senderPub: senderPub,
+              senderEdPub: verifiedSenderEdPub,
+              body: unpacked.body,
+            ),
+          );
 
         case InnerPayloadType.radioChunk:
           // Refused. A radio chunk addressed to one phone is not something
@@ -11944,6 +11969,10 @@ class MessagingService {
         // out comes back with a new one; an old hello only moves "last seen"
         // to the latest moment it carries, never back.
         InnerPayloadType.ownDevice => true,
+        // A phone that was off for a week still has to learn the new keys, or
+        // it keeps writing to a key that was destroyed. Replaying it is safe:
+        // a second copy of the same rotation changes nothing.
+        InnerPayloadType.keyRotation => true,
         // Voice that arrives after its moment is worse than none: a walkie-
         // talkie chunk older than the window is dropped, never replayed. The
         // receiver's own 5 s staleness rule is stricter still.
@@ -14361,6 +14390,7 @@ class MessagingService {
     await _ownDeviceNotices.close();
     await _sentToPeers.close();
     await _heardOverBluetooth.close();
+    await _keyRotations.close();
     await _nearbyInbound.close();
     await _radioInbound.close();
   }
@@ -14562,4 +14592,19 @@ class SentToPeer {
   final Uint8List body;
   final Uint8List msgId;
   final DateTime at;
+}
+
+/// A [InnerPayloadType.keyRotation] as it arrived: the sender's X25519 and
+/// Ed25519 keys as the frame's signature established them, and the body.
+@immutable
+class ReceivedKeyRotation {
+  const ReceivedKeyRotation({
+    required this.senderPub,
+    required this.senderEdPub,
+    required this.body,
+  });
+
+  final Uint8List senderPub;
+  final Uint8List senderEdPub;
+  final Uint8List body;
 }

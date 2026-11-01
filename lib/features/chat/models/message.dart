@@ -456,6 +456,9 @@ class Message {
   }
 
   Message copyWith({
+    /// Only when a whole conversation moves to a contact's new keys — see
+    /// `MessagesController.rekeyChat`.
+    String? chatId,
     MessageStatus? status,
     String? text,
     String? imagePath,
@@ -486,7 +489,7 @@ class Message {
   }) {
     return Message(
       id: id,
-      chatId: chatId,
+      chatId: chatId ?? this.chatId,
       text: text ?? this.text,
       sentAt: sentAt,
       isMine: isMine,

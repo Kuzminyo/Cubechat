@@ -84,9 +84,16 @@ void main() {
       // Seven since 2026-10-12: ownDevice, so a device switched off for days
       // still gets its sign-out. A sign-out names a device id that changes on
       // sign-out, and an old hello cannot move "last seen" back.
-      expect(survives, 7);
+      // Eight since 2026-11-01: keyRotation, so a phone off for a week still
+      // learns a contact's new keys. Replaying it is harmless — the same
+      // rotation twice moves nothing, a different one is refused.
+      expect(survives, 8);
       expect(
         MessagingService.survivesReplayWindow(InnerPayloadType.ownDevice),
+        isTrue,
+      );
+      expect(
+        MessagingService.survivesReplayWindow(InnerPayloadType.keyRotation),
         isTrue,
       );
     });

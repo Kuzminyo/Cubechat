@@ -346,7 +346,15 @@ enum InnerPayloadType {
   /// is shown to the user, which is exactly right for radio: a phone that
   /// cannot play the voice simply hears nothing, and there is no
   /// half-delivered message to show.
-  radioChunk(0xEC);
+  radioChunk(0xEC),
+
+  /// "This account now has these keys" — signed by the old signing key and
+  /// the new one, sent to every contact before the old key is destroyed
+  /// (`key_rotation.dart`, docs/superpowers/specs/2026-11-01-key-rotation-design.md).
+  /// A control payload: a build before it drops the unknown type, as it
+  /// should — the alternative was a line of base64 in the chat. Survives the
+  /// replay window, since a phone that was off for a week still needs it.
+  keyRotation(0xED);
 
   const InnerPayloadType(this.tag);
   final int tag;

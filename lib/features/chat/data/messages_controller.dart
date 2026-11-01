@@ -1017,6 +1017,25 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
   }
 
   /// Erase a single chat (the `/clear` IRC command).
+  /// Move the conversation filed under [from] to [to]: a contact changed their
+  /// keys, and their chat is keyed by the old one (see
+  /// docs/superpowers/specs/2026-11-01-key-rotation-design.md). Anything
+  /// already under [to] — they wrote from the new key before the rotation
+  /// arrived — is kept, after the moved history, without wireId duplicates.
+  Future<void> rekeyChat(String from, String to) async {
+    final moving = state[from];
+    if (moving == null || from == to) return;
+    final merged = _withoutWireIdDuplicates([
+      for (final m in moving) m.copyWith(chatId: to),
+      ...?state[to],
+    ])
+      ..sort((a, b) => a.sentAt.compareTo(b.sentAt));
+    state = {...state, to: merged}..remove(from);
+    _dirty.remove(from);
+    await _store.deleteChat(from);
+    _persist(to, merged);
+  }
+
   Future<void> clearForChat(String chatId) async {
     if (!state.containsKey(chatId)) return;
     state = {...state}..remove(chatId);

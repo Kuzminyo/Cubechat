@@ -37,6 +37,8 @@ import 'core/util/platform_info.dart';
 import 'features/desktop/desktop_split_view.dart' show DesktopOpenChat, desktopOpenChatProvider;
 import 'features/desktop/touchpad_swipe.dart';
 import 'features/devices/data/device_sync.dart';
+import 'features/peers/data/key_rotation_controller.dart';
+import 'features/peers/data/key_rotation_receiver.dart';
 import 'features/devices/data/own_devices.dart';
 import 'features/devices/data/own_devices_controller.dart';
 import 'features/devices/data/own_profile_sync.dart';
@@ -329,6 +331,11 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     ref.listenManual<OwnProfileSync>(ownProfileSyncProvider, (_, __) {});
     // The same, for the conversation itself.
     ref.listenManual<DeviceSync>(deviceSyncProvider, (_, __) {});
+    // A contact who changed their keys is moved to them, at any time.
+    ref.listenManual<KeyRotationReceiver>(
+      keyRotationReceiverProvider,
+      (_, __) {},
+    );
   }
 
   /// The microphone, asked once the app is up rather than on the first call -
