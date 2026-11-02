@@ -344,9 +344,14 @@ with its own LMDB on `127.0.0.1:8083`, for the same reason `/media` has one:
 its limits, its write policy and its retention are its own, and a flood of a
 public chat cannot fill the database the private lane lives in.
 
-**Status: in the repository, not on the droplet.** The app's area chat talks
-only to `wss://relay.cubechat.tech/area`; until this is installed it shows
-"no connection" and sends nothing.
+**Status: live since 2026-11-02.** Installed as below, with `push/` at
+`2026-11-02-area-chat`, the bot knowing the `area` context, and the `/area`
+block in `/etc/caddy/Caddyfile` (backups beside each file, suffixed
+`.bak-2026-11-02-before-area`). Checked from outside the same evening:
+`/area` names `cubechat area` and `/media` and the root are unchanged;
+`GET /banned/area` verifies against `banListPublicKeyHex`; an 8-bit presence
+on a city cell is accepted, one without work is refused `pow`, and one on a
+district cell is refused `invalid`.
 
 What differs from the other two:
 
