@@ -21,12 +21,20 @@ test('only cubechat frames are stored', () => {
 });
 
 test('walkie-talkie events pass, but only at the size the app sends', () => {
-  const state = new Map();
-  const radio = (id, content) => ({ id, kind: 21059, content, tags: [['y', '0'.repeat(16)]] });
-  assert.equal(run(req(radio('r1', 'cr1:' + 'A'.repeat(3000))), state).action, 'accept');
-  const big = run(req(radio('r2', 'A'.repeat(20_000))), state);
-  assert.equal(big.action, 'reject');
-  assert.match(big.msg, /too large/);
+  // 23517 since 2026-11-02, and 21059 while build 1182 is still about.
+  for (const kind of [23517, 21059]) {
+    const state = new Map();
+    const radio = (id, content) => ({ id, kind, content, tags: [['y', '0'.repeat(16)]] });
+    assert.equal(run(req(radio('r1', 'cr1:' + 'A'.repeat(3000))), state).action, 'accept', `${kind}`);
+    const big = run(req(radio('r2', 'A'.repeat(20_000))), state);
+    assert.equal(big.action, 'reject', `${kind}`);
+    assert.match(big.msg, /too large/);
+  }
+});
+
+test('no other ephemeral kind passes', () => {
+  const note = run(req({ id: 'e', kind: 20000, content: 'hi', tags: [] }), new Map());
+  assert.equal(note.action, 'reject');
 });
 
 test('one address is held to its events a minute, others are not', () => {

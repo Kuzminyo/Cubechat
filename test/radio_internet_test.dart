@@ -30,15 +30,17 @@ class _Offline extends RelaySettingsController {
 }
 
 /// Just enough of strfry for an ephemeral kind: each socket's REQ says which
-/// `#y` tags it wants, and every EVENT is handed at once to every socket that
-/// wants its tag — the sender's too, as a real relay does — and stored
-/// nowhere.
+/// kinds and `#y` tags it wants, and every EVENT is handed at once to every
+/// socket that wants both — the sender's too, as a real relay does — and
+/// stored nowhere.
 class _RadioRelay {
   _RadioRelay._(this._server);
 
   final HttpServer _server;
   final Map<WebSocket, Set<String>> _wants = {};
+  final Map<WebSocket, Set<int>> _kinds = {};
   final List<Map<String, dynamic>> events = [];
+  final List<Map<String, dynamic>> filters = [];
   int connections = 0;
 
   String get url => 'ws://localhost:${_server.port}';
@@ -56,25 +58,36 @@ class _RadioRelay {
           switch (msg[0]) {
             case 'REQ':
               final filter = msg[2] as Map<String, dynamic>;
+              relay.filters.add(filter);
+              relay._kinds[ws] =
+                  (filter['kinds'] as List<dynamic>).cast<int>().toSet();
               relay._wants[ws] =
                   (filter['#y'] as List<dynamic>).cast<String>().toSet();
             case 'EVENT':
               final event = (msg[1] as Map).cast<String, dynamic>();
               relay.events.add(event);
               ws.add(jsonEncode(['OK', event['id'], true, '']));
-              final tag = ((event['tags'] as List<dynamic>).first as List)[1];
-              for (final MapEntry(key: other, value: tags)
-                  in relay._wants.entries) {
-                if (tags.contains(tag)) {
-                  other.add(jsonEncode(['EVENT', 'radio', event]));
-                }
-              }
+              relay.deliver(event);
           }
         },
-        onDone: () => relay._wants.remove(ws),
+        onDone: () {
+          relay._wants.remove(ws);
+          relay._kinds.remove(ws);
+        },
       );
     });
     return relay;
+  }
+
+  /// Hand [event] to every socket subscribed to its kind and tag, as if
+  /// somebody had just published it.
+  void deliver(Map<String, dynamic> event) {
+    final tag = ((event['tags'] as List<dynamic>).first as List)[1];
+    for (final MapEntry(key: other, value: tags) in _wants.entries) {
+      if (tags.contains(tag) && _kinds[other]!.contains(event['kind'])) {
+        other.add(jsonEncode(['EVENT', 'radio', event]));
+      }
+    }
   }
 
   /// Sockets whose REQ has arrived — not merely connected. Counting a socket
@@ -174,17 +187,109 @@ void main() {
         expect(a.publish('aa' * 8, _bytes(50, i)), isTrue);
       }
       await _until(() => heardB.length == 3, reason: 'three chunks at b');
-      expect(relay.events, hasLength(1), reason: 'one signature for three');
+      await _until(() => relay.events.length == 2, reason: 'both kinds sent');
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(
+        relay.events.map((e) => e['kind']),
+        [kRadioEventKind, kLegacyRadioEventKind],
+        reason: 'one signature for three, once per kind, the new kind first',
+      );
+      expect(heardB, hasLength(3), reason: 'the twin under 21059 is dropped');
       expect([for (final f in heardB) f.first], [0, 1, 2]);
       expect(heardA, isEmpty, reason: 'our own voice is not played to us');
-      expect(relay.events.single['tags'], [
-        ['y', 'aa' * 8],
-      ]);
+      for (final event in relay.events) {
+        expect(event['tags'], [
+          ['y', 'aa' * 8],
+        ]);
+        expect(
+          (event['tags'] as List).any((t) => (t as List)[0] == 'p'),
+          isFalse,
+          reason: 'nobody named as the recipient',
+        );
+      }
+    });
+
+    test('the two kinds differ in nothing but the kind, id and signature',
+        () async {
+      final a = RadioRelayLink(url: Uri.parse(relay.url), onFrame: (_) {});
+      addTearDown(a.dispose);
+      a.setTags({'aa' * 8});
+      await _until(() => relay.listening == 1, reason: 'subscribed');
+      expect(relay.filters.single['kinds'], [23517, 21059]);
       expect(
-        (relay.events.single['tags'] as List).any((t) => (t as List)[0] == 'p'),
-        isFalse,
-        reason: 'nobody named as the recipient',
+        relay.filters.single.keys.toSet(),
+        {'kinds', '#y', 'since'},
+        reason: 'the REQ asks for nothing new beyond the second kind',
       );
+
+      for (var i = 0; i < 3; i++) {
+        a.publish('aa' * 8, _bytes(50, i));
+      }
+      await _until(() => relay.events.length == 2, reason: 'both kinds sent');
+      final [fresh, legacy] = relay.events;
+      expect(fresh['kind'], 23517);
+      expect(legacy['kind'], 21059);
+      Map<String, dynamic> rest(Map<String, dynamic> e) =>
+          {...e}..removeWhere((k, _) => k == 'kind' || k == 'id' || k == 'sig');
+      expect(rest(fresh), rest(legacy));
+      expect(fresh['id'], isNot(legacy['id']));
+      final frames = RadioRelayCodec.decode(fresh['content'] as String);
+      expect([for (final f in frames) f.first], [0, 1, 2]);
+    });
+
+    test('a phone on build 1182 hears a newer one, and is heard by it',
+        () async {
+      final heard = <Uint8List>[];
+      final link =
+          RadioRelayLink(url: Uri.parse(relay.url), onFrame: heard.add);
+      addTearDown(link.dispose);
+      link.setTags({'ab' * 8});
+
+      // Build 1182 as the relay sees it: a REQ for 21059 alone.
+      final old = await WebSocket.connect(relay.url);
+      addTearDown(old.close);
+      final oldHeard = <Map<String, dynamic>>[];
+      old.listen((dynamic raw) {
+        final msg = jsonDecode(raw as String) as List<dynamic>;
+        if (msg[0] == 'EVENT') {
+          oldHeard.add((msg[2] as Map).cast<String, dynamic>());
+        }
+      });
+      old.add(
+        jsonEncode([
+          'REQ',
+          'radio',
+          {
+            'kinds': [21059],
+            '#y': ['ab' * 8],
+            'since': 0,
+          },
+        ]),
+      );
+      await _until(() => relay.listening == 2, reason: 'both subscribed');
+
+      for (var i = 0; i < 3; i++) {
+        link.publish('ab' * 8, _bytes(30, i));
+      }
+      await _until(() => oldHeard.isNotEmpty, reason: 'the old build hears');
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(oldHeard, hasLength(1));
+      expect(oldHeard.single['kind'], 21059);
+
+      // And what 1182 sends: 21059 only, under its own throwaway key.
+      relay.deliver({
+        'id': 'ee' * 32,
+        'pubkey': '11' * 32,
+        'created_at': DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        'kind': 21059,
+        'tags': [
+          ['y', 'ab' * 8],
+        ],
+        'content': RadioRelayCodec.encode([_bytes(30, 9)]),
+        'sig': '00' * 64,
+      });
+      await _until(() => heard.length == 1, reason: 'the newer build hears');
+      expect(heard.single.first, 9);
     });
 
     test('a lone chunk goes after the batch wait', () async {
@@ -223,7 +328,10 @@ void main() {
       for (var i = 0; i < 3; i++) {
         a.publish('cc' * 8, _bytes(10, i));
       }
-      await _until(() => relay.events.length == 1, reason: 'sent');
+      await _until(
+        () => relay.events.length == kRadioSendKinds.length,
+        reason: 'sent',
+      );
       await Future<void>.delayed(const Duration(milliseconds: 100));
       expect(heard, isEmpty, reason: 'b is tuned to another tag');
 
