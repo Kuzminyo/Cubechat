@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 
+import 'x25519_agreement.dart';
+
 /// Symmetric crypto for a walkie-talkie group.
 ///
 /// Built like `ChannelCrypto` - one 32-byte key from (name, password), an
@@ -88,7 +90,8 @@ class RadioCrypto {
     if (myPub.length != 32 || theirPub.length != 32) {
       throw ArgumentError('X25519 public keys must be 32 bytes');
     }
-    final shared = await _x25519.sharedSecretKey(
+    final shared = await contributorySharedSecret(
+      _x25519,
       keyPair: mine,
       remotePublicKey: SimplePublicKey(theirPub, type: KeyPairType.x25519),
     );

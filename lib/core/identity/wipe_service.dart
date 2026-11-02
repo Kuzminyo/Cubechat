@@ -50,6 +50,7 @@ import '../../features/radio/data/radio_ports.dart';
 import 'avatar_controller.dart';
 import '../theme/theme_controller.dart';
 import '../../features/profile/data/app_lock_controller.dart';
+import '../../features/profile/data/notification_preview_controller.dart';
 import '../../features/profile/data/quiet_hours_controller.dart';
 import '../../features/profile/data/audio_focus_controller.dart';
 import '../../features/profile/data/call_routing_controller.dart';
@@ -211,6 +212,7 @@ Future<void> emergencyWipe(WidgetRef ref, {bool releaseName = true}) async {
   // does not ask for a code somebody set on the identity that just went.
   await ref.read(appLockControllerProvider.notifier).reset();
   await ref.read(quietHoursControllerProvider.notifier).reset();
+  await ref.read(notificationPreviewProvider.notifier).reset();
   await ref.read(discoverySettingsProvider.notifier).reset();
   await ref.read(privacySettingsProvider.notifier).reset();
   await ref.read(circleLensProvider.notifier).reset();

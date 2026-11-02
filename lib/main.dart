@@ -26,6 +26,7 @@ import 'features/map/presentation/people_map_screen.dart';
 import 'features/onboarding/data/onboarding_controller.dart';
 import 'features/profile/data/audio_focus_controller.dart';
 import 'features/profile/data/call_routing_controller.dart';
+import 'features/profile/data/notification_preview_controller.dart';
 
 // The build stamp used to live here as a private constant, which meant the
 // boot log was the only thing that could see it. It is in
@@ -308,6 +309,11 @@ Future<void> main(List<String> args) async {
   // stored answer is still on its way off the disk. The default is the private
   // one, so a slow read errs toward the relay, never away from it.
   container.read(callAllowsDirectProvider.notifier);
+
+  // How much a banner may show, read here because a phone woken by a push
+  // composes its banner with no frame rendered and no settings screen built.
+  // The default shows everything, so the service waits for this read instead.
+  container.read(notificationPreviewProvider.notifier);
 
   // The one thing above that is allowed to hold the first frame for a screen's
   // worth of content rather than for a decision.

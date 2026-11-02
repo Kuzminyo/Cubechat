@@ -1558,6 +1558,25 @@ class AppLocalizationsEn extends AppLocalizations {
   String get quietHoursTo => 'Until';
 
   @override
+  String get notifPreviewTitle => 'Show in notifications';
+
+  @override
+  String get notifPreviewFull => 'Name and text';
+
+  @override
+  String get notifPreviewNameOnly => 'Name only';
+
+  @override
+  String get notifPreviewHidden => 'Nothing';
+
+  @override
+  String get notifPreviewHint =>
+      'Notifications are visible on the lock screen and to apps with notification access, even with the app lock on';
+
+  @override
+  String get notifPreviewNewMessage => 'New message';
+
+  @override
   String get appLockTitle => 'App lock';
 
   @override

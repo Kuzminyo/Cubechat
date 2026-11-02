@@ -7788,11 +7788,19 @@ class MessagingService {
     }
     if (theirPub.length != 32) return null;
     final identity = await _ref.read(identityProvider.future);
-    final key = await RadioCrypto.derivePairKey(
-      mine: identity.asKeyPair(),
-      myPub: Uint8List.fromList(identity.publicKey),
-      theirPub: theirPub,
-    );
+    final Uint8List key;
+    try {
+      key = await RadioCrypto.derivePairKey(
+        mine: identity.asKeyPair(),
+        myPub: Uint8List.fromList(identity.publicKey),
+        theirPub: theirPub,
+      );
+    } on FormatException catch (e) {
+      // A low-order key (see x25519_agreement.dart). Uncaught, it would end
+      // `_buildRadioPairTags` part way and leave every contact without a tag.
+      DebugLog.instance.log('RADIO', 'no pair key for $pubHex: $e');
+      return null;
+    }
     _radioPairKeys[pubHex] = key;
     return key;
   }

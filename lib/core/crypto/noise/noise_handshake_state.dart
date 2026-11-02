@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 
+import '../x25519_agreement.dart';
 import 'noise_cipher_state.dart';
 import 'noise_handshake.dart';
 import 'noise_constants.dart';
@@ -203,7 +204,8 @@ class NoiseHandshakeState implements NoiseHandshake {
   // ----- DH helper -----
 
   Future<Uint8List> _dh(SimpleKeyPair localPair, SimplePublicKey remotePub) async {
-    final shared = await _x25519.sharedSecretKey(
+    final shared = await contributorySharedSecret(
+      _x25519,
       keyPair: localPair,
       remotePublicKey: remotePub,
     );

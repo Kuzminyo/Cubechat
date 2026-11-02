@@ -19,6 +19,7 @@ class NotificationsSectionScreen extends ConsumerWidget {
             if (desktopPresenceSupported)
               _inset(const _DesktopAutostartTile()),
             _inset(const _QuietHoursRow()),
+            _inset(const _NotificationPreviewSelector(), vertical: 14),
           ],
         ),
         SettingsSubheader(t.subCalls),
@@ -28,6 +29,94 @@ class NotificationsSectionScreen extends ConsumerWidget {
             _inset(const _CallDirectTile()),
             if (PlatformInfo.isAndroid) _inset(const _CallFullScreenTile()),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+/// Name and text, name only, or nothing — see [NotificationPreview].
+///
+/// Built like the stranger-reach control in Privacy: three short answers to
+/// one question, where a switch could only say two of them.
+class _NotificationPreviewSelector extends ConsumerWidget {
+  const _NotificationPreviewSelector();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final preview = ref.watch(notificationPreviewProvider);
+    Widget label(String text) => Text(
+          text,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.fade,
+          style: const TextStyle(fontSize: 13.5),
+        );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          t.notifPreviewTitle,
+          style: TextStyle(
+            color: AppColors.textOnGlass,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<NotificationPreview>(
+            showSelectedIcon: false,
+            segments: [
+              ButtonSegment(
+                value: NotificationPreview.full,
+                label: label(t.notifPreviewFull),
+              ),
+              ButtonSegment(
+                value: NotificationPreview.nameOnly,
+                label: label(t.notifPreviewNameOnly),
+              ),
+              ButtonSegment(
+                value: NotificationPreview.hidden,
+                label: label(t.notifPreviewHidden),
+              ),
+            ],
+            selected: {preview},
+            onSelectionChanged: (v) {
+              Haptics.tap();
+              unawaited(
+                ref.read(notificationPreviewProvider.notifier).set(v.first),
+              );
+            },
+            style: ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              padding: const WidgetStatePropertyAll(
+                EdgeInsets.symmetric(horizontal: 6),
+              ),
+              foregroundColor: WidgetStateProperty.resolveWith(
+                (states) => states.contains(WidgetState.selected)
+                    ? AppColors.textOnGlass
+                    : AppColors.textOnGlassDim,
+              ),
+              backgroundColor: WidgetStateProperty.resolveWith(
+                (states) => states.contains(WidgetState.selected)
+                    ? AppColors.brandPrimary.withValues(alpha: 0.35)
+                    : Colors.transparent,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          t.notifPreviewHint,
+          style: TextStyle(
+            color: AppColors.textOnGlassDim,
+            fontSize: 11.5,
+            height: 1.35,
+          ),
         ),
       ],
     );

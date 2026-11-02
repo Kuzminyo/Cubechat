@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 
+import 'x25519_agreement.dart';
+
 /// Anonymous public-key encryption: a sender can encrypt a payload to a
 /// recipient's static X25519 public key without holding any prior shared
 /// state. Mirrors the libsodium `crypto_box_seal` construction.
@@ -53,7 +55,8 @@ class SealedBox {
     final ephemeralPub = await ephemeral.extractPublicKey();
     final ephemeralPubBytes = Uint8List.fromList(ephemeralPub.bytes);
 
-    final shared = await _x25519.sharedSecretKey(
+    final shared = await contributorySharedSecret(
+      _x25519,
       keyPair: ephemeral,
       remotePublicKey:
           SimplePublicKey(recipientPubkey, type: KeyPairType.x25519),
@@ -96,7 +99,8 @@ class SealedBox {
     final ciphertext = wire.sublist(ephemeralPubLen, ctEnd);
     final tag = wire.sublist(ctEnd);
 
-    final shared = await _x25519.sharedSecretKey(
+    final shared = await contributorySharedSecret(
+      _x25519,
       keyPair: recipientKeyPair,
       remotePublicKey:
           SimplePublicKey(ephemeralPubBytes, type: KeyPairType.x25519),

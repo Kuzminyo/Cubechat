@@ -9,6 +9,7 @@ import '../desktop/desktop_presence.dart';
 import '../util/debug_log.dart';
 import '../util/platform_info.dart';
 import 'avatar_bitmap.dart';
+import 'notification_preview.dart';
 
 /// Rich incoming-message notifications built on flutter_local_notifications.
 ///
@@ -147,8 +148,11 @@ class NotificationService {
       final text = resp.input?.trim();
       if (text != null && text.isNotEmpty) {
         // Echo the sent line into the thread history so a follow-up banner keeps
-        // context, then hand off to the app to actually send it.
-        _threads[chatId]?.add(text, _me);
+        // context, then hand off to the app to actually send it. Only when the
+        // banner may show text at all: the reply is a message too.
+        if (_preview == NotificationPreview.full) {
+          _threads[chatId]?.add(text, _me);
+        }
         onReply?.call(chatId, text);
       }
       return;
@@ -172,6 +176,30 @@ class NotificationService {
   /// would be a bug wearing a setting's clothes.
   bool Function(DateTime)? quietNow;
 
+  /// How much a banner may show — see [NotificationPreview]. Set from outside,
+  /// as [quietNow] is, by `NotificationPreviewController`.
+  NotificationPreview get preview => _preview;
+  set preview(NotificationPreview next) {
+    if (next == _preview) return;
+    _preview = next;
+    // A MessagingStyle banner re-posts its whole history with every message,
+    // so lines kept under the old setting would come back under the new one.
+    for (final thread in _threads.values) {
+      thread.messages.clear();
+    }
+  }
+
+  NotificationPreview _preview = NotificationPreview.full;
+
+  /// What stands in for a hidden sender and a hidden message, in the app's
+  /// language. Set alongside [preview]; English until then.
+  ({String appName, String newMessage}) previewStrings =
+      (appName: 'Cubechat', newMessage: 'New message');
+
+  /// The stored [preview] being read. Awaited before a banner is composed, so
+  /// the first message after a launch is not shown under the default.
+  Future<void>? previewLoading;
+
   Future<void> showMessage({
     required String threadKey,
     required String title,
@@ -184,6 +212,21 @@ class NotificationService {
     // Quiet hours. The thread is not even opened: nothing here is worth doing
     // for a banner that will not be raised.
     if (quietNow?.call(DateTime.now()) ?? false) return;
+
+    final loading = previewLoading;
+    if (loading != null) await loading;
+    // What the banner may say. The arguments themselves are replaced, before
+    // anything is kept or posted, so no path below — the Windows toast, the
+    // thread history, the log line — can reach the text it may not show.
+    final shown = _preview.redact(
+      title: title,
+      body: body,
+      appName: previewStrings.appName,
+      newMessage: previewStrings.newMessage,
+    );
+    title = shown.title;
+    body = shown.body;
+    final hideSender = _preview == NotificationPreview.hidden;
 
     if (PlatformInfo.isWindows) {
       // One toast per message, no stacked thread: Windows groups an app's
@@ -199,15 +242,19 @@ class NotificationService {
     }
 
     final thread = _threads.putIfAbsent(threadKey, () => _Thread());
-    // Build (once) a stable avatar for this sender.
-    thread.icon ??= await renderAvatarPng(
-      seed: senderId ?? threadKey,
-      label: title,
-    );
+    // Build (once) a stable avatar for this sender. Not when the sender is
+    // hidden: it is drawn from their key, and says who as plainly as a name.
+    if (!hideSender) {
+      thread.icon ??= await renderAvatarPng(
+        seed: senderId ?? threadKey,
+        label: title,
+      );
+    }
+    final icon = hideSender ? null : thread.icon;
     final sender = Person(
       key: threadKey,
       name: title,
-      icon: thread.icon == null ? null : ByteArrayAndroidIcon(thread.icon!),
+      icon: icon == null ? null : ByteArrayAndroidIcon(icon),
     );
     thread.add(body, sender, cap: _maxThreadMessages);
     // The count, said out loud, because the number on the banner is the thing
@@ -220,13 +267,17 @@ class NotificationService {
     // more often than once per message — and those are different bugs in
     // different files, with nothing on screen to tell them apart.
     //
-    // So: what it counted, and what it says. One line per banner, on a screen
-    // where banners are rare.
+    // So: what it counted, and how long the line was. One line per banner, on
+    // a screen where banners are rare.
+    //
+    // The length and not the words. This logged the first forty characters of
+    // every message — decrypted text in a buffer that goes out whenever
+    // somebody sends us their log, and through debugPrint into logcat, which
+    // a release build keeps. bitchat's review found the same in theirs (H3).
     DebugLog.instance.log(
       'NOTIFY',
       'banner for ${threadKey.length > 8 ? threadKey.substring(0, 8) : threadKey}'
-          ' — count now ${thread.inboundCount}: '
-          '${body.length > 40 ? '${body.substring(0, 40)}…' : body}',
+          ' — count now ${thread.inboundCount}: ${body.length} chars',
     );
 
     final messaging = MessagingStyleInformation(

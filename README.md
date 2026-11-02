@@ -86,6 +86,9 @@ UI work but have no BLE.
 - **Block / mute** a peer — blocked peers' messages are dropped on arrival,
   muted peers arrive silently
 - **Emergency wipe**: triple-tap the logo to erase every key, peer, and message
+- **Notification preview**: name and text, name only, or nothing — a banner is
+  drawn on the lock screen and read by apps with notification access, which the
+  app lock does not cover
 
 **Transport**
 - BLE **central + peripheral** — every phone both scans and advertises

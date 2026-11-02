@@ -2792,6 +2792,42 @@ abstract class AppLocalizations {
   /// **'Until'**
   String get quietHoursTo;
 
+  /// No description provided for @notifPreviewTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Show in notifications'**
+  String get notifPreviewTitle;
+
+  /// No description provided for @notifPreviewFull.
+  ///
+  /// In en, this message translates to:
+  /// **'Name and text'**
+  String get notifPreviewFull;
+
+  /// No description provided for @notifPreviewNameOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Name only'**
+  String get notifPreviewNameOnly;
+
+  /// No description provided for @notifPreviewHidden.
+  ///
+  /// In en, this message translates to:
+  /// **'Nothing'**
+  String get notifPreviewHidden;
+
+  /// No description provided for @notifPreviewHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Notifications are visible on the lock screen and to apps with notification access, even with the app lock on'**
+  String get notifPreviewHint;
+
+  /// No description provided for @notifPreviewNewMessage.
+  ///
+  /// In en, this message translates to:
+  /// **'New message'**
+  String get notifPreviewNewMessage;
+
   /// No description provided for @appLockTitle.
   ///
   /// In en, this message translates to:

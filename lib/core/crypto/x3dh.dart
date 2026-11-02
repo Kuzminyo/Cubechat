@@ -2,6 +2,8 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
 
+import 'x25519_agreement.dart';
+
 /// X3DH (Extended Triple Diffie-Hellman) key agreement — the asynchronous
 /// key exchange behind Signal's forward secrecy, adapted to cubechat's
 /// serverless BLE mesh.
@@ -91,7 +93,8 @@ class X3dh {
     SimpleKeyPairData ours,
     Uint8List theirPub,
   ) async {
-    final shared = await _x25519.sharedSecretKey(
+    final shared = await contributorySharedSecret(
+      _x25519,
       keyPair: ours,
       remotePublicKey: SimplePublicKey(theirPub, type: KeyPairType.x25519),
     );

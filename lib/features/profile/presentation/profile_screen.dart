@@ -42,6 +42,8 @@ import '../data/circle_lens_controller.dart';
 import '../data/discovery_settings_controller.dart';
 import '../data/app_lock_controller.dart';
 import '../data/nav_bar_controller.dart';
+import '../data/notification_preview_controller.dart';
+import '../../../core/notifications/notification_preview.dart';
 import '../data/quiet_hours_controller.dart';
 import '../data/ui_scale_controller.dart';
 import '../../backup/presentation/desktop_link_screen.dart'

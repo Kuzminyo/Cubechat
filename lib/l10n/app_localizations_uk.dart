@@ -1569,6 +1569,25 @@ class AppLocalizationsUk extends AppLocalizations {
   String get quietHoursTo => 'До';
 
   @override
+  String get notifPreviewTitle => 'Показувати в сповіщеннях';
+
+  @override
+  String get notifPreviewFull => 'Ім’я і текст';
+
+  @override
+  String get notifPreviewNameOnly => 'Лише ім’я';
+
+  @override
+  String get notifPreviewHidden => 'Нічого';
+
+  @override
+  String get notifPreviewHint =>
+      'Сповіщення видно на екрані блокування і застосункам із доступом до сповіщень — навіть із замком застосунку';
+
+  @override
+  String get notifPreviewNewMessage => 'Нове повідомлення';
+
+  @override
   String get appLockTitle => 'Замок застосунку';
 
   @override
