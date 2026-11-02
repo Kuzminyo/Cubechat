@@ -222,9 +222,15 @@ class _CallRow extends ConsumerWidget {
             if (ref.watch(platformCapabilitiesProvider).calls)
               IconButton(
               tooltip: t.callsCallBack,
-              icon: Icon(Icons.call_rounded, color: AppColors.brandPrimary),
-              onPressed: () =>
-                  unawaited(ref.read(callControllerProvider).dial(call.peerId)),
+              icon: Icon(
+                call.video ? Icons.videocam_rounded : Icons.call_rounded,
+                color: AppColors.brandPrimary,
+              ),
+              onPressed: () => unawaited(
+                ref
+                    .read(callControllerProvider)
+                    .dial(call.peerId, video: call.video),
+              ),
             ),
           ],
         ),

@@ -9,6 +9,7 @@ import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart' show MediaStream;
 import 'package:go_router/go_router.dart';
 
 class _Media implements CallMedia {
@@ -16,7 +17,25 @@ class _Media implements CallMedia {
   @override
   Stream<CallMediaEvent> get events => _events.stream;
   @override
-  Future<String> offer(Map<String, dynamic> configuration) async => 'offer';
+  Future<String> offer(
+    Map<String, dynamic> configuration, {
+    bool video = false,
+  }) async =>
+      'offer';
+  @override
+  bool get videoPossible => false;
+  @override
+  Future<bool> setCamera(bool on) async => on;
+  @override
+  Future<void> switchCamera() async {}
+  @override
+  bool get cameraOpen => false;
+  @override
+  bool get frontCamera => true;
+  @override
+  MediaStream? get localVideo => null;
+  @override
+  MediaStream? get remoteVideo => null;
   @override
   Future<String> answer(
           Map<String, dynamic> configuration, String remoteSdp) async =>
@@ -66,7 +85,7 @@ void main() {
       ),
       microphone: () async => true,
       createMedia: _Media.new,
-      record: (peer, outcome) {},
+      record: (peer, outcome, video) {},
       peerName: (peer) => 'Alice',
       allowed: (_) => true,
       allowDirect: () => false,
@@ -115,6 +134,30 @@ void main() {
     expect(find.text('Alice'), findsOneWidget);
     expect(find.byIcon(Icons.call_end_rounded), findsOneWidget,
         reason: 'the one control a person needs is there to press');
+
+    await tester.tap(find.byIcon(Icons.call_end_rounded));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a video call builds with its camera button and no picture yet',
+      (tester) async {
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    unawaited(call.dial('peer', video: true));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(tester.takeException(), isNull,
+        reason: 'a thrown build is the white screen');
+    expect(find.text('Alice'), findsOneWidget,
+        reason: 'no picture is arriving, so their face and name stay');
+    expect(find.byIcon(Icons.videocam_rounded), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.videocam_rounded));
+    await tester.pump();
+    expect(find.byIcon(Icons.videocam_off_rounded), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.call_end_rounded));
     await tester.pump();

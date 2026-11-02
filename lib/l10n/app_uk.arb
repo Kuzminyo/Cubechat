@@ -1,5 +1,10 @@
 {
 "callVoice": "Голосовий дзвінок",
+"callVideo": "Відеодзвінок",
+"callIncomingVideo": "Вхідний відеодзвінок",
+"callCamera": "Камера",
+"callFlipCamera": "Повернути",
+"contactProfileVideo": "Відео",
 "callPreparing": "Підготовка мікрофона…",
 "callDialing": "Виклик…",
 "callRinging": "Очікування відповіді…",

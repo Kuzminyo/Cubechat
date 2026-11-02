@@ -16,7 +16,8 @@ class _Dialer extends ChangeNotifier implements CallController {
   final dialed = <String>[];
 
   @override
-  Future<void> dial(String peer) async => dialed.add(peer);
+  Future<void> dial(String peer, {bool video = false}) async =>
+      dialed.add(peer);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

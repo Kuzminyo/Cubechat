@@ -104,6 +104,36 @@ abstract class AppLocalizations {
   /// **'Voice call'**
   String get callVoice;
 
+  /// No description provided for @callVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Video call'**
+  String get callVideo;
+
+  /// No description provided for @callIncomingVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Incoming video call'**
+  String get callIncomingVideo;
+
+  /// No description provided for @callCamera.
+  ///
+  /// In en, this message translates to:
+  /// **'Camera'**
+  String get callCamera;
+
+  /// No description provided for @callFlipCamera.
+  ///
+  /// In en, this message translates to:
+  /// **'Flip'**
+  String get callFlipCamera;
+
+  /// No description provided for @contactProfileVideo.
+  ///
+  /// In en, this message translates to:
+  /// **'Video'**
+  String get contactProfileVideo;
+
   /// No description provided for @callPreparing.
   ///
   /// In en, this message translates to:

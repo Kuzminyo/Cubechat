@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart'
+    show MediaStream, RTCVideoRenderer, RTCVideoView, RTCVideoViewObjectFit;
 import '../../../core/theme/colors.dart';
 import '../../../core/util/motion.dart';
 import '../../../core/util/platform_info.dart';
@@ -459,6 +461,13 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   /// The list of places the sound can go, open over the controls.
   bool _routesOpen = false;
 
+  /// Their picture fills the screen, so the words on it are white over a
+  /// shade rather than the theme's text colour over the theme's background.
+  bool _overVideo = false;
+
+  /// Our camera big and theirs small, after a tap on the small picture.
+  bool _swapped = false;
+
   CallController get call => widget.call;
 
   Future<void> _onSpeaker() async {
@@ -511,10 +520,24 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     final t = AppLocalizations.of(context);
     final talking = call.phase == CallPhase.talking;
     final incoming = call.phase == CallPhase.incoming && !call.preparing;
+    // Their picture while it arrives; their face and name the way a voice
+    // call shows them while it does not — camera off, app in the background,
+    // or a build without video on their end.
+    final remote = call.active ? call.remoteVideo : null;
+    final local = call.active && call.cameraOn ? call.localVideo : null;
+    // The big picture is theirs. With none arriving it is our own, the way
+    // a video call shows you yourself while it rings, and the small one then
+    // has nothing to show. A tap on the small one swaps the two.
+    final swap = _swapped && remote != null && local != null;
+    final big = swap ? local : (remote ?? local);
+    final small = swap ? remote : (remote != null ? local : null);
+    final mirrorBig = identical(big, local) && call.frontCamera;
+    final mirrorSmall = identical(small, local) && call.frontCamera;
     final status = call.preparing
         ? t.callPreparing
         : switch (call.phase) {
-            CallPhase.incoming => t.previewCallIncoming,
+            CallPhase.incoming =>
+              call.video ? t.callIncomingVideo : t.previewCallIncoming,
             CallPhase.dialing => t.callDialing,
             CallPhase.ringing => t.callRinging,
             CallPhase.connecting => t.callConnecting,
@@ -561,6 +584,22 @@ class _CallScreenState extends ConsumerState<CallScreen> {
           () => unawaited(call.toggleMute()),
           selected: call.micMuted,
         ),
+      // Beside the microphone. While a video call rings, so the person
+      // called can answer with the camera already off; once any call is
+      // answered, so a voice call can become a video one.
+      if (call.canVideo)
+        _control(
+          call.cameraOn ? Icons.videocam_rounded : Icons.videocam_off_rounded,
+          t.callCamera,
+          () => unawaited(call.toggleCamera()),
+          selected: call.cameraOn,
+        ),
+      if (local != null && !incoming)
+        _control(
+          Icons.cameraswitch_rounded,
+          t.callFlipCamera,
+          () => unawaited(call.switchCamera()),
+        ),
       // From the moment this phone dials, not only once the other side
       // answers: the ringing can go on the loudspeaker too.
       if (call.canUseSpeaker)
@@ -572,7 +611,9 @@ class _CallScreenState extends ConsumerState<CallScreen> {
         ),
       if (incoming)
         _control(
-          Icons.call_rounded,
+          call.video && call.cameraOn
+              ? Icons.videocam_rounded
+              : Icons.call_rounded,
           t.callAnswer,
           () => unawaited(call.answer()),
           tone: AppColors.brandPrimary,
@@ -588,10 +629,35 @@ class _CallScreenState extends ConsumerState<CallScreen> {
         _control(Icons.close_rounded, t.callClose, call.dismiss),
     ];
 
+    _overVideo = big != null;
+    final top = MediaQuery.paddingOf(context).top;
     return Material(
       color: AppColors.bgDeep,
       child: Stack(
         children: [
+          if (big != null) ...[
+            Positioned.fill(
+              child: _VideoSurface(stream: big, mirror: mirrorBig),
+            ),
+            // Two short shades rather than one over the whole picture: the
+            // name at the top and the labels at the bottom stay readable on
+            // a white wall behind somebody, and the face in the middle is
+            // left as it came.
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 150,
+              child: _Shade(fromTop: true),
+            ),
+            const Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              height: 200,
+              child: _Shade(fromTop: false),
+            ),
+          ],
           SafeArea(
             child: LayoutBuilder(
               builder: (context, bounds) => SingleChildScrollView(
@@ -616,26 +682,60 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                                     icon: Icon(
                                       Icons.keyboard_arrow_down_rounded,
                                       size: 30,
-                                      color: AppColors.textPrimary,
+                                      color: _overVideo
+                                          ? Colors.white
+                                          : AppColors.textPrimary,
                                     ),
                                   ),
                                 )
                               else
                                 const SizedBox(width: 48),
                               Expanded(
-                                child: Text(
-                                  t.callVoice,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: AppColors.textPrimary,
-                                    fontSize: 16,
-                                  ),
-                                ),
+                                child: big != null
+                                    // The face takes the middle, so who and
+                                    // how long move up here.
+                                    ? Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            call.name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 17,
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          Text(
+                                            status,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 13,
+                                              fontFeatures: [
+                                                FontFeature.tabularFigures(),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    : Text(
+                                        call.video || call.cameraOn
+                                            ? t.callVideo
+                                            : t.callVoice,
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: AppColors.textPrimary,
+                                          fontSize: 16,
+                                        ),
+                                      ),
                               ),
                               const SizedBox(width: 48),
                             ],
                           ),
                         ),
+                        if (big == null)
                         Padding(
                           padding: const EdgeInsets.symmetric(
                             vertical: 36,
@@ -693,6 +793,36 @@ class _CallScreenState extends ConsumerState<CallScreen> {
               ),
             ),
           ),
+          // The second picture, small, under the header — where FaceTime and
+          // Telegram keep it. A front camera is mirrored, the way a face is
+          // used to seeing itself. A tap swaps it with the big one.
+          if (small != null)
+            Positioned(
+              top: top + 64,
+              right: 16,
+              width: 104,
+              height: 144,
+              child: GestureDetector(
+                onTap: () => setState(() => _swapped = !_swapped),
+                child: DecoratedBox(
+                  position: DecorationPosition.foreground,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: AppColors.glass(0.22)),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: ColoredBox(
+                      color: Colors.black,
+                      child: _VideoSurface(
+                        stream: small,
+                        mirror: mirrorSmall,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           if (_routesOpen)
             Positioned.fill(
               child: _RoutePicker(
@@ -753,11 +883,96 @@ class _CallScreenState extends ConsumerState<CallScreen> {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           textAlign: TextAlign.center,
-          style: TextStyle(color: AppColors.textPrimary),
+          style: TextStyle(
+            color: _overVideo ? Colors.white : AppColors.textPrimary,
+          ),
         ),
       ],
     );
   }
+}
+
+/// One picture of a video call — theirs filling the screen, or ours in the
+/// corner. Owns its renderer: made when the picture appears, let go when it
+/// does, so a call with the camera off holds no texture at all.
+class _VideoSurface extends StatefulWidget {
+  const _VideoSurface({required this.stream, this.mirror = false});
+
+  final MediaStream stream;
+  final bool mirror;
+
+  @override
+  State<_VideoSurface> createState() => _VideoSurfaceState();
+}
+
+class _VideoSurfaceState extends State<_VideoSurface> {
+  final _renderer = RTCVideoRenderer();
+  bool _ready = false;
+  bool _gone = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_start());
+  }
+
+  Future<void> _start() async {
+    await _renderer.initialize();
+    // Gone while the texture was being made: nobody else will free it.
+    if (_gone) {
+      await _renderer.dispose();
+      return;
+    }
+    _renderer.srcObject = widget.stream;
+    setState(() => _ready = true);
+  }
+
+  @override
+  void didUpdateWidget(_VideoSurface old) {
+    super.didUpdateWidget(old);
+    if (_ready && old.stream != widget.stream) {
+      _renderer.srcObject = widget.stream;
+    }
+  }
+
+  @override
+  void dispose() {
+    _gone = true;
+    if (_ready) unawaited(_renderer.dispose());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => _ready
+      ? RTCVideoView(
+          _renderer,
+          mirror: widget.mirror,
+          objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+        )
+      : const SizedBox.expand();
+}
+
+/// A short fade to black at one edge of the picture.
+class _Shade extends StatelessWidget {
+  const _Shade({required this.fromTop});
+
+  final bool fromTop;
+
+  @override
+  Widget build(BuildContext context) => IgnorePointer(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: fromTop ? Alignment.topCenter : Alignment.bottomCenter,
+              end: fromTop ? Alignment.bottomCenter : Alignment.topCenter,
+              colors: [
+                Colors.black.withValues(alpha: 0.55),
+                Colors.black.withValues(alpha: 0),
+              ],
+            ),
+          ),
+        ),
+      );
 }
 
 /// Where the call's sound goes: the phone, the loudspeaker, a wired headset,

@@ -136,7 +136,7 @@ already know it.
 
 To wake a phone whose app is fully closed, Cubechat runs one small service at
 `push.cubechat.tech`. This is the only server we operate; the same machine also
-relays voice calls, described in section 5.1.
+relays voice and video calls, described in section 5.1.
 
 **It is on by default, and you can switch it off.** It never sees message
 content.
@@ -186,19 +186,20 @@ requests can arrive, and is not written to disk. The cubechat relay likewise
 holds in memory the IP address of a phone publishing to it, so that no single
 address can fill its disk.
 
-### 5.1 Voice calls
+### 5.1 Voice and video calls
 
-A voice call is set up with encrypted messages, like any other message, and its
-audio is carried through a call relay (TURN) on the same server. The audio is
-encrypted between the two phones (DTLS-SRTP); the relay forwards it and cannot
-listen to it.
+A call is set up with encrypted messages, like any other message, and its
+audio — and in a video call, the camera picture — is carried through a call
+relay (TURN) on the same server. Both are encrypted between the two phones
+(DTLS-SRTP); the relay forwards them and can neither hear nor see them. The
+camera is used only during a video call, and only while its button is on.
 
 **The relay does see network metadata:** the IP addresses of both phones, when
 a call took place, how long it lasted and how much data it carried. To use it,
 your phone asks the service for short-lived access with a request signed by
 your key. We do not record calls. The relay's server logs, kept for operating
 and securing the service, can contain those IP addresses and session times;
-they never contain audio.
+they never contain audio or video.
 
 By default both phones only ever see the relay's address, not each other's. If
 you turn on **direct calls** in your profile, a call may connect phone to phone

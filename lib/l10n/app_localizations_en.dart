@@ -12,6 +12,21 @@ class AppLocalizationsEn extends AppLocalizations {
   String get callVoice => 'Voice call';
 
   @override
+  String get callVideo => 'Video call';
+
+  @override
+  String get callIncomingVideo => 'Incoming video call';
+
+  @override
+  String get callCamera => 'Camera';
+
+  @override
+  String get callFlipCamera => 'Flip';
+
+  @override
+  String get contactProfileVideo => 'Video';
+
+  @override
   String get callPreparing => 'Preparing microphone…';
 
   @override

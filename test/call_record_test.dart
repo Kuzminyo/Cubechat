@@ -20,6 +20,22 @@ void main() {
         source: CallEndSource.button,
       );
 
+  test('a video call round-trips as video; an old line reads as voice', () {
+    final video = encodeCallRecord(
+      outcome(
+        outgoing: false,
+        cause: CallEndCause.hungUp,
+        talkedFor: const Duration(seconds: 40),
+      ),
+      video: true,
+    );
+    expect(tryParseCallRecord(video)!.video, isTrue);
+    final voice = encodeCallRecord(
+      outcome(outgoing: false, cause: CallEndCause.hungUp),
+    );
+    expect(tryParseCallRecord(voice)!.video, isFalse);
+  });
+
   test('an answered call round-trips its direction and its length', () {
     final text = encodeCallRecord(outcome(
       outgoing: true,

@@ -1,5 +1,10 @@
 {
 "callVoice": "Voice call",
+"callVideo": "Video call",
+"callIncomingVideo": "Incoming video call",
+"callCamera": "Camera",
+"callFlipCamera": "Flip",
+"contactProfileVideo": "Video",
 "callPreparing": "Preparing microphone…",
 "callDialing": "Calling…",
 "callRinging": "Ringing…",

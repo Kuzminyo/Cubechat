@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart' show AppLifecycleState, WidgetsBinding;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart' show MediaStream;
 import 'call_microphone_permission.dart';
 
 import '../../../core/crypto/identity_service.dart';
@@ -40,6 +41,7 @@ class CallController extends ChangeNotifier {
     required this.send,
     required this.obtainTurn,
     required this.microphone,
+    Future<bool> Function()? camera,
     required this.createMedia,
     required this.record,
     required this.peerName,
@@ -53,7 +55,8 @@ class CallController extends ChangeNotifier {
     bool Function()? foreground,
     String Function()? ownId,
     Future<ControlDelivery> Function(CallSignal signal)? notifyOwnDevices,
-  })  : _foreground = foreground ?? _alwaysForeground,
+  })  : camera = camera ?? _cameraAllowed,
+        _foreground = foreground ?? _alwaysForeground,
         acceptsCallFrom = acceptsCallFrom ?? _acceptsEverybody,
         ownId = ownId ?? _nobody,
         notifyOwnDevices = notifyOwnDevices ?? _nowhere {
@@ -72,8 +75,14 @@ class CallController extends ChangeNotifier {
   final Future<ControlDelivery> Function(String peer, CallSignal signal) send;
   final Future<TurnAccess> Function() obtainTurn;
   final Future<bool> Function() microphone;
+
+  /// Whether the camera may be used, asked when a video call opens it. A no
+  /// here takes the picture away from this side, never the call.
+  final Future<bool> Function() camera;
+  static Future<bool> _cameraAllowed() async => true;
   final CallMedia Function() createMedia;
-  final void Function(String peer, CallOutcome outcome) record;
+  /// [video]: placed as a video call, or a picture was seen in it.
+  final void Function(String peer, CallOutcome outcome, bool video) record;
   final String Function(String peer) peerName;
   final bool Function(String peer) allowed;
 
@@ -155,6 +164,21 @@ class CallController extends ChangeNotifier {
   bool preparing = false;
   bool micMuted = false;
   bool speakerOn = false;
+
+  /// Placed as a video call: dialled as one, or rung by an offer marked as
+  /// one ([sdpStartsWithCamera]). Decides how the call starts — camera on, on
+  /// the loudspeaker, "video call" on the ringing screen. Any call can turn a
+  /// camera on later; see [canVideo].
+  bool video = false;
+
+  /// This side's camera, as the button shows it: wanted before the call is
+  /// up, and what actually opened once it is.
+  bool cameraOn = false;
+  bool _changingCamera = false;
+
+  /// Whether a picture was seen in this call, from either side — for the
+  /// history line, which calls it a video call.
+  bool _hadVideo = false;
   bool _disposed = false;
   bool _connected = false;
   bool _changingMute = false;
@@ -171,6 +195,34 @@ class CallController extends ChangeNotifier {
   bool get active =>
       preparing || (phase != CallPhase.idle && phase != CallPhase.ended);
   String get name => peerId == null ? '' : peerName(peerId!);
+
+  /// Whether the camera button means anything now.
+  ///
+  /// Before the other side has answered, only a call placed as a video call
+  /// has one — the caller sees themselves while it rings, the person called
+  /// can turn it off before answering. Once answered, any call whose other
+  /// side can show a picture: a voice call becomes a video one by pressing
+  /// it, with no second offer (see [sdpCarriesVideo]). Not with somebody on a
+  /// build without video, who would receive the picture and never draw it.
+  bool get canVideo {
+    if (!active) return false;
+    return switch (phase) {
+      CallPhase.connecting ||
+      CallPhase.talking =>
+        _media?.videoPossible ?? false,
+      _ => video,
+    };
+  }
+
+  /// Our camera, for the preview, while it is on.
+  MediaStream? get localVideo => _media?.localVideo;
+
+  /// Their picture, while it is arriving.
+  MediaStream? get remoteVideo => _media?.remoteVideo;
+
+  /// For mirroring the preview: a front camera is shown the way a mirror
+  /// shows a face, a back one the way it is.
+  bool get frontCamera => _media?.frontCamera ?? true;
   Uint8List? get avatar => peerId == null ? null : peerAvatar?.call(peerId!);
 
   /// Where the sound can go, as last asked. See [refreshAudioRoutes].
@@ -196,6 +248,9 @@ class CallController extends ChangeNotifier {
         elapsed = DateTime.now().difference(_talkingSince!);
         if (!_disposed) notifyListeners();
       });
+    }
+    if (phase == CallPhase.talking && (cameraOn || remoteVideo != null)) {
+      _hadVideo = true;
     }
     _updateRinging();
     _updateOngoing();
@@ -338,6 +393,7 @@ class CallController extends ChangeNotifier {
 
   String? _ongoingKey;
   bool _ongoingTalking = false;
+  bool _ongoingVideo = false;
 
   /// Keep the call in the phone's own list of calls in progress - on Android,
   /// the notification shade with its running time and Hang up, the way
@@ -359,13 +415,23 @@ class CallController extends ChangeNotifier {
       if (shown == null) return;
       _ongoingKey = null;
       _ongoingTalking = false;
+      _ongoingVideo = false;
       _queueSurface(() => surface.dismiss(shown));
       return;
     }
     final talking = phase == CallPhase.talking;
-    if (_ongoingKey == key && _ongoingTalking == talking) return;
+    // Once a camera has been on, the call keeps the camera service type to
+    // its end: turning it off and on again in the background must not find
+    // it gone.
+    final video = _ongoingVideo || this.video || cameraOn;
+    if (_ongoingKey == key &&
+        _ongoingTalking == talking &&
+        _ongoingVideo == video) {
+      return;
+    }
     _ongoingKey = key;
     _ongoingTalking = talking;
+    _ongoingVideo = video;
     final caller = name;
     final picture = avatar;
     final since = _talkingSince ?? DateTime.now();
@@ -375,6 +441,7 @@ class CallController extends ChangeNotifier {
         name: caller,
         avatar: picture,
         since: since,
+        video: video,
       ),
     );
   }
@@ -489,8 +556,14 @@ class CallController extends ChangeNotifier {
       _surfaceAnswered = false;
       final caller = name;
       final picture = avatar;
+      final withVideo = video;
       _queueSurface(
-        () => surface.show(key: key, name: caller, avatar: picture),
+        () => surface.show(
+          key: key,
+          name: caller,
+          avatar: picture,
+          video: withVideo,
+        ),
       );
       return;
     }
@@ -655,7 +728,9 @@ class CallController extends ChangeNotifier {
 
   bool _current(int generation) => !_disposed && generation == _generation;
 
-  Future<void> dial(String peer) async {
+  /// [video] puts a camera into the call — see [cameraOn] and
+  /// [toggleCamera].
+  Future<void> dial(String peer, {bool video = false}) async {
     if (active) {
       _log('dial ${_short(peer)} ignored: a call is already on');
       return;
@@ -677,7 +752,13 @@ class CallController extends ChangeNotifier {
     error = null;
     preparing = true;
     micMuted = false;
-    speakerOn = false;
+    // A video call is held at arm's length, so it starts on the loudspeaker
+    // — and the proximity sensor, watched only while the earpiece is in use,
+    // does not blank the picture.
+    speakerOn = video;
+    this.video = video;
+    _hadVideo = false;
+    cameraOn = video;
     audioRoute = null;
     _selectedAudioRouteId = null;
     audioRoutes = const [];
@@ -685,7 +766,7 @@ class CallController extends ChangeNotifier {
     final generation = ++_generation;
     _changed();
     final watch = Stopwatch()..start();
-    _log('dial ${_short(peer)}');
+    _log('dial ${_short(peer)}${video ? ' with video' : ''}');
     try {
       final media = await _prepare(generation);
       if (media == null) return;
@@ -695,8 +776,13 @@ class CallController extends ChangeNotifier {
           '(${watch.elapsedMilliseconds} ms)');
       if (!_current(generation)) return;
       final direct = allowDirect();
-      final sdp = await media.offer(access.configuration(allowDirect: direct));
+      final sdp = await media.offer(
+        access.configuration(allowDirect: direct),
+        video: video,
+      );
+      if (video) cameraOn = media.cameraOpen;
       _log('offer ready: ${sdp.length} B, ${describeCandidates(sdp)}, '
+          '${video ? 'video, camera ${cameraOn ? 'on' : 'off'}, ' : ''}'
           '${direct ? 'direct allowed' : 'relay only'} '
           '(${watch.elapsedMilliseconds} ms)');
       if (!_current(generation)) return;
@@ -747,9 +833,17 @@ class CallController extends ChangeNotifier {
       return null;
     }
     if (!_current(generation)) return null;
+    if (video && cameraOn && !await camera()) {
+      _log('camera refused: the call goes on without a picture from here');
+      cameraOn = false;
+    }
+    if (!_current(generation)) return null;
     await prepareAudio();
     if (!_current(generation)) return null;
     final media = _media = createMedia();
+    // The camera choice made while it rang, or the one a video call starts
+    // with. Kept by the media and applied as the connection opens.
+    if (video) unawaited(media.setCamera(cameraOn));
     // Muted while it was still ringing: the microphone opens muted.
     if (micMuted) {
       unawaited(media.setMuted(true).catchError((Object _) {}));
@@ -762,6 +856,11 @@ class CallController extends ChangeNotifier {
     }
     _mediaEvents = media.events.listen((event) {
       if (!_current(generation)) return;
+      // A camera or their picture, not the call's life: redraw and no more.
+      if (event == CallMediaEvent.video) {
+        _changed();
+        return;
+      }
       _log('media ${event.name}');
       if (event == CallMediaEvent.connected) {
         _connected = true;
@@ -877,6 +976,11 @@ class CallController extends ChangeNotifier {
         error = null;
         micMuted = false;
         speakerOn = false;
+        // Answered with the camera on, the way a video call is offered; the
+        // button turns it off before answering.
+        video = sdpStartsWithCamera(signal.sdp!);
+        cameraOn = video;
+        _hadVideo = false;
         audioRoute = null;
         _selectedAudioRouteId = null;
         audioRoutes = const [];
@@ -954,7 +1058,18 @@ class CallController extends ChangeNotifier {
   Future<void> _acceptRemote(String sdp, int generation) async {
     _log('answer received: ${sdp.length} B, ${describeCandidates(sdp)}');
     try {
-      await _media?.accept(sdp);
+      final media = _media;
+      await media?.accept(sdp);
+      // Answered by a build without video: it would take the picture and
+      // never draw it, and every frame would still cross our relay twice.
+      if (media != null &&
+          _current(generation) &&
+          cameraOn &&
+          !media.videoPossible) {
+        _log('their build shows no picture: camera off');
+        cameraOn = await media.setCamera(false);
+        _changed();
+      }
     } catch (e) {
       _log('could not apply the answer: $e');
       if (_current(generation)) _fail('media');
@@ -964,6 +1079,8 @@ class CallController extends ChangeNotifier {
   Future<void> answer() async {
     if (phase != CallPhase.incoming || preparing) return;
     preparing = true;
+    // On the loudspeaker, as the caller's is — see [dial].
+    if (video && audioRoute == null) speakerOn = true;
     final generation = ++_generation;
     _changed();
     final watch = Stopwatch()..start();
@@ -978,7 +1095,9 @@ class CallController extends ChangeNotifier {
       if (!_current(generation)) return;
       final sdp = await media.answer(
           access.configuration(allowDirect: allowDirect()), _remoteOffer!);
-      _log('answer ready: ${sdp.length} B, ${describeCandidates(sdp)} '
+      if (video) cameraOn = media.cameraOpen;
+      _log('answer ready: ${sdp.length} B, ${describeCandidates(sdp)}'
+          '${video ? ', video, camera ${cameraOn ? 'on' : 'off'}' : ''} '
           '(${watch.elapsedMilliseconds} ms)');
       if (!_current(generation)) return;
       preparing = false;
@@ -1025,7 +1144,7 @@ class CallController extends ChangeNotifier {
     if (outcome.cause == CallEndCause.glareLost) error = null;
     final peer = peerId;
     try {
-      if (peer != null) record(peer, outcome);
+      if (peer != null) record(peer, outcome, video || _hadVideo);
     } catch (_) {
       DebugLog.instance.log('CALL', 'history write failed');
     }
@@ -1203,6 +1322,53 @@ class CallController extends ChangeNotifier {
     }
   }
 
+  /// The camera on or off, whenever [canVideo] — the way the microphone is:
+  /// before there is a camera the choice is kept and the call opens with it.
+  /// A camera that does not open leaves the button off rather than ending
+  /// anything.
+  ///
+  /// Turned on in a call held to the ear, the sound moves to the loudspeaker:
+  /// a picture is looked at, and a phone at arm's length on the earpiece is
+  /// a call nobody hears. A headset chosen by name stays where it is.
+  Future<void> toggleCamera() async {
+    if (!canVideo || _changingCamera) return;
+    final next = !cameraOn;
+    final media = _media;
+    _changingCamera = true;
+    final generation = _generation;
+    try {
+      if (next && !await camera()) {
+        _log('camera refused');
+        return;
+      }
+      if (!_current(generation)) return;
+      final on = media == null ? next : await media.setCamera(next);
+      if (!_current(generation)) return;
+      cameraOn = on;
+      _log('camera ${on ? 'on' : 'off'}'
+          '${next && !on ? ' (would not open)' : ''}');
+      _changed();
+      if (on && !speakerOn && audioRoute == null && !hasHeadsetRoute) {
+        _changingCamera = false;
+        await toggleSpeaker();
+      }
+    } catch (e) {
+      _log('camera switch failed: $e');
+    } finally {
+      _changingCamera = false;
+    }
+  }
+
+  Future<void> switchCamera() async {
+    final media = _media;
+    if (!active || !cameraOn || media == null) return;
+    try {
+      await media.switchCamera();
+    } catch (e) {
+      _log('camera flip failed: $e');
+    }
+  }
+
   @override
   void dispose() {
     // Flagged first, so the outcome below does not notify listeners that are
@@ -1250,6 +1416,17 @@ final callControllerProvider = ChangeNotifierProvider<CallController>((ref) {
     // a microphone it refuses fails capture — CallMicrophoneUnavailable.
     microphone: () async =>
         !PlatformInfo.isMobile || await requestCallMicrophonePermission(),
+    // Asked with a dialog only while the app is on screen: a call answered
+    // from the lock screen has nowhere to put one, and the button asks again
+    // once the app is open.
+    camera: () async =>
+        !PlatformInfo.isMobile ||
+        await requestCallCameraPermission(
+          ask: switch (WidgetsBinding.instance.lifecycleState) {
+            AppLifecycleState.resumed || AppLifecycleState.inactive => true,
+            _ => false,
+          },
+        ),
     createMedia: WebRtcCallMedia.new,
     prepareAudio: () =>
         ref.read(voicePlaybackControllerProvider.notifier).stop(),
@@ -1264,9 +1441,11 @@ final callControllerProvider = ChangeNotifierProvider<CallController>((ref) {
         final t = lookupAppLocalizations(ref.read(localeControllerProvider));
         return (
           title: t.previewCallIncoming,
+          videoTitle: t.callIncomingVideo,
           answer: t.callAnswer,
           decline: t.callDecline,
           ongoing: t.callVoice,
+          videoOngoing: t.callVideo,
           hangUp: t.callEnd,
           speaker: t.callSpeaker,
           microphone: t.callMicrophone,
@@ -1296,8 +1475,8 @@ final callControllerProvider = ChangeNotifierProvider<CallController>((ref) {
     acceptsCallFrom: (peer) => ref
         .read(conversationSettingsControllerProvider.notifier)
         .acceptsCallsFrom(peer),
-    record: (peer, outcome) {
-      final text = encodeCallRecord(outcome);
+    record: (peer, outcome, video) {
+      final text = encodeCallRecord(outcome, video: video);
       if (text.isEmpty) return;
       final id = outcome.callId
           .map((byte) => byte.toRadixString(16).padLeft(2, '0'))

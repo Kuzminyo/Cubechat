@@ -15,10 +15,24 @@ two disagree, the code wins. Example: the spec puts a native bridge in
 `CubechatCallPlugin.kt`, `IncomingCall.kt` and `IncomingCallActivity.kt` in
 `android/app/src/main/kotlin/com/cubechat/cubechat/`.
 
-**Voice only, one to one**, WebRTC via `flutter_webrtc`, over the internet. Video,
-groups and calls over the mesh are out of scope. The mesh is the planned second
+**Voice and video, one to one**, WebRTC via `flutter_webrtc`, over the internet.
+Groups and calls over the mesh are out of scope. The mesh is the planned second
 stage on the same signalling — which is why the invite carries its own
 `sentAtMs` instead of trusting a relay timestamp the mesh will not have.
+
+**Video (2026-11-02, `docs/superpowers/specs/2026-11-02-video-calls-design.md`)
+added no byte to the wire.** Every offer carries a `sendrecv` video line with no
+track on it, and the camera comes and goes by `replaceTrack` — so any call, voice
+included, turns video with no re-offer and no new `callSignal` kind. "Placed as a
+video call" is the SDP session name `s=cubechat-video` (`markStartsWithCamera` /
+`sdpStartsWithCamera`), which WebRTC carries and never reads. Whether the other
+side can show a picture is `sdpCarriesVideo` on its SDP: an old build offers no
+video line and answers ours `recvonly`, and then there is no camera button. Both
+sides `setStreams([audio stream])` so the remote track has a stream to render.
+"Their camera is off" is `framesDecoded` standing still for two seconds. A camera
+that will not open never ends a call. The encoder is capped at
+`WebRtcCallMedia.videoMaxBitrate` (1 Mbit/s) because every byte crosses our TURN
+twice — raising it is a server-bill decision.
 
 ## Where things are
 

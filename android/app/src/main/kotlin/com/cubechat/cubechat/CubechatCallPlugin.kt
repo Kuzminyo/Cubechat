@@ -103,6 +103,7 @@ class CubechatCallPlugin(
                                 ?: System.currentTimeMillis(),
                             title = call.argument<String>("title").orEmpty(),
                             hangUp = call.argument<String>("hangUp").orEmpty(),
+                            video = call.argument<Boolean>("video") ?: false,
                         ),
                     )
                     result.success(null)

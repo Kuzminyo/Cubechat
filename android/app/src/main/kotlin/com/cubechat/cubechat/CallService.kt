@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.os.Build
@@ -38,17 +39,34 @@ class CallService : Service() {
             return START_NOT_STICKY
         }
         val notification = build(this, state)
+        val microphone = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        } else {
+            0
+        }
+        // A video call keeps the camera too while the app is not on screen.
+        // Only with the permission already granted: asking for the camera type
+        // without it throws on Android 14, and that would cost the microphone.
+        val camera = if (
+            state.video &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+        } else {
+            0
+        }
         try {
-            ServiceCompat.startForeground(
-                this,
-                ID,
-                notification,
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-                } else {
-                    0
-                },
-            )
+            try {
+                ServiceCompat.startForeground(this, ID, notification, microphone or camera)
+            } catch (e: Exception) {
+                if (camera == 0) throw e
+                // The camera type refused on its own (started from the
+                // background, say): the call keeps its microphone.
+                android.util.Log.w("CallService", "camera type refused: ${e.message}")
+                ServiceCompat.startForeground(this, ID, notification, microphone)
+            }
         } catch (e: Exception) {
             // Refused - started from the background with no user action behind
             // it. The call still shows in the shade, without the service.
@@ -78,6 +96,7 @@ class CallService : Service() {
         val since: Long,
         val title: String,
         val hangUp: String,
+        val video: Boolean = false,
     )
 
     companion object {
@@ -98,6 +117,21 @@ class CallService : Service() {
                 try {
                     NotificationManagerCompat.from(context).notify(ID, build(context, state))
                 } catch (_: SecurityException) {
+                }
+                // A video call also asks again for the camera type, which
+                // onStartCommand adds: the permission is often granted only
+                // after the service first went up — the caller is asked while
+                // dialling. Quietly: a refusal here leaves the service as it
+                // was, microphone and all.
+                if (state.video) {
+                    try {
+                        ContextCompat.startForegroundService(
+                            context,
+                            Intent(context, CallService::class.java),
+                        )
+                    } catch (e: Exception) {
+                        android.util.Log.w("CallService", "camera restart refused: ${e.message}")
+                    }
                 }
                 return
             }

@@ -121,7 +121,8 @@ Ordinary encrypted content is not collected. Distinguish it from explicitly subm
 | `FOREGROUND_SERVICE_CONNECTED_DEVICE` | Holds the Bluetooth mesh open so messages arrive without the app on screen | `MeshForegroundService.kt` |
 | `BLUETOOTH_SCAN`, `BLUETOOTH_ADVERTISE`, `BLUETOOTH_CONNECT` | The transport itself | `README.md` §"Architecture" |
 | `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` | Aggressive OEMs kill the mesh service; this is offered, never forced | `README.md` §"Background delivery on aggressive OEMs" |
-| `CAMERA`, `RECORD_AUDIO`, `READ_MEDIA_IMAGES` | Only for content the user chooses to send | — |
+| `CAMERA`, `RECORD_AUDIO`, `READ_MEDIA_IMAGES` | Content the user chooses to send, and calls: the microphone in every call, the camera in a video call while its button is on | `call_media.dart` |
+| `FOREGROUND_SERVICE_CAMERA` | Added to the call's microphone service only during a video call, so the picture does not stop when the app leaves the screen | `CallService.kt` |
 | `REQUEST_INSTALL_PACKAGES` | Sideloaded builds only: Profile → "Install an update from a file" installs a cubechat APK the user picks, so lock-screen calls (`USE_FULL_SCREEN_INTENT`) survive the update. Refuses any other package; nothing is downloaded. **Play restricts this permission to app stores — remove it from a Play build.** | `SelfUpdater.kt` |
 
 **Location prominent disclosure.** Play requires an in-app disclosure before

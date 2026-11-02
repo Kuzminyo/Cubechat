@@ -6,6 +6,7 @@ import 'package:fake_async/fake_async.dart';
 import 'package:flutter/foundation.dart'
     show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart' show MediaStream;
 import 'package:cubechat/core/transport/call_signal.dart';
 import 'package:cubechat/core/transport/control_delivery.dart';
 import 'package:cubechat/features/call/data/call_controller.dart';
@@ -31,8 +32,12 @@ class FakeMedia implements CallMedia {
   @override
   Stream<CallMediaEvent> get events => controller.stream;
   @override
-  Future<String> offer(Map<String, dynamic> configuration) async {
+  Future<String> offer(
+    Map<String, dynamic> configuration, {
+    bool video = false,
+  }) async {
     config = configuration;
+    offeredVideo = video;
     final error = offerError;
     if (error != null) throw error;
     return 'offer';
@@ -63,6 +68,36 @@ class FakeMedia implements CallMedia {
   Future<List<CallAudioRoute>> routes() async => available;
   @override
   Future<void> selectRoute(CallAudioRoute route) async => selected = route;
+
+  /// Whether [offer] was asked for a picture.
+  bool? offeredVideo;
+
+  /// What the camera is asked, in order; [cameraOpens] false is a camera
+  /// that refuses.
+  final camera = <bool>[];
+  bool cameraOpens = true;
+
+  /// The other side can show a picture — false is a build without video.
+  @override
+  bool videoPossible = true;
+  bool _cameraOpen = false;
+  int flips = 0;
+  @override
+  Future<bool> setCamera(bool on) async {
+    camera.add(on);
+    return _cameraOpen = on && cameraOpens;
+  }
+
+  @override
+  Future<void> switchCamera() async => flips++;
+  @override
+  bool get cameraOpen => _cameraOpen;
+  @override
+  bool get frontCamera => flips.isEven;
+  @override
+  MediaStream? get localVideo => null;
+  @override
+  MediaStream? get remoteVideo => null;
   @override
   Future<void> close() async {
     closed = true;
@@ -95,8 +130,9 @@ class FakeSurface implements IncomingCallSurface {
     required String key,
     required String name,
     Uint8List? avatar,
+    bool video = false,
   }) async =>
-      log.add('screen show $name');
+      log.add('screen show $name${video ? ' video' : ''}');
   final ongoingLog = <String>[];
   @override
   Future<void> ongoing({
@@ -104,8 +140,9 @@ class FakeSurface implements IncomingCallSurface {
     required String name,
     Uint8List? avatar,
     required DateTime since,
+    bool video = false,
   }) async =>
-      ongoingLog.add('ongoing $name');
+      ongoingLog.add('ongoing $name${video ? ' video' : ''}');
   @override
   Future<void> answered(String key) async => log.add('screen answered');
   @override
@@ -131,7 +168,11 @@ void main() {
   late List<CallSignal> sent;
   late List<String> events;
   late List<CallOutcome> outcomes;
+
+  /// What each history line said about video, beside [outcomes].
+  var recordedVideo = <bool>[];
   Future<bool> Function() permission = () async => true;
+  Future<bool> Function() cameraPermission = () async => true;
   late Future<TurnAccess> Function() turn;
   late bool direct;
   late bool disposedByTest;
@@ -166,8 +207,12 @@ void main() {
           events.add('microphone');
           return permission();
         },
+        camera: () => cameraPermission(),
         createMedia: () => media,
-        record: (peer, outcome) => outcomes.add(outcome),
+        record: (peer, outcome, video) {
+          outcomes.add(outcome);
+          recordedVideo.add(video);
+        },
         peerName: (peer) => peer,
         allowed: (_) => true,
         acceptsCallFrom: (peer) => !refusedCallers.contains(peer),
@@ -185,8 +230,10 @@ void main() {
     own = [];
     events = [];
     outcomes = [];
+    recordedVideo = [];
     deliveries = {};
     permission = () async => true;
+    cameraPermission = () async => true;
     direct = false;
     disposedByTest = false;
     onScreen = true;
@@ -1278,6 +1325,196 @@ void main() {
         async.flushMicrotasks();
         expect(sent.map((s) => s.kind), contains(CallSignalKind.invite));
       });
+    });
+  });
+
+  group('video', () {
+    // What every call from a build with video offers: a picture line, with
+    // no camera on it yet.
+    const voiceOffer = 'v=0\r\no=- 1 2 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n'
+        'm=audio 9 UDP/TLS/RTP/SAVPF 111\r\na=sendrecv\r\n'
+        'm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendrecv\r\n';
+    final videoOffer = markStartsWithCamera(voiceOffer);
+
+    test('a picture line both ways carries video; refused or one-way does not',
+        () {
+      expect(sdpCarriesVideo(voiceOffer), isTrue);
+      expect(
+        sdpCarriesVideo('v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n'),
+        isFalse,
+        reason: 'an old build offers no picture line at all',
+      );
+      expect(
+        sdpCarriesVideo('m=audio 9 RTP/SAVPF 111\r\nm=video 0 RTP/SAVPF 96\r\n'),
+        isFalse,
+        reason: 'port 0 is a refused line',
+      );
+      expect(
+        sdpCarriesVideo(
+          'm=video 9 RTP/SAVPF 96\r\na=recvonly\r\nm=audio 9 RTP/SAVPF 111\r\n'
+          'a=sendrecv\r\n',
+        ),
+        isFalse,
+        reason: 'an old build answers our picture recvonly',
+      );
+    });
+
+    test('the video mark changes only the session name', () {
+      expect(sdpStartsWithCamera(voiceOffer), isFalse);
+      expect(sdpStartsWithCamera(videoOffer), isTrue);
+      expect(videoOffer, contains('\r\ns=cubechat-video\r\nt=0 0\r\n'));
+      expect(
+        videoOffer.replaceFirst('s=cubechat-video', 's=-'),
+        voiceOffer,
+      );
+    });
+
+    test('a video call offers a picture, opens the camera, starts loud',
+        () async {
+      await call.dial('peer', video: true);
+      expect(media.offeredVideo, isTrue);
+      expect(media.camera, [true]);
+      expect(call.video, isTrue);
+      expect(call.cameraOn, isTrue);
+      expect(call.speakerOn, isTrue);
+      await Future<void>.delayed(Duration.zero);
+      expect(surface.ongoingLog.last, 'ongoing peer video');
+    });
+
+    test('a voice call stays a voice call', () async {
+      await call.dial('peer');
+      expect(media.offeredVideo, isFalse);
+      expect(media.camera, isEmpty);
+      expect(call.video, isFalse);
+      expect(call.speakerOn, isFalse);
+    });
+
+    test('a camera that will not open leaves the call going without it',
+        () async {
+      media.cameraOpens = false;
+      await call.dial('peer', video: true);
+      expect(call.cameraOn, isFalse);
+      expect(sent.map((s) => s.kind), contains(CallSignalKind.invite));
+    });
+
+    test('a refused camera permission takes the picture, not the call',
+        () async {
+      cameraPermission = () async => false;
+      await call.dial('peer', video: true);
+      expect(call.cameraOn, isFalse);
+      expect(media.camera, [false]);
+      expect(sent.map((s) => s.kind), contains(CallSignalKind.invite));
+    });
+
+    test('an offer with a picture rings as a video call', () async {
+      onScreen = false;
+      receive(
+        CallSignal.invite(
+          callId: id(7),
+          sdp: videoOffer,
+          sentAtMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(call.video, isTrue);
+      expect(call.cameraOn, isTrue);
+      expect(events, contains('screen show peer video'));
+      await call.answer();
+      expect(call.speakerOn, isTrue);
+      expect(media.camera, [true]);
+    });
+
+    test('the camera can be turned off before answering', () async {
+      receive(
+        CallSignal.invite(
+          callId: id(8),
+          sdp: videoOffer,
+          sentAtMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+      await call.toggleCamera();
+      expect(call.cameraOn, isFalse);
+      await call.answer();
+      expect(media.camera, [false]);
+    });
+
+    test('the camera toggles and flips during a video call', () async {
+      await call.dial('peer', video: true);
+      await call.toggleCamera();
+      expect(call.cameraOn, isFalse);
+      await call.toggleCamera();
+      expect(call.cameraOn, isTrue);
+      expect(media.camera, [true, false, true]);
+      await call.switchCamera();
+      expect(media.flips, 1);
+      expect(call.frontCamera, isFalse);
+    });
+
+    test('a voice call has no camera button while it rings', () async {
+      await call.dial('peer');
+      expect(call.canVideo, isFalse);
+      await call.toggleCamera();
+      expect(call.cameraOn, isFalse);
+      expect(media.camera, isEmpty);
+    });
+
+    test('an offer without the mark rings as a voice call', () async {
+      onScreen = false;
+      receive(
+        CallSignal.invite(
+          callId: id(9),
+          sdp: voiceOffer,
+          sentAtMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(call.video, isFalse);
+      expect(call.cameraOn, isFalse);
+      expect(events, contains('screen show peer'));
+    });
+
+    test('a voice call turns into a video one, on the loudspeaker', () async {
+      await call.dial('peer');
+      receive(CallSignal.accept(callId: dialledId(), sdp: 'answer'));
+      await Future<void>.delayed(Duration.zero);
+      expect(call.phase, CallPhase.talking);
+      expect(call.canVideo, isTrue);
+      expect(call.speakerOn, isFalse);
+      await call.toggleCamera();
+      expect(call.cameraOn, isTrue);
+      expect(media.camera, [true]);
+      expect(call.speakerOn, isTrue, reason: 'a picture is held away');
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        surface.ongoingLog.last,
+        'ongoing peer video',
+        reason: 'Android needs the camera service type now',
+      );
+      call.hangUp();
+      await Future<void>.delayed(Duration.zero);
+      expect(recordedVideo, [true]);
+    });
+
+    test('a voice call that stayed voice is recorded as voice', () async {
+      await call.dial('peer');
+      receive(CallSignal.accept(callId: dialledId(), sdp: 'answer'));
+      await Future<void>.delayed(Duration.zero);
+      call.hangUp();
+      await Future<void>.delayed(Duration.zero);
+      expect(recordedVideo, [false]);
+    });
+
+    test('somebody on a build without video gets no camera, and no picture',
+        () async {
+      media.videoPossible = false;
+      await call.dial('peer', video: true);
+      expect(call.cameraOn, isTrue, reason: 'we see ourselves while it rings');
+      receive(CallSignal.accept(callId: dialledId(), sdp: 'answer'));
+      await Future<void>.delayed(Duration.zero);
+      expect(call.cameraOn, isFalse,
+          reason: 'they would take every frame and never draw one');
+      expect(media.camera, [true, false]);
+      expect(call.canVideo, isFalse);
     });
   });
 }

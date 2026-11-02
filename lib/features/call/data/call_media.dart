@@ -7,7 +7,44 @@ import '../../../core/util/debug_log.dart';
 import 'call_candidate_wait.dart';
 import '../domain/call_network_quality.dart';
 
-enum CallMediaEvent { connected, disconnected, failed }
+/// `video`: the pictures changed — a camera opened or closed, flipped, or the
+/// other side's picture started or stopped arriving. Nothing about the call's
+/// life; the screen redraws.
+enum CallMediaEvent { connected, disconnected, failed, video }
+
+/// Whether an SDP carries a picture both ways: an `m=video` line whose port
+/// is not 0 (0 is a refused line) and that does not limit itself to one
+/// direction.
+///
+/// Every call from a build with video has one, voice calls included, with no
+/// camera on it yet — so a camera can join at any moment of any call without
+/// a second offer, which would need a new kind of call signal. An old build
+/// has none in its offer, and answers ours `recvonly`: it would receive a
+/// picture and never draw it, so neither side shows a camera button then.
+/// See `docs/superpowers/specs/2026-11-02-video-calls-design.md`.
+bool sdpCarriesVideo(String sdp) {
+  final start = RegExp(r'^m=video (\d+)', multiLine: true).firstMatch(sdp);
+  if (start == null || start.group(1) == '0') return false;
+  final next = sdp.indexOf('\nm=', start.end);
+  final section = sdp.substring(start.end, next < 0 ? sdp.length : next);
+  return !RegExp(r'^a=(recvonly|sendonly|inactive)\b', multiLine: true)
+      .hasMatch(section);
+}
+
+/// The session name (`s=`) of an offer placed as a video call. WebRTC carries
+/// the line and never reads it — `-` is what it writes itself — and an old
+/// build ignores it the same way, so it costs no byte of protocol. It is how
+/// the phone being called knows to say "video call" and answer with its
+/// camera on; a voice call has the same picture line, without the name.
+const String _videoSessionName = 'cubechat-video';
+
+bool sdpStartsWithCamera(String sdp) =>
+    RegExp('^s=$_videoSessionName\\r?\$', multiLine: true).hasMatch(sdp);
+
+String markStartsWithCamera(String sdp) => sdp.replaceFirst(
+      RegExp(r'^s=[^\r\n]*', multiLine: true),
+      's=$_videoSessionName',
+    );
 
 /// The system would not give the call a microphone. Thrown by [CallMedia]
 /// while it prepares, so the call ends as `microphone` and says so.
@@ -39,8 +76,37 @@ class CallAudioRoute {
 
 abstract interface class CallMedia {
   Stream<CallMediaEvent> get events;
-  Future<String> offer(Map<String, dynamic> configuration);
+
+  /// Every offer has a picture line; [video] marks it as placed as a video
+  /// call ([markStartsWithCamera]). The answer needs no such flag: what it
+  /// can do is read from the offer it answers.
+  Future<String> offer(
+    Map<String, dynamic> configuration, {
+    bool video = false,
+  });
   Future<String> answer(Map<String, dynamic> configuration, String remoteSdp);
+
+  /// Whether both sides can show a picture: known once there is an answer.
+  bool get videoPossible;
+
+  /// The camera on or off, at any point in a call. Before the connection
+  /// exists the choice is kept and applied as it opens. Returns whether it is
+  /// on now: a camera that will not open leaves the call going without it.
+  Future<bool> setCamera(bool on);
+
+  /// Front to back and back again.
+  Future<void> switchCamera();
+
+  /// Whether a camera is actually capturing — not merely wanted.
+  bool get cameraOpen;
+  bool get frontCamera;
+
+  /// Our own camera, for the preview. Null while it is off.
+  MediaStream? get localVideo;
+
+  /// Their picture, while frames are arriving. Null when their camera is off,
+  /// their app is in the background, or they are on a build without video.
+  MediaStream? get remoteVideo;
   Future<void> accept(String remoteSdp);
   Future<void> setMuted(bool muted);
   Future<void> setSpeaker(bool speaker);
@@ -74,16 +140,74 @@ class WebRtcCallMedia implements CallMedia {
   final _gathered = Completer<void>();
   final _relayReady = Completer<void>();
 
+  /// What a video call's encoder may spend, in bits per second. Every byte of
+  /// it crosses our TURN server on the way in and again on the way out: at
+  /// 1 Mbit/s an hour of talking is about 450 MB each way through the
+  /// droplet. WebRTC adapts below this on a poor link; the cap is what keeps
+  /// a good one from spending two or three times as much on a picture a
+  /// phone screen does not show the difference of. Raising it is a decision
+  /// about the server bill, not about the code.
+  static const int videoMaxBitrate = 1000000;
+  static const int videoMaxFramerate = 30;
+
+  /// Placed as a video call — the audio mode, nothing else.
+  bool _video = false;
+
+  /// The other side's SDP carries a picture both ways ([sdpCarriesVideo]).
+  bool _peerVideo = false;
+  bool _cameraWanted = false;
+  bool _front = true;
+  bool _speakerWanted = false;
+  MediaStream? _camera;
+  MediaStream? _remote;
+  RTCRtpTransceiver? _videoTransceiver;
+  Future<bool> _cameraWork = Future.value(false);
+  Timer? _videoTimer;
+  Future<void>? _videoWork;
+  num? _framesSeen;
+  int _stillPolls = 0;
+  bool _remoteLive = false;
+  bool _videoCapped = false;
+  bool _videoErrorLogged = false;
+
   @override
   Stream<CallMediaEvent> get events => _events.stream;
 
   @override
-  Future<String> offer(Map<String, dynamic> configuration) =>
-      _opening = _open(configuration, null);
+  Future<String> offer(
+    Map<String, dynamic> configuration, {
+    bool video = false,
+  }) {
+    _video = video;
+    return _opening = _open(configuration, null)
+        .then((sdp) => video ? markStartsWithCamera(sdp) : sdp);
+  }
 
   @override
-  Future<String> answer(Map<String, dynamic> configuration, String remoteSdp) =>
-      _opening = _open(configuration, remoteSdp);
+  Future<String> answer(Map<String, dynamic> configuration, String remoteSdp) {
+    _video = sdpStartsWithCamera(remoteSdp);
+    _peerVideo = sdpCarriesVideo(remoteSdp);
+    return _opening = _open(configuration, remoteSdp);
+  }
+
+  @override
+  bool get videoPossible => _videoTransceiver != null && _peerVideo;
+
+  @override
+  bool get cameraOpen => _camera != null;
+
+  @override
+  bool get frontCamera => _front;
+
+  @override
+  MediaStream? get localVideo => _camera;
+
+  @override
+  MediaStream? get remoteVideo => _remoteLive ? _remote : null;
+
+  void _emit(CallMediaEvent event) {
+    if (!_closed) _events.add(event);
+  }
 
   void _checkOpen() {
     if (_closed) throw StateError('call closed');
@@ -131,6 +255,7 @@ class WebRtcCallMedia implements CallMedia {
       switch (state) {
         case RTCPeerConnectionState.RTCPeerConnectionStateConnected:
           _startQualityMonitor();
+          _startVideoMonitor();
           _events.add(CallMediaEvent.connected);
         case RTCPeerConnectionState.RTCPeerConnectionStateDisconnected:
           _events.add(CallMediaEvent.disconnected);
@@ -139,6 +264,18 @@ class WebRtcCallMedia implements CallMedia {
         default:
           break;
       }
+    };
+    // Their picture. Drawn from its stream, which both sides make sure it has
+    // (see `setStreams` below): the renderer draws a stream, not a track.
+    peer.onTrack = (event) {
+      if (_closed || event.track.kind != 'video') return;
+      if (event.streams.isEmpty) {
+        _log('their picture arrived without a stream: not drawn');
+        return;
+      }
+      _remote = event.streams.first;
+      _log('their picture track arrived (${watch.elapsedMilliseconds} ms)');
+      _emit(CallMediaEvent.video);
     };
     // Configure communication before capture activates the native audio
     // session. Bluetooth must open as a bidirectional voice route.
@@ -180,13 +317,56 @@ class WebRtcCallMedia implements CallMedia {
         await Helper.setMicrophoneMute(true, track);
       }
     }
-    await setSpeaker(false);
+    // The route asked for before the microphone opened — off for a voice
+    // call, on for a video one — rather than always off, which undid a
+    // speaker chosen while the call was still being placed.
+    await setSpeaker(_speakerWanted);
     for (final track in local.getAudioTracks()) {
       await peer.addTrack(track, local);
       _checkOpen();
     }
+    // The picture is negotiated once, `sendrecv` from the start — in every
+    // call, voice ones too — and the camera then comes and goes by swapping
+    // the sender's track. Turning it on, in a call placed as voice or as
+    // video, never needs a second offer, which would need a new kind of call
+    // signal and teach every installed build about it. A line with no track
+    // on it sends nothing.
+    if (remote == null) {
+      _videoTransceiver = await peer.addTransceiver(
+        kind: RTCRtpMediaType.RTCRtpMediaTypeVideo,
+        init: RTCRtpTransceiverInit(
+          direction: TransceiverDirection.SendRecv,
+          streams: [local],
+        ),
+      );
+      _checkOpen();
+    }
     if (remote != null)
       await peer.setRemoteDescription(RTCSessionDescription(remote, 'offer'));
+    _checkOpen();
+    if (remote != null && _peerVideo) {
+      // The offer's picture made a transceiver of its own here, `recvonly`
+      // and with no stream. Made to send as well, and given the audio's
+      // stream, so the caller's renderer has something to draw.
+      final transceivers = await peer.getTransceivers();
+      _checkOpen();
+      final video = transceivers
+          .where((t) => t.receiver.track?.kind == 'video')
+          .firstOrNull;
+      if (video == null) {
+        _log('the offer has a picture but no video transceiver came of it');
+      } else {
+        await video.setDirection(TransceiverDirection.SendRecv);
+        await video.sender.setStreams([local]);
+        _videoTransceiver = video;
+      }
+      _checkOpen();
+    }
+    // In the same queue as the camera button, which can be pressed from the
+    // moment the transceiver exists: two opens at once would capture twice.
+    await (_cameraWork = _cameraWork.then(
+      (_) => _cameraWanted ? _openCamera() : Future.value(false),
+    ));
     _checkOpen();
     final description =
         remote == null ? await peer.createOffer() : await peer.createAnswer();
@@ -225,6 +405,9 @@ class WebRtcCallMedia implements CallMedia {
     _checkOpen();
     await _peer!
         .setRemoteDescription(RTCSessionDescription(remoteSdp, 'answer'));
+    _peerVideo = sdpCarriesVideo(remoteSdp);
+    _log('answer applied, ${_peerVideo ? 'picture both ways' : 'voice only'}');
+    _emit(CallMediaEvent.video);
   }
 
   @override
@@ -249,6 +432,7 @@ class WebRtcCallMedia implements CallMedia {
   @override
   Future<void> setSpeaker(bool speaker) async {
     _checkOpen();
+    _speakerWanted = speaker;
     if (Platform.isIOS) {
       // The plugin's setSpeakerphoneOn helper re-enables A2DP. Keep the
       // bidirectional HFP voice category and change only the output override.
@@ -260,10 +444,13 @@ class WebRtcCallMedia implements CallMedia {
     }
   }
 
+  // `.videoChat` for a picture: the same echo cancelling, tuned for a phone
+  // held at arm's length on the loudspeaker rather than at an ear.
   Future<void> _configureAppleAudio() =>
       Helper.setAppleAudioConfiguration(AppleAudioConfiguration(
         appleAudioCategory: AppleAudioCategory.playAndRecord,
-        appleAudioMode: AppleAudioMode.voiceChat,
+        appleAudioMode:
+            _video ? AppleAudioMode.videoChat : AppleAudioMode.voiceChat,
         appleAudioCategoryOptions: {AppleAudioCategoryOption.allowBluetooth},
       ));
 
@@ -354,6 +541,194 @@ class WebRtcCallMedia implements CallMedia {
   }
 
   @override
+  Future<bool> setCamera(bool on) {
+    _cameraWanted = on;
+    // Before there is a transceiver to put it on: kept, and [_open] applies
+    // it. Answered with the wish, which the controller checks against
+    // [cameraOpen] once the call is up.
+    if (_videoTransceiver == null || _closed) {
+      return Future.value(on && !_closed);
+    }
+    return _cameraWork = _cameraWork.then((_) async {
+      if (on) return _openCamera();
+      await _closeCamera();
+      return false;
+    });
+  }
+
+  @override
+  Future<void> switchCamera() => _cameraWork = _cameraWork.then((_) async {
+        final track = _camera?.getVideoTracks().firstOrNull;
+        if (_closed) return false;
+        if (track == null) {
+          // Off: the next time it opens, it opens on the other side.
+          _front = !_front;
+          _emit(CallMediaEvent.video);
+          return false;
+        }
+        try {
+          await Helper.switchCamera(track);
+          _front = !_front;
+          _log('camera flipped to the ${_front ? 'front' : 'back'}');
+          _emit(CallMediaEvent.video);
+        } catch (e) {
+          _log('camera would not flip: $e');
+        }
+        return true;
+      });
+
+  /// Capture the camera and put it on the picture's sender. A camera that
+  /// will not open — refused, busy with another app, none on this computer —
+  /// is logged and the call goes on without a picture from this side: a
+  /// camera is never a reason to end a call.
+  Future<bool> _openCamera() async {
+    final transceiver = _videoTransceiver;
+    if (transceiver == null || _closed) return false;
+    if (_camera != null) return true;
+    MediaStream? camera;
+    try {
+      camera = await navigator.mediaDevices.getUserMedia({
+        'audio': false,
+        'video': {
+          'facingMode': _front ? 'user' : 'environment',
+          // 720p at 30: what a phone screen can show of somebody's face. The
+          // encoder is capped separately — [videoMaxBitrate].
+          'mandatory': {
+            'minWidth': '1280',
+            'minHeight': '720',
+            'minFrameRate': '$videoMaxFramerate',
+          },
+          'optional': <Object>[],
+        },
+      });
+      final track = camera.getVideoTracks().firstOrNull;
+      if (track == null) throw StateError('no video track');
+      if (_closed) throw StateError('call closed');
+      await transceiver.sender.replaceTrack(track);
+      _camera = camera;
+      _log('camera on (${_front ? 'front' : 'back'})');
+      _emit(CallMediaEvent.video);
+      return true;
+    } catch (e) {
+      _log('camera would not open: $e');
+      await _dispose(camera);
+      return false;
+    }
+  }
+
+  Future<void> _closeCamera() async {
+    final camera = _camera;
+    _camera = null;
+    if (camera == null) return;
+    try {
+      await _videoTransceiver?.sender.replaceTrack(null);
+    } catch (e) {
+      _log('camera track would not come off the sender: $e');
+    }
+    await _dispose(camera);
+    _log('camera off');
+    _emit(CallMediaEvent.video);
+  }
+
+  static Future<void> _dispose(MediaStream? stream) async {
+    if (stream == null) return;
+    try {
+      for (final track in stream.getTracks()) {
+        await track.stop();
+      }
+      await stream.dispose();
+    } catch (_) {/* Already gone with the call. */}
+  }
+
+  /// Whether their picture is arriving, asked of the decoder once a second.
+  ///
+  /// There is no message for "my camera is off" — see the design note — and
+  /// there need not be: a sender whose track is gone sends nothing, and a
+  /// count of decoded frames that stops moving says so. The same count also
+  /// catches an iPhone whose app went to the background, where iOS stops the
+  /// camera, and a link that froze. Two still seconds before it counts as
+  /// stopped, so one late packet does not blink their face away.
+  void _startVideoMonitor() {
+    if (_videoTransceiver == null || _videoTimer != null || _closed) return;
+    void poll() {
+      if (_closed || _videoWork != null) return;
+      _videoWork = _sampleVideo().whenComplete(() => _videoWork = null);
+    }
+
+    _videoTimer = Timer.periodic(const Duration(seconds: 1), (_) => poll());
+    poll();
+  }
+
+  Future<void> _sampleVideo() async {
+    final peer = _peer;
+    // A call with somebody on a build without video asks nothing, every
+    // second, for a picture that cannot come.
+    if (_closed || peer == null || !videoPossible) return;
+    try {
+      final reports = await peer.getStats().timeout(const Duration(seconds: 2));
+      if (_closed) return;
+      num? frames;
+      for (final report in reports) {
+        final values = report.values;
+        if (report.type != 'inbound-rtp' ||
+            (values['kind'] ?? values['mediaType']) != 'video') {
+          continue;
+        }
+        final decoded = values['framesDecoded'];
+        if (decoded is num) frames = (frames ?? 0) + decoded;
+      }
+      final moved = frames != null && frames > (_framesSeen ?? 0);
+      if (frames != null) _framesSeen = frames;
+      if (moved) {
+        _stillPolls = 0;
+      } else {
+        _stillPolls++;
+      }
+      final live = moved || (_remoteLive && _stillPolls < 2);
+      if (live != _remoteLive) {
+        _remoteLive = live;
+        _log('their picture ${live ? 'started' : 'stopped'}');
+        _emit(CallMediaEvent.video);
+      }
+      if (!_videoCapped) await _capVideo(peer);
+      _videoErrorLogged = false;
+    } catch (e) {
+      if (!_closed && !_videoErrorLogged) {
+        _log('picture check unavailable: $e');
+        _videoErrorLogged = true;
+      }
+    }
+  }
+
+  /// [videoMaxBitrate] onto the picture's sender, once its encodings exist —
+  /// they do not before negotiation, so this is retried from the once-a-second
+  /// check until it takes.
+  Future<void> _capVideo(RTCPeerConnection peer) async {
+    final wanted = _videoTransceiver?.sender.senderId;
+    if (wanted == null) return;
+    final senders = await peer.getSenders().timeout(const Duration(seconds: 2));
+    if (_closed) return;
+    for (final sender in senders) {
+      if (sender.senderId != wanted) continue;
+      final parameters = sender.parameters;
+      final encodings = parameters.encodings;
+      if (encodings == null || encodings.isEmpty) return;
+      for (final encoding in encodings) {
+        encoding.maxBitrate = videoMaxBitrate;
+        encoding.maxFramerate = videoMaxFramerate;
+      }
+      if (await sender
+          .setParameters(parameters)
+          .timeout(const Duration(seconds: 2))) {
+        _videoCapped = true;
+        _log('picture capped at $videoMaxBitrate bps, '
+            '$videoMaxFramerate fps');
+      }
+      return;
+    }
+  }
+
+  @override
   Future<List<CallAudioRoute>> routes() async {
     try {
       final devices = await navigator.mediaDevices.enumerateDevices();
@@ -438,6 +813,8 @@ class WebRtcCallMedia implements CallMedia {
     _closed = true;
     _qualityTimer?.cancel();
     _qualityTimer = null;
+    _videoTimer?.cancel();
+    _videoTimer = null;
     if (!_gathered.isCompleted) _gathered.complete();
     // Native camera/audio creation cannot be disposed underneath its pending
     // future. The controller prevents a new call until this teardown ends.
@@ -446,10 +823,17 @@ class WebRtcCallMedia implements CallMedia {
     } catch (_) {/* Cancelled setup still needs cleanup. */}
     try {
       await _qualityWork;
+      await _videoWork;
+      try {
+        await _cameraWork;
+      } catch (_) {/* A camera that failed still needs closing. */}
       await _peer?.close();
       await _peer?.dispose();
     } finally {
       try {
+        final camera = _camera;
+        _camera = null;
+        await _dispose(camera);
         for (final track in _local?.getTracks() ?? <MediaStreamTrack>[]) {
           await track.stop();
         }
@@ -457,6 +841,8 @@ class WebRtcCallMedia implements CallMedia {
       } finally {
         _peer = null;
         _local = null;
+        _remote = null;
+        _videoTransceiver = null;
         await _events.close();
       }
     }

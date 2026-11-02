@@ -26,9 +26,13 @@ class RecentCall {
     required this.at,
     required this.count,
     required this.talkedFor,
+    this.video = false,
   });
 
   final String peerId;
+
+  /// A video call — and calling back from the line calls back with video.
+  final bool video;
   final RecentCallKind kind;
 
   /// When the newest call of the run happened.
@@ -80,6 +84,7 @@ List<RecentCall> recentCalls(
     if (previous != null &&
         previous.peerId == call.peerId &&
         previous.kind == kind &&
+        previous.video == call.record.video &&
         _sameDay(previous.at, call.at)) {
       calls[calls.length - 1] = RecentCall(
         peerId: previous.peerId,
@@ -87,6 +92,7 @@ List<RecentCall> recentCalls(
         at: previous.at,
         count: previous.count + 1,
         talkedFor: previous.talkedFor,
+        video: previous.video,
       );
       continue;
     }
@@ -98,6 +104,7 @@ List<RecentCall> recentCalls(
         at: call.at,
         count: 1,
         talkedFor: call.record.talkedFor,
+        video: call.record.video,
       ),
     );
   }

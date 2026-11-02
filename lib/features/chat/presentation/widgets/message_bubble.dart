@@ -2313,6 +2313,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                           : () => unawaited(
                                 ref.read(callControllerProvider).dial(
                                       widget.chatId,
+                                      video: call.video,
                                     ),
                               ),
                     )
@@ -2941,8 +2942,9 @@ class _CallRecordBubble extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
+                // The way it will call back: a video call again with video.
                 Icon(
-                  Icons.call_rounded,
+                  call.video ? Icons.videocam_rounded : Icons.call_rounded,
                   size: 22,
                   color: onCall == null
                       ? AppColors.textOnGlassFaint

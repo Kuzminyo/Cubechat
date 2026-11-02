@@ -17,16 +17,22 @@ class CallRecord {
     required this.outgoing,
     required this.answered,
     required this.talkedFor,
+    this.video = false,
   });
 
   final bool outgoing;
   final bool answered;
   final Duration talkedFor;
+
+  /// Placed as a video call, or a camera was on in it. Calling back from the
+  /// line calls back the same way.
+  final bool video;
 }
 
 /// The stored text for [outcome], or an empty string when the call should
-/// leave no trace.
-String encodeCallRecord(CallOutcome outcome) {
+/// leave no trace. [video] adds `v`, which a build from before video reads
+/// past: an unknown key in the map, the same record as a voice call.
+String encodeCallRecord(CallOutcome outcome, {bool video = false}) {
   // A call given up because both people dialled at once is immediately
   // replaced by the call that won. Recording both leaves two lines for one
   // conversation, which reads as a bug to the person scrolling.
@@ -38,6 +44,7 @@ String encodeCallRecord(CallOutcome outcome) {
     'o': outcome.outgoing,
     'a': answered,
     's': answered ? outcome.talkedFor.inSeconds : 0,
+    if (video) 'v': true,
   };
   return '$callMarker${base64Url.encode(utf8.encode(jsonEncode(payload)))}';
 }
@@ -57,6 +64,7 @@ CallRecord? tryParseCallRecord(String text) {
       outgoing: map['o'] == true,
       answered: answered,
       talkedFor: Duration(seconds: answered ? (map['s'] as int? ?? 0) : 0),
+      video: map['v'] == true,
     );
   } catch (_) {
     // A record we cannot read is not a call worth guessing at.

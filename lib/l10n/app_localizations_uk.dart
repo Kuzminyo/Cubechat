@@ -12,6 +12,21 @@ class AppLocalizationsUk extends AppLocalizations {
   String get callVoice => 'Голосовий дзвінок';
 
   @override
+  String get callVideo => 'Відеодзвінок';
+
+  @override
+  String get callIncomingVideo => 'Вхідний відеодзвінок';
+
+  @override
+  String get callCamera => 'Камера';
+
+  @override
+  String get callFlipCamera => 'Повернути';
+
+  @override
+  String get contactProfileVideo => 'Відео';
+
+  @override
   String get callPreparing => 'Підготовка мікрофона…';
 
   @override

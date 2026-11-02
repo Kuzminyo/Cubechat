@@ -63,7 +63,11 @@ final class CubechatCallKit: NSObject {
 
   private override init() {
     let configuration = CXProviderConfiguration()
-    configuration.supportsVideo = false
+    // A video call says so on CallKit's screen and is answered on the
+    // loudspeaker. Which call is one is only known once Dart has read the
+    // invite: a VoIP push cannot say (it carries nothing readable), so such a
+    // call rings as voice and becomes video when [show] names it.
+    configuration.supportsVideo = true
     configuration.maximumCallGroups = 1
     configuration.maximumCallsPerCallGroup = 1
     configuration.supportedHandleTypes = [.generic]
@@ -103,7 +107,12 @@ final class CubechatCallKit: NSObject {
           result(false)
           return
         }
-        self.show(key: key, name: args?["name"] as? String ?? "", result: result)
+        self.show(
+          key: key,
+          name: args?["name"] as? String ?? "",
+          video: args?["video"] as? Bool ?? false,
+          result: result
+        )
       case "answered":
         if let key = args?["key"] as? String { self.answeredInApp(key: key) }
         result(nil)
@@ -132,8 +141,8 @@ final class CubechatCallKit: NSObject {
 
   // MARK: - Dart asks
 
-  private func show(key: String, name: String, result: @escaping FlutterResult) {
-    let update = callUpdate(name: name)
+  private func show(key: String, name: String, video: Bool, result: @escaping FlutterResult) {
+    let update = callUpdate(name: name, video: video)
     if let uuid = uuidByKey[key] {
       provider.reportCall(with: uuid, updated: update)
       result(true)
@@ -204,12 +213,12 @@ final class CubechatCallKit: NSObject {
 
   // MARK: - Bookkeeping
 
-  private func callUpdate(name: String) -> CXCallUpdate {
+  private func callUpdate(name: String, video: Bool = false) -> CXCallUpdate {
     let update = CXCallUpdate()
     let shown = name.isEmpty ? "Cubechat" : name
     update.remoteHandle = CXHandle(type: .generic, value: shown)
     update.localizedCallerName = shown
-    update.hasVideo = false
+    update.hasVideo = video
     update.supportsHolding = false
     update.supportsGrouping = false
     update.supportsUngrouping = false

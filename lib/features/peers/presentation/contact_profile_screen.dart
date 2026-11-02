@@ -871,6 +871,15 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                               : () => unawaited(ref
                                   .read(callControllerProvider)
                                   .dial(peerPubkeyHex)),
+                          onVideo: peer == null ||
+                                  peer.isBlocked ||
+                                  !ref.read(platformCapabilitiesProvider).calls
+                              ? null
+                              : () => unawaited(
+                                    ref
+                                        .read(callControllerProvider)
+                                        .dial(peerPubkeyHex, video: true),
+                                  ),
                           // The walkie-talkie tuned to this person, under the
                           // same rule as the chat header it moved from: not
                           // for somebody blocked.
@@ -884,6 +893,7 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                           onBlock: () => _setBlocked(ref, peer),
                           chatLabel: t.contactProfileChat,
                           callLabel: t.contactProfileCall,
+                          videoLabel: t.contactProfileVideo,
                           radioLabel: t.contactProfileRadio,
                           muteLabel:
                               peer?.isMuted == true ? t.peerUnmute : t.peerMute,
@@ -1146,11 +1156,13 @@ class _ProfileHero extends ConsumerWidget {
     required this.onMore,
     required this.onChat,
     required this.onCall,
+    required this.onVideo,
     required this.onRadio,
     required this.onMute,
     required this.onBlock,
     required this.chatLabel,
     required this.callLabel,
+    required this.videoLabel,
     required this.radioLabel,
     required this.muteLabel,
     required this.blockLabel,
@@ -1197,11 +1209,15 @@ class _ProfileHero extends ConsumerWidget {
   /// hold a key for — and then the button is not drawn at all. A button that
   /// does nothing when pressed is worse than one that is not there.
   final VoidCallback? onCall;
+
+  /// A video call — null under the same rule as [onCall].
+  final VoidCallback? onVideo;
   final VoidCallback? onRadio;
   final VoidCallback onMute;
   final VoidCallback onBlock;
   final String chatLabel;
   final String callLabel;
+  final String videoLabel;
   final String radioLabel;
   final String muteLabel;
   final String blockLabel;
@@ -1471,6 +1487,15 @@ class _ProfileHero extends ConsumerWidget {
                     icon: Icons.call_rounded,
                     label: callLabel,
                     onTap: onCall!,
+                  ),
+                // A separate button rather than a choice after pressing Call:
+                // a voice call does not turn into a video one mid-call yet,
+                // so which it is gets decided here.
+                if (onVideo != null)
+                  ActionStripItem(
+                    icon: Icons.videocam_rounded,
+                    label: videoLabel,
+                    onTap: onVideo!,
                   ),
                 // Next to the call, its sibling: the walkie-talkie lived in
                 // the chat header, where it crowded search and retry and was

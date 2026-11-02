@@ -22,9 +22,11 @@ typedef IncomingCallAction = ({IncomingCallActionKind kind, String key});
 /// The words that screen shows, in the app's language rather than the phone's.
 typedef IncomingCallLabels = ({
   String title,
+  String videoTitle,
   String answer,
   String decline,
   String ongoing,
+  String videoOngoing,
   String hangUp,
   String speaker,
   String microphone,
@@ -45,20 +47,25 @@ abstract interface class IncomingCallSurface {
   /// not, and the app's own call screen rings instead.
   bool get ringsInForeground;
 
+  /// [video]: the call offers a picture — said on the screen, and on an
+  /// iPhone CallKit answers it on the loudspeaker.
   Future<void> show({
     required String key,
     required String name,
     Uint8List? avatar,
+    bool video = false,
   });
 
   /// The call is on: keep it where the phone shows calls in progress - the
   /// notification shade on Android, with the running time and Hang up. Called
-  /// again when anything on it changes. CallKit shows its own.
+  /// again when anything on it changes. CallKit shows its own. [video] also
+  /// lets Android keep the camera while the app is not on screen.
   Future<void> ongoing({
     required String key,
     required String name,
     Uint8List? avatar,
     required DateTime since,
+    bool video = false,
   });
 
   /// The call was answered, from anywhere. A notification is taken down; a
@@ -90,6 +97,7 @@ class NoIncomingCallSurface implements IncomingCallSurface {
     required String key,
     required String name,
     Uint8List? avatar,
+    bool video = false,
   }) async {}
 
   @override
@@ -98,6 +106,7 @@ class NoIncomingCallSurface implements IncomingCallSurface {
     required String name,
     Uint8List? avatar,
     required DateTime since,
+    bool video = false,
   }) async {}
 
   @override
@@ -154,6 +163,7 @@ class AndroidIncomingCallSurface implements IncomingCallSurface {
     required String name,
     Uint8List? avatar,
     required DateTime since,
+    bool video = false,
   }) async {
     final words = labels();
     try {
@@ -162,8 +172,11 @@ class AndroidIncomingCallSurface implements IncomingCallSurface {
         'name': name,
         'avatar': avatar,
         'since': since.millisecondsSinceEpoch,
-        'title': words.ongoing,
+        'title': video ? words.videoOngoing : words.ongoing,
         'hangUp': words.hangUp,
+        // CallService adds the `camera` service type, without which Android
+        // 14 cuts the camera of an app that is not on screen.
+        'video': video,
       });
     } catch (e) {
       DebugLog.instance.log('CALL', 'could not show the call in the shade: $e');
@@ -175,6 +188,7 @@ class AndroidIncomingCallSurface implements IncomingCallSurface {
     required String key,
     required String name,
     Uint8List? avatar,
+    bool video = false,
   }) async {
     final words = labels();
     try {
@@ -182,12 +196,12 @@ class AndroidIncomingCallSurface implements IncomingCallSurface {
         'key': key,
         'name': name,
         'avatar': avatar,
-        'title': words.title,
+        'title': video ? words.videoTitle : words.title,
         'answer': words.answer,
         'decline': words.decline,
         // For the call screen that stays over the lock screen when the call
         // is answered there.
-        'ongoing': words.ongoing,
+        'ongoing': video ? words.videoOngoing : words.ongoing,
         'hangUp': words.hangUp,
         'speaker': words.speaker,
         'microphone': words.microphone,
@@ -297,6 +311,7 @@ class IosCallKitSurface implements IncomingCallSurface {
     required String name,
     Uint8List? avatar,
     required DateTime since,
+    bool video = false,
   }) async {}
 
   /// No avatar: CallKit draws only a name, whatever the app has.
@@ -305,11 +320,13 @@ class IosCallKitSurface implements IncomingCallSurface {
     required String key,
     required String name,
     Uint8List? avatar,
+    bool video = false,
   }) async {
     try {
       final shown = await _channel.invokeMethod<bool>('show', {
         'key': key,
         'name': name,
+        'video': video,
       });
       DebugLog.instance.log(
         'CALL',
@@ -510,6 +527,7 @@ class WindowsIncomingCallSurface implements IncomingCallSurface {
     required String key,
     required String name,
     Uint8List? avatar,
+    bool video = false,
   }) async {
     _shown = key;
     final words = labels();
@@ -520,7 +538,7 @@ class WindowsIncomingCallSurface implements IncomingCallSurface {
     try {
       await _toast.show(
         key: key,
-        title: words.title,
+        title: video ? words.videoTitle : words.title,
         body: name,
         answer: words.answer,
         decline: words.decline,
@@ -538,6 +556,7 @@ class WindowsIncomingCallSurface implements IncomingCallSurface {
     required String name,
     Uint8List? avatar,
     required DateTime since,
+    bool video = false,
   }) async {}
 
   @override

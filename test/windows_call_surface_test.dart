@@ -44,9 +44,11 @@ void main() {
     surface = WindowsIncomingCallSurface(
       labels: () => (
         title: 'Incoming call',
+        videoTitle: 'Incoming video call',
         answer: 'Answer',
         decline: 'Decline',
         ongoing: 'Voice call',
+        videoOngoing: 'Video call',
         hangUp: 'End',
         speaker: 'Speaker',
         microphone: 'Microphone',
