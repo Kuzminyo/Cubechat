@@ -56,6 +56,44 @@ void main() {
       expect(c.drainFor(_b(1)).single[0], 7);
     });
 
+    test('one link addressing random people cannot evict everyone else', () {
+      // The destination is the sender's choice, so the per-destination cap
+      // never bit: a flood to fresh hashes filled the buffer and pushed out
+      // the oldest mail, which was the mail that had waited longest.
+      final c = StoreForwardCache(capacity: 10, perSourceCap: 4);
+      c.store(
+        destHash: _b(1),
+        frameBytes: _frame(7),
+        origin: _b(8),
+        msgId: _b(1, 16),
+        via: 'friend',
+      );
+      for (var i = 0; i < 50; i++) {
+        c.store(
+          destHash: _b(i + 10),
+          frameBytes: _frame(i),
+          origin: _b(9),
+          msgId: _b(i + 2, 16),
+          via: 'flooder',
+        );
+      }
+      expect(c.size, 5); // the flooder's newest four, and the real one
+      expect(c.drainFor(_b(1)).single[0], 7);
+    });
+
+    test('frames of our own are not counted against any link', () {
+      final c = StoreForwardCache(perSourceCap: 2);
+      for (var i = 0; i < 5; i++) {
+        c.store(
+          destHash: _b(1),
+          frameBytes: _frame(i),
+          origin: _b(9),
+          msgId: _b(i + 1, 16),
+        );
+      }
+      expect(c.size, 5);
+    });
+
     test('stores and drains frames for a destination in order', () {
       final c = StoreForwardCache();
       final dest = _b(1);

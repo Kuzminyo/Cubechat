@@ -8285,6 +8285,7 @@ class MessagingService {
           frameBytes: frame.encode(),
           origin: env.originPubkeyHash,
           msgId: env.msgId,
+          via: peerId,
         );
         _scheduleRelayPersist();
         // One line a second, not one a frame. Relaying for a busy neighbour is
@@ -13002,6 +13003,61 @@ class MessagingService {
   static const int _heldUnverifiedPerOrigin = 20;
   static const Duration _heldUnverifiedTtl = Duration(minutes: 1);
 
+  /// Frames held across every origin together.
+  ///
+  /// [_heldUnverifiedPerOrigin] bounds one sender, but the origin is the
+  /// sender's own unsigned claim, so it bounded nothing: anybody holding our
+  /// public key — a contact, a listener while we are discoverable, anyone
+  /// over the relay — could seal frames to us under a fresh origin each time,
+  /// and every one opened a new list of twenty. bitchat's review found the
+  /// same shape in theirs (H9, M12). A real race is a handful of frames;
+  /// two hundred is room for a burst from many people at once.
+  static const int _heldUnverifiedTotal = 200;
+
+  /// Drop the oldest held items across all keys of [held] until at most
+  /// [cap] remain, after first dropping anything no longer [isFresh].
+  ///
+  /// Each list is oldest-first, as both holds append, so the oldest overall
+  /// is the oldest of the heads. Returns how many were dropped for the cap.
+  @visibleForTesting
+  static int trimHeldOldest<T>(
+    Map<String, List<T>> held, {
+    required int cap,
+    required DateTime Function(T) at,
+    required bool Function(T) isFresh,
+  }) {
+    var total = 0;
+    for (final list in held.values) {
+      total += list.length;
+    }
+    if (total <= cap) return 0;
+    for (final key in held.keys.toList(growable: false)) {
+      final list = held[key]!;
+      total -= list.length;
+      list.removeWhere((item) => !isFresh(item));
+      total += list.length;
+      if (list.isEmpty) held.remove(key);
+    }
+    var dropped = 0;
+    while (total > cap) {
+      String? oldestKey;
+      DateTime? oldestAt;
+      for (final entry in held.entries) {
+        final head = at(entry.value.first);
+        if (oldestAt == null || head.isBefore(oldestAt)) {
+          oldestAt = head;
+          oldestKey = entry.key;
+        }
+      }
+      final list = held[oldestKey]!;
+      list.removeAt(0);
+      if (list.isEmpty) held.remove(oldestKey);
+      total--;
+      dropped++;
+    }
+    return dropped;
+  }
+
   void _holdUnverified(
     Uint8List originHash,
     String peerId,
@@ -13038,6 +13094,12 @@ class MessagingService {
     ));
     final overCap = held.length > _heldUnverifiedPerOrigin;
     if (overCap) held.removeAt(0);
+    final evicted = trimHeldOldest(
+      _heldUnverified,
+      cap: _heldUnverifiedTotal,
+      at: (f) => f.at,
+      isFresh: (f) => heldFrameIsFresh(f.at, now),
+    );
 
     // The origin, not the road it came in on.
     //
@@ -13051,7 +13113,8 @@ class MessagingService {
       'holding FS body from $who until their announcement '
           '(${held.length} waiting'
           '${expired > 0 ? ', $expired expired' : ''}'
-          '${overCap ? ', oldest dropped' : ''})',
+          '${overCap ? ', oldest dropped' : ''}'
+          '${evicted > 0 ? ', $evicted dropped over the total cap' : ''})',
     );
   }
 
@@ -13102,6 +13165,7 @@ class MessagingService {
   final Map<String, List<_HeldChannelPost>> _heldChannelPosts = {};
 
   static const int _heldPostsPerSender = 20;
+  static const int _heldPostsTotal = 200;
 
   void _holdChannelPost({
     required String channelName,
@@ -13110,8 +13174,17 @@ class MessagingService {
   }) {
     final key = '$channelName|$senderId';
     final held = _heldChannelPosts.putIfAbsent(key, () => <_HeldChannelPost>[]);
-    held.add(_HeldChannelPost(deliver: deliver, at: DateTime.now()));
+    final now = DateTime.now();
+    held.add(_HeldChannelPost(deliver: deliver, at: now));
     if (held.length > _heldPostsPerSender) held.removeAt(0);
+    // Across senders too: in a room keyed by its name alone anyone can post,
+    // and a sender id is a key anyone can mint — see [_heldUnverifiedTotal].
+    trimHeldOldest(
+      _heldChannelPosts,
+      cap: _heldPostsTotal,
+      at: (p) => p.at,
+      isFresh: (p) => now.difference(p.at) <= _heldChannelStateTtl,
+    );
   }
 
   /// Deliver what the roster has since authorised, oldest first so a room

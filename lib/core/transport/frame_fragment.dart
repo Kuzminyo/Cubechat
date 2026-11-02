@@ -97,16 +97,31 @@ List<Uint8List> fragmentFrame(Uint8List frameBytes, int maxFrameBytes) {
 /// after [staleAfter], and both the group count and total buffered bytes are
 /// capped so a peer that streams fragments and never finishes can't grow memory
 /// without limit.
+///
+/// The caps were global, so one link that streamed unfinished groups was
+/// bounded but still evicted every other link's half-built frames — anyone in
+/// range could keep a neighbour's media from ever reassembling. Each link now
+/// has its own share, and pays for its own excess before anyone else does.
 class FrameFragmentReassembler {
   FrameFragmentReassembler({
     this.staleAfter = const Duration(seconds: 20),
     this.maxPendingGroups = 64,
     this.maxBufferedBytes = 512 * 1024,
+    this.maxGroupsPerLink = 8,
+    this.maxBufferedBytesPerLink = 256 * 1024,
   });
 
   final Duration staleAfter;
   final int maxPendingGroups;
   final int maxBufferedBytes;
+
+  /// Partial groups one link may hold at once. A link sends frames one after
+  /// another, so more than a couple in flight is already unusual.
+  final int maxGroupsPerLink;
+
+  /// Bytes one link may hold. The largest group is 255 slices of one MTU,
+  /// about 130 kB at 512, so this fits two of the worst case.
+  final int maxBufferedBytesPerLink;
 
   final Map<String, _PendingGroup> _pending = {};
 
@@ -131,8 +146,15 @@ class FrameFragmentReassembler {
     final key = '$linkKey:$fragIdHex';
     var group = _pending[key];
     if (group == null) {
+      while (_groupsOf(linkKey) >= maxGroupsPerLink) {
+        _evictOldest(link: linkKey);
+      }
       _evictUntilGroupSlot();
-      group = _PendingGroup(count: count, startedAt: DateTime.now());
+      group = _PendingGroup(
+        link: linkKey,
+        count: count,
+        startedAt: DateTime.now(),
+      );
       _pending[key] = group;
     }
     if (group.count != count) {
@@ -145,9 +167,9 @@ class FrameFragmentReassembler {
     group.slices[index] = slice;
     group.byteCount += slice.length;
     group.lastTouched = DateTime.now();
-    if (_bufferedBytes > maxBufferedBytes) {
-      _evictOldest(exceptKey: key);
-    }
+    while (_bytesOf(linkKey) > maxBufferedBytesPerLink &&
+        _evictOldest(exceptKey: key, link: linkKey)) {}
+    while (_bufferedBytes > maxBufferedBytes && _evictOldest(exceptKey: key)) {}
 
     if (group.slices.length != group.count) return null;
 
@@ -165,6 +187,13 @@ class FrameFragmentReassembler {
   int get _bufferedBytes =>
       _pending.values.fold<int>(0, (s, g) => s + g.byteCount);
 
+  int _groupsOf(String link) =>
+      _pending.values.where((g) => g.link == link).length;
+
+  int _bytesOf(String link) => _pending.values
+      .where((g) => g.link == link)
+      .fold<int>(0, (s, g) => s + g.byteCount);
+
   void _gc() {
     final now = DateTime.now();
     _pending.removeWhere((_, g) => now.difference(g.startedAt) > staleAfter);
@@ -176,17 +205,22 @@ class FrameFragmentReassembler {
     }
   }
 
-  void _evictOldest({String? exceptKey}) {
+  /// Drop the least recently touched group — of [link] alone when given.
+  /// False when there was nothing to drop.
+  bool _evictOldest({String? exceptKey, String? link}) {
     String? oldestKey;
     DateTime? oldest;
     for (final e in _pending.entries) {
       if (e.key == exceptKey) continue;
+      if (link != null && e.value.link != link) continue;
       if (oldest == null || e.value.lastTouched.isBefore(oldest)) {
         oldest = e.value.lastTouched;
         oldestKey = e.key;
       }
     }
-    if (oldestKey != null) _pending.remove(oldestKey);
+    if (oldestKey == null) return false;
+    _pending.remove(oldestKey);
+    return true;
   }
 
   static String _hex(Uint8List b, int start, int len) {
@@ -199,9 +233,13 @@ class FrameFragmentReassembler {
 }
 
 class _PendingGroup {
-  _PendingGroup({required this.count, required this.startedAt})
-      : lastTouched = startedAt;
+  _PendingGroup({
+    required this.link,
+    required this.count,
+    required this.startedAt,
+  }) : lastTouched = startedAt;
 
+  final String link;
   final int count;
   final DateTime startedAt;
   DateTime lastTouched;

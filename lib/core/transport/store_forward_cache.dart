@@ -8,10 +8,15 @@ class StoredFrame {
     required this.frameBytes,
     required this.storedAt,
     required this.dedupKey,
+    this.via,
   });
 
   final Uint8List frameBytes;
   final DateTime storedAt;
+
+  /// The link that handed it to us, for [StoreForwardCache.perSourceCap].
+  /// Null for our own frames and for frames restored from disk.
+  final String? via;
 
   /// `originHex/msgIdHex` — so we never hold two copies of the same frame
   /// for the same destination.
@@ -57,12 +62,25 @@ class StoreForwardCache {
   StoreForwardCache({
     this.capacity = 1000,
     this.perDestCap = 50,
+    this.perSourceCap = 400,
     this.maxFrameBytes = 2048,
     this.ttl = const Duration(hours: 1),
   });
 
   final int capacity;
   final int perDestCap;
+
+  /// Frames any one link may have us holding.
+  ///
+  /// [perDestCap] stops one chatty destination taking the lot, but the
+  /// destination is the sender's choice: a neighbour addressing frames to
+  /// random hashes stayed under it every time, filled [capacity], and evicted
+  /// the oldest — which is the mail that waited longest for its person.
+  /// Counted by the link it came in on, because nothing else about a relayed
+  /// frame is ours to trust. A link that rotates its address escapes this
+  /// for as long as the address lasts, so it bounds a flood rather than
+  /// ending one; the rest of the buffer stays for everybody else.
+  final int perSourceCap;
 
   /// Largest frame worth holding for somebody who is not here.
   ///
@@ -95,6 +113,7 @@ class StoreForwardCache {
     required Uint8List frameBytes,
     required Uint8List origin,
     required Uint8List msgId,
+    String? via,
   }) {
     if (frameBytes.length > maxFrameBytes) return;
     _gc();
@@ -102,10 +121,13 @@ class StoreForwardCache {
     final dedupKey = '${_hex(origin)}/${_hex(msgId)}';
     final list = _byDest.putIfAbsent(destKey, () => <StoredFrame>[]);
     if (list.any((f) => f.dedupKey == dedupKey)) return;
+    // Over its share, the link pays with its own oldest — see [perSourceCap].
+    if (via != null && _countVia(via) >= perSourceCap) _evictOldestVia(via);
     list.add(StoredFrame(
       frameBytes: Uint8List.fromList(frameBytes),
       storedAt: DateTime.now(),
       dedupKey: dedupKey,
+      via: via,
     ));
     _count++;
     // Per-destination ceiling: drop that destination's oldest.
@@ -251,6 +273,35 @@ class StoreForwardCache {
     for (final k in emptyDests) {
       _byDest.remove(k);
     }
+  }
+
+  int _countVia(String via) {
+    var n = 0;
+    for (final list in _byDest.values) {
+      for (final f in list) {
+        if (f.via == via) n++;
+      }
+    }
+    return n;
+  }
+
+  void _evictOldestVia(String via) {
+    String? oldestDest;
+    StoredFrame? oldest;
+    for (final entry in _byDest.entries) {
+      for (final f in entry.value) {
+        if (f.via != via) continue;
+        if (oldest == null || f.storedAt.isBefore(oldest.storedAt)) {
+          oldest = f;
+          oldestDest = entry.key;
+        }
+      }
+    }
+    if (oldest == null) return;
+    final list = _byDest[oldestDest]!;
+    list.remove(oldest);
+    _count--;
+    if (list.isEmpty) _byDest.remove(oldestDest);
   }
 
   /// Evicts globally-oldest frames until we're back under [capacity].

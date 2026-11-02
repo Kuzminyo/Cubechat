@@ -117,6 +117,32 @@ void main() {
       expect(outB, b);
     });
 
+    test('a link streaming unfinished groups evicts its own, not others', () {
+      // The caps were global: anyone in range could keep starting groups
+      // and never finish them, and every other link's half-built frame was
+      // the oldest thing to throw away.
+      final victim =
+          Frame(type: FrameType.transport, payload: _bytes(11, 500)).encode();
+      final victimParts = fragmentFrame(victim, 140);
+      final r = FrameFragmentReassembler(maxGroupsPerLink: 4);
+      // The victim's first slice lands, then the flood.
+      expect(
+        r.ingest('victim', Frame.decode(victimParts.first).payload),
+        isNull,
+      );
+      for (var i = 0; i < 200; i++) {
+        final junk =
+            Frame(type: FrameType.transport, payload: _bytes(i, 300)).encode();
+        // Only the first slice of each: a group that never completes.
+        r.ingest('flooder', Frame.decode(fragmentFrame(junk, 110).first).payload);
+      }
+      Uint8List? out;
+      for (var i = 1; i < victimParts.length; i++) {
+        out = r.ingest('victim', Frame.decode(victimParts[i]).payload) ?? out;
+      }
+      expect(out, victim);
+    });
+
     test('drops malformed fragment payloads', () {
       final r = FrameFragmentReassembler();
       expect(r.ingest('peerA', Uint8List(0)), isNull);
