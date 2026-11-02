@@ -42,8 +42,15 @@ difference between a first install and every one after it:
 
 ```powershell
 scp -r D:\projects\cubechat\push\. root@209.38.225.225:/opt/cubechat-push
-ssh root@209.38.225.225 "systemctl restart cubechat-push"
+ssh root@209.38.225.225 "chmod 755 /opt/cubechat-push /opt/cubechat-push/src /opt/cubechat-push/deploy && systemctl restart cubechat-push"
 ```
+
+**Why the chmod.** On 2026-11-02 those three directories were found at
+`drwx---rwx`: writable by every local user, so anything running on the
+droplet — a strfry, the bot — could rewrite the code that holds the APNs and
+FCM keys. A directory copied from Windows arrives with modes made up from its
+ACL. 755 keeps them writable by `cubechat` alone and readable by the area
+relay's user, which reads `banned-area.json` from here.
 
 **Why the dot.** `scp -r somedir dest` copies *into* `dest` when `dest` already
 exists, so the second deploy lands the whole tree at
