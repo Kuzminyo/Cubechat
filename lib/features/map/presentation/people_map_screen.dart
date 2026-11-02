@@ -45,6 +45,13 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../../core/notifications/ios_significant_location.dart';
 import '../../../core/util/platform_info.dart';
 import '../../../core/util/platform_capabilities.dart';
+import '../../area/data/area_controller.dart';
+import '../../area/data/area_settings.dart';
+import '../../area/domain/area_room.dart';
+import '../../area/presentation/area_map_overlay.dart';
+import '../../area/presentation/area_nearby_sheet.dart';
+import '../../area/presentation/area_notes_sheet.dart';
+import '../../area/presentation/area_read_here_sheet.dart';
 
 // Kept as a test seam. Older widget tests pass a flutter_map TileProvider here;
 // the production screen ignores it and mounts native Google Maps instead.
@@ -150,6 +157,14 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
   String? _cachedLinesKey;
   final _markerIcons = <String, gm.BitmapDescriptor>{};
   final _markerIconsInFlight = <String>{};
+
+  /// Notes of the area chat the phone already holds, as outlines with a
+  /// count — never a reason for this tab to reach the area relay itself.
+  late final _areaOverlay = AreaMapOverlay(
+    onIconsChanged: () {
+      if (mounted) setState(() {});
+    },
+  );
 
   bool get _usesNativeMap =>
       widget.nativeMapEnabled &&
@@ -621,6 +636,19 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
                   ),
                   const SizedBox(height: 12),
                 ],
+                // The area chat: a phone only (a computer does not read its
+                // own place), and gone entirely while its switch is off.
+                if (_canShareLocation &&
+                    ref.watch(
+                      areaSettingsProvider.select((s) => s.enabled),
+                    )) ...[
+                  _MapActionButton(
+                    icon: Icons.forum_rounded,
+                    tooltip: t.areaNearby,
+                    onTap: () => unawaited(showAreaNearbySheet(context, ref)),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 _MapActionButton(
                   icon: Icons.layers_rounded,
                   tooltip: t.mapLayerTitle,
@@ -696,6 +724,19 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
     );
   }
 
+  /// The area chat's notes held in memory, while its switch is on. Watched,
+  /// so a note arriving redraws the outlines; called from [build] only.
+  List<AreaNote> _areaNotes() {
+    if (!_canShareLocation || !ref.watch(areaSettingsProvider).enabled) {
+      return const [];
+    }
+    ref.watch(areaControllerProvider.select((s) => s.revision));
+    return ref.read(areaControllerProvider.notifier).allNotes();
+  }
+
+  void _openAreaNotes(String cell) =>
+      unawaited(showAreaNotesSheet(context, cell: cell));
+
   Widget _buildMap(
     List<_Node> nodes,
     LatLng? me,
@@ -752,8 +793,24 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
       padding: EdgeInsets.symmetric(
         vertical: MediaQuery.paddingOf(context).bottom + 160,
       ),
-      markers: _googleMarkers(nodes, me, nickname, ownPhoto),
+      markers: {
+        ..._googleMarkers(nodes, me, nickname, ownPhoto),
+        ..._areaOverlay.markers(_areaNotes(), _clusterZoom, _openAreaNotes),
+      },
+      polygons:
+          _areaOverlay.polygons(_areaNotes(), _clusterZoom, _openAreaNotes),
       polylines: _googleLines(nodes, me).toSet(),
+      // "Read here": the area chat of the city or region under the finger.
+      onLongPress: _canShareLocation
+          ? (p) => unawaited(
+                showAreaReadHereSheet(
+                  context,
+                  ref,
+                  latitude: p.latitude,
+                  longitude: p.longitude,
+                ),
+              )
+          : null,
       // Without this the map cannot be panned or zoomed at all, and the reason
       // is this app rather than the plugin: every page is wrapped in a
       // drag-anywhere back gesture (see EdgeBackGesture), so Flutter's arena

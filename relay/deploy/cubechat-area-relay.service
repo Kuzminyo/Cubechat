@@ -1,0 +1,23 @@
+[Unit]
+Description=cubechat area relay (strfry, public area chat)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cubechat-relay
+WorkingDirectory=/opt/cubechat-area-relay
+# The policy reads the area ban list push/ writes on a moderator's decision.
+Environment=AREA_BANNED_PATH=/opt/cubechat-push/banned-area.json
+ExecStart=/usr/local/bin/strfry --config=/opt/cubechat-area-relay/strfry.conf relay
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/cubechat-area-relay
+
+[Install]
+WantedBy=multi-user.target

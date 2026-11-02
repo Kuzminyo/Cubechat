@@ -4109,4 +4109,222 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get radioBackgroundHint =>
       'With the screen off the radio is heard only while background mode is on.';
+
+  @override
+  String get areaNearby => 'Nearby chat';
+
+  @override
+  String get areaLevelDistrict => 'District';
+
+  @override
+  String get areaLevelCity => 'City';
+
+  @override
+  String get areaLevelRegion => 'Region';
+
+  @override
+  String areaPresentCount(int count) {
+    return '≈$count here';
+  }
+
+  @override
+  String get areaPresentMany => '50+ here';
+
+  @override
+  String get areaBlockViaBluetooth => 'Your block — over Bluetooth';
+
+  @override
+  String get areaOpenNearbyTab => 'Open Nearby';
+
+  @override
+  String get areaLocating => 'Finding your district…';
+
+  @override
+  String get areaNoPlace =>
+      'No location yet. The area chat needs your approximate location while this screen is open.';
+
+  @override
+  String get areaLocationDenied =>
+      'Location is off for Cubechat. Allow approximate location in Settings to see your district.';
+
+  @override
+  String get areaOffline => 'No connection to the area chat';
+
+  @override
+  String get areaEmpty => 'Nobody has written here in the last 24 hours.';
+
+  @override
+  String get areaConsentTitle => 'The area chat is public';
+
+  @override
+  String get areaConsentBody =>
+      'Messages here are public. Anyone who opens your district or city will read them, and they are kept for 24 hours on the Cubechat server. You write under a temporary name that changes every few hours; nobody sees your @name or your contacts. To know your district, Cubechat asks for your approximate location, only while this screen is open.';
+
+  @override
+  String get areaConsentAllow => 'Continue';
+
+  @override
+  String get areaConsentDecline => 'Not now';
+
+  @override
+  String areaDefaultName(String tag) {
+    return 'Cube-$tag';
+  }
+
+  @override
+  String areaYouAre(String name, int hours) {
+    return 'You are $name · new name in $hours h';
+  }
+
+  @override
+  String get areaNewName => 'New name';
+
+  @override
+  String get areaSetName => 'Choose a name';
+
+  @override
+  String get areaNameHint =>
+      'Only for this name\'s few hours. Leave empty for the automatic one.';
+
+  @override
+  String get areaNameSameWarning =>
+      'The same name ties you together across districts';
+
+  @override
+  String get areaShowPresence => 'Show that I\'m here';
+
+  @override
+  String get areaPresenceOffHint =>
+      'Turn on \"Show that I\'m here\" to see how many people are near';
+
+  @override
+  String get areaReadOnly => 'You can write only where you are';
+
+  @override
+  String get areaComposerHint => 'Message everyone here';
+
+  @override
+  String get areaSend => 'Send';
+
+  @override
+  String get areaWaitALittle => 'Wait a little';
+
+  @override
+  String areaFlood(int count) {
+    return 'Flood ($count) · Show';
+  }
+
+  @override
+  String get areaReply => 'Reply';
+
+  @override
+  String get areaHide => 'Hide';
+
+  @override
+  String get areaBlock => 'Block until their name changes';
+
+  @override
+  String get areaBlocked => 'Blocked until their name changes';
+
+  @override
+  String get areaReport => 'Report';
+
+  @override
+  String get areaOpenLink => 'Open link';
+
+  @override
+  String areaOpenLinkConfirm(String url) {
+    return 'Open $url?';
+  }
+
+  @override
+  String get areaOpen => 'Open';
+
+  @override
+  String get areaReadHere => 'Read here';
+
+  @override
+  String get areaReadHereHint =>
+      'Reading only. You can write only where you are; the relay learns which place you read.';
+
+  @override
+  String get areaNotes => 'Notes';
+
+  @override
+  String areaNotesCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count notes',
+      one: '$count note',
+      zero: 'No notes',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get areaLeaveNote => 'Leave a note';
+
+  @override
+  String get areaNoteHint => 'A short note for your city';
+
+  @override
+  String get areaNoteLifetime => 'Keeps for';
+
+  @override
+  String get areaNote1h => '1 h';
+
+  @override
+  String get areaNote24h => '24 h';
+
+  @override
+  String get areaNote7d => '7 days';
+
+  @override
+  String get areaPinToDistrict => 'Pin to a district';
+
+  @override
+  String get areaPinHint =>
+      'Tap the map inside your city; the pin snaps to its district.';
+
+  @override
+  String get areaPinOutside => 'Only inside your city';
+
+  @override
+  String get areaNoteDelete => 'Delete my note';
+
+  @override
+  String get areaNoNotes => 'No notes here yet';
+
+  @override
+  String get areaNotesLimit => 'Three notes a day';
+
+  @override
+  String get areaNoteLeft => 'Note left';
+
+  @override
+  String get areaNoteSend => 'Leave';
+
+  @override
+  String get areaOwnNote => 'Your note';
+
+  @override
+  String get areaNotePinned => 'Pinned to a district';
+
+  @override
+  String get areaHidden => 'Hidden';
+
+  @override
+  String get areaPublicBadge => 'Public · kept 24 h';
+
+  @override
+  String get areaSettingTitle => 'Area chat';
+
+  @override
+  String get areaSettingOnHint =>
+      'The Nearby chat button on the map: public chats of your district and city, under a temporary name.';
+
+  @override
+  String get areaSettingOffHint =>
+      'Off: no button on the map, and the area chat never asks for your location or connects.';
 }

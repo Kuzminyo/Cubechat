@@ -134,6 +134,14 @@ class ReportTextTests(unittest.TestCase):
         text = report_text(report)
         self.assertIn("hello there", text)
 
+    def test_area_report_shows_place_and_short_event(self):
+        report = make_report(context="area", geohash="u8vx", eventId="ef" * 32)
+        text = report_text(report)
+        self.assertIn("Чат району", text)
+        self.assertIn("u8vx", text)
+        self.assertIn("efefefef", text)
+        self.assertNotIn("ef" * 32, text)
+
 
 class RedactUrlTests(unittest.TestCase):
     def test_strips_bot_token_from_url(self):

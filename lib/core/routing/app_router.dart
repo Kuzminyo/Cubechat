@@ -43,6 +43,8 @@ import '../../features/profile/presentation/diagnostics_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/profile/presentation/relays_screen.dart';
 import '../../features/radio/presentation/radio_screen.dart';
+import '../../features/area/domain/area_level.dart';
+import '../../features/area/presentation/area_chat_screen.dart';
 import '../widgets/aurora_background.dart';
 import 'app_shell.dart';
 import '../util/timed_subtree.dart';
@@ -641,6 +643,27 @@ GoRouter buildRouter({bool seenOnboarding = true}) {
           ),
           state: state,
         ),
+      ),
+      // The area chat: `level` is the own district, city or region; `cell` a
+      // city or region read from the map. Query parameters rather than path
+      // segments, like `/radio`'s `contact`: the screen is one either way.
+      GoRoute(
+        path: '/area',
+        parentNavigatorKey: _rootNavKey,
+        pageBuilder: (context, state) {
+          final cell = state.uri.queryParameters['cell'];
+          final level = AreaLevel.values.asNameMap()[
+                  state.uri.queryParameters['level']] ??
+              AreaLevel.city;
+          return fadeSlidePage(
+            child: AuroraBackground(
+              child: cell != null && (cell.length == 3 || cell.length == 4)
+                  ? AreaChatScreen.foreign(cell)
+                  : AreaChatScreen.own(level),
+            ),
+            state: state,
+          );
+        },
       ),
       GoRoute(
         path: '/relays',

@@ -1,0 +1,8 @@
+[Unit]
+Description=Delete what a moderator removed from the area relay
+
+[Path]
+PathChanged=/opt/cubechat-push/banned-area.json
+
+[Install]
+WantedBy=multi-user.target

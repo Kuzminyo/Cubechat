@@ -4153,4 +4153,223 @@ class AppLocalizationsUk extends AppLocalizations {
   @override
   String get radioBackgroundHint =>
       'Із вимкненим екраном рацію чути, лише коли ввімкнено роботу у фоні.';
+
+  @override
+  String get areaNearby => 'Поруч';
+
+  @override
+  String get areaLevelDistrict => 'Район';
+
+  @override
+  String get areaLevelCity => 'Місто';
+
+  @override
+  String get areaLevelRegion => 'Регіон';
+
+  @override
+  String areaPresentCount(int count) {
+    return '≈$count тут';
+  }
+
+  @override
+  String get areaPresentMany => '50+ тут';
+
+  @override
+  String get areaBlockViaBluetooth => 'Квартал — через Bluetooth';
+
+  @override
+  String get areaOpenNearbyTab => 'Відкрити «Поблизу»';
+
+  @override
+  String get areaLocating => 'Шукаємо ваш район…';
+
+  @override
+  String get areaNoPlace =>
+      'Місця ще немає. Чату району потрібне приблизне місцезнаходження, поки цей екран відкрито.';
+
+  @override
+  String get areaLocationDenied =>
+      'Геолокацію для Cubechat вимкнено. Дозвольте приблизне місцезнаходження в Налаштуваннях, щоб бачити свій район.';
+
+  @override
+  String get areaOffline => 'Немає зв\'язку з чатом району';
+
+  @override
+  String get areaEmpty => 'За останні 24 години тут ніхто не писав.';
+
+  @override
+  String get areaConsentTitle => 'Чат району публічний';
+
+  @override
+  String get areaConsentBody =>
+      'Повідомлення тут публічні. Їх прочитає кожен, хто відкриє ваш район чи місто, і зберігатимуться 24 години на сервері cubechat. Ви пишете під тимчасовим іменем, яке змінюється кожні кілька годин; ваше @ім\'я і контакти ніхто не бачить. Щоб знати ваш район, Cubechat питає приблизне місцезнаходження — лише поки цей екран відкрито.';
+
+  @override
+  String get areaConsentAllow => 'Продовжити';
+
+  @override
+  String get areaConsentDecline => 'Не зараз';
+
+  @override
+  String areaDefaultName(String tag) {
+    return 'Кубик-$tag';
+  }
+
+  @override
+  String areaYouAre(String name, int hours) {
+    return 'Ви — $name · нове ім\'я через $hours год';
+  }
+
+  @override
+  String get areaNewName => 'Нове ім\'я';
+
+  @override
+  String get areaSetName => 'Задати ім\'я';
+
+  @override
+  String get areaNameHint =>
+      'Лише на кілька годин цього імені. Порожнє — автоматичне.';
+
+  @override
+  String get areaNameSameWarning => 'Однакове ім\'я пов\'язує вас між районами';
+
+  @override
+  String get areaShowPresence => 'Показувати, що я тут';
+
+  @override
+  String get areaPresenceOffHint =>
+      'Увімкніть «Показувати, що я тут», щоб бачити, скільки людей поруч';
+
+  @override
+  String get areaReadOnly => 'Писати можна лише там, де ви є';
+
+  @override
+  String get areaComposerHint => 'Повідомлення для всіх тут';
+
+  @override
+  String get areaSend => 'Надіслати';
+
+  @override
+  String get areaWaitALittle => 'Зачекайте трохи';
+
+  @override
+  String areaFlood(int count) {
+    return 'Флуд ($count) · Показати';
+  }
+
+  @override
+  String get areaReply => 'Відповісти';
+
+  @override
+  String get areaHide => 'Приховати';
+
+  @override
+  String get areaBlock => 'Заблокувати до зміни його імені';
+
+  @override
+  String get areaBlocked => 'Заблоковано до зміни його імені';
+
+  @override
+  String get areaReport => 'Поскаржитися';
+
+  @override
+  String get areaOpenLink => 'Відкрити посилання';
+
+  @override
+  String areaOpenLinkConfirm(String url) {
+    return 'Відкрити $url?';
+  }
+
+  @override
+  String get areaOpen => 'Відкрити';
+
+  @override
+  String get areaReadHere => 'Читати тут';
+
+  @override
+  String get areaReadHereHint =>
+      'Лише читання. Писати можна тільки там, де ви є; релей дізнається, яке місце ви читаєте.';
+
+  @override
+  String get areaNotes => 'Записки';
+
+  @override
+  String areaNotesCount(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count записки',
+      many: '$count записок',
+      few: '$count записки',
+      one: '$count записка',
+      zero: 'Записок немає',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get areaLeaveNote => 'Залишити записку';
+
+  @override
+  String get areaNoteHint => 'Коротка записка для вашого міста';
+
+  @override
+  String get areaNoteLifetime => 'Тримається';
+
+  @override
+  String get areaNote1h => '1 год';
+
+  @override
+  String get areaNote24h => '24 год';
+
+  @override
+  String get areaNote7d => '7 днів';
+
+  @override
+  String get areaPinToDistrict => 'Прив\'язати до району';
+
+  @override
+  String get areaPinHint =>
+      'Торкніться мапи в межах свого міста — булавка прилипне до району.';
+
+  @override
+  String get areaPinOutside => 'Лише в межах вашого міста';
+
+  @override
+  String get areaNoteDelete => 'Видалити мою записку';
+
+  @override
+  String get areaNoNotes => 'Тут ще немає записок';
+
+  @override
+  String get areaNotesLimit => 'Три записки на добу';
+
+  @override
+  String get areaNoteLeft => 'Записку залишено';
+
+  @override
+  String get areaNoteSend => 'Залишити';
+
+  @override
+  String get areaOwnNote => 'Ваша записка';
+
+  @override
+  String get areaNotePinned => 'Прив\'язана до району';
+
+  @override
+  String get areaHidden => 'Приховано';
+
+  @override
+  String get areaPublicBadge => 'Публічно · 24 год';
+
+  @override
+  String get areaSettingTitle => 'Чат району';
+
+  @override
+  String get areaSettingOnHint =>
+      'Кнопка «Поруч» на мапі: публічні чати вашого району й міста, під тимчасовим іменем.';
+
+  @override
+  String get areaSettingOffHint =>
+      'Вимкнено: кнопки на мапі немає, і чат району ніколи не питає місце й не підключається.';
 }

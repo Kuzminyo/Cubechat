@@ -12,7 +12,20 @@
 #
 # /media has its own strfry process and LMDB. This is what lets the app close
 # the media REQ on cellular data without silencing text at the host root.
+#
+# /area (2026-11-02) is the third: the public area chat, on :8083. No `log`
+# directive anywhere in this block, so Caddy keeps no access log of who read
+# which city — the privacy policy promises that.
 relay.cubechat.tech {
+	handle_path /area* {
+		reverse_proxy 127.0.0.1:8083 {
+			transport http {
+				versions 1.1
+				keepalive off
+			}
+		}
+	}
+
 	handle_path /media* {
 		reverse_proxy 127.0.0.1:8082 {
 			transport http {

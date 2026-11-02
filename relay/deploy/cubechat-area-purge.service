@@ -1,0 +1,15 @@
+[Unit]
+Description=Delete what a moderator removed from the area relay (strfry delete)
+
+[Service]
+Type=oneshot
+User=cubechat-relay
+WorkingDirectory=/opt/cubechat-area-relay
+Environment=AREA_BANNED_PATH=/opt/cubechat-push/banned-area.json
+Environment=AREA_STRFRY_CONFIG=/opt/cubechat-area-relay/strfry.conf
+ExecStart=/usr/bin/node /opt/cubechat-area-relay/area-purge.mjs
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/cubechat-area-relay

@@ -35,7 +35,7 @@ Future<IdentityKeys> _identity() async {
 /// byte for byte the moment either side changes.
 void _expectServerAcceptable(Map<String, Object?> json) {
   const reasons = {'spam', 'abuse', 'violence', 'sexual', 'other'};
-  const contexts = {'direct', 'channel', 'airdrop', 'general'};
+  const contexts = {'direct', 'channel', 'airdrop', 'general', 'area'};
   const kinds = {'text', 'photo', 'video', 'voice', 'file', 'sticker', 'other'};
   final hex64 = RegExp(r'^[0-9a-f]{64}$', caseSensitive: false);
   final hex16 = RegExp(r'^[0-9a-f]{16}$', caseSensitive: false);
@@ -64,6 +64,18 @@ void _expectServerAcceptable(Map<String, Object?> json) {
   }
   if (json.containsKey('channelId')) {
     expect(json['channelId'], isA<String>());
+  }
+  // An area report names its event and its city or region; nothing else may.
+  if (json['context'] == 'area') {
+    expect(json['target'], isA<String>());
+    expect(hex64.hasMatch(json['eventId']! as String), isTrue);
+    expect(
+      RegExp(r'^[0-9b-hjkmnp-z]{3,4}$').hasMatch(json['geohash']! as String),
+      isTrue,
+    );
+  } else {
+    expect(json.containsKey('eventId'), isFalse);
+    expect(json.containsKey('geohash'), isFalse);
   }
   if (json.containsKey('message')) {
     final message = json['message']! as Map<String, Object?>;
@@ -94,6 +106,8 @@ void _expectServerAcceptable(Map<String, Object?> json) {
         'target',
         'targetNpub',
         'channelId',
+        'eventId',
+        'geohash',
         'message'
       },
     ),
@@ -165,6 +179,24 @@ void main() {
       final message = json['message']! as Map<String, Object?>;
       expect((message['text']! as String).length, 4000);
       _expectServerAcceptable(json);
+    });
+
+    test('an area report names its key, event and city, and round-trips', () {
+      final report = ModerationReport(
+        reason: ReportReason.abuse,
+        context: ReportContext.area,
+        target: 'c' * 64,
+        eventId: 'e' * 64,
+        geohash: 'u8vx',
+        messageText: 'текст',
+        messageKind: ReportedKind.text,
+        messageSentAt: 1,
+      );
+      final json = report.toJson();
+      expect(json['eventId'], 'e' * 64);
+      expect(json['geohash'], 'u8vx');
+      _expectServerAcceptable(json);
+      expect(ModerationReport.fromJson(json)!.toJson(), json);
     });
 
     test('fromJson is the inverse of toJson', () {

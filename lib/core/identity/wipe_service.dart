@@ -28,6 +28,7 @@ import '../../features/chat/data/conversation_settings_controller.dart';
 import '../../features/chats/data/read_markers_controller.dart';
 import '../../features/chats/data/recent_searches_controller.dart';
 import '../../features/chats/data/user_chat_folders_controller.dart';
+import '../../features/area/data/area_controller.dart';
 import '../../features/map/data/map_friends_controller.dart';
 import '../../features/map/data/shared_map_locations_provider.dart';
 import '../../features/peers/data/known_peers_controller.dart';
@@ -215,6 +216,9 @@ Future<void> emergencyWipe(WidgetRef ref, {bool releaseName = true}) async {
   await ref.read(notificationPreviewProvider.notifier).reset();
   await ref.read(discoverySettingsProvider.notifier).reset();
   await ref.read(privacySettingsProvider.notifier).reset();
+  // The area chat: its socket shut, its keys and own notes erased, its
+  // switch off and its consent forgotten (spec, «Вход в интерфейсе»).
+  await ref.read(areaControllerProvider.notifier).wipe();
   await ref.read(circleLensProvider.notifier).reset();
   await ref.read(audioFocusProvider.notifier).reset();
   await ref.read(mediaQualityProvider.notifier).reset();

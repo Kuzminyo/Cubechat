@@ -40,6 +40,9 @@ CONTEXT_LABELS = {
     "channel": "Канал",
     "airdrop": "AirDrop",
     "general": "Загальне",
+    # The public area chat (2026-11-02). "Забанити" here removes the message
+    # from the area relay and stops its key for a day — see createAreaBans.
+    "area": "Чат району",
 }
 
 REPORT_EXCERPT_MAX_CHARS = 1000
@@ -257,6 +260,13 @@ def report_text(report: dict) -> str:
     channel_id = report.get("channelId")
     if channel_id:
         lines.append(f"Канал: {channel_id}")
+    # Only the city or region (3-4 geohash characters) and the event's short
+    # id: what a moderator needs to find it, nothing finer.
+    geohash = report.get("geohash")
+    if geohash:
+        lines.append(f"Місце (геохеш): {geohash}")
+    if report.get("eventId"):
+        lines.append(f"Подія: {_short(report.get('eventId'))}")
     note = report.get("note")
     if note:
         lines.append(f"Нотатка: {note}")

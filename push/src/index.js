@@ -27,7 +27,7 @@ import WebSocket from 'ws';
 const FRAME_KIND = 1059;
 /// What `/health` reports, so a deployment can be identified rather than
 /// assumed. Bump it in the same commit as any change to this file.
-const VERSION = '2026-10-14-register-pow';
+const VERSION = '2026-11-02-area-chat';
 
 const RECIPIENT_TAG = 'p';
 
@@ -1261,7 +1261,7 @@ export const server = createServer(async (request, response) => {
     }
     const result = await handleReport(event, {
       limiter: reportLimiter, store: reportStore, notify: logReport,
-      ip: clientIpOf(request), ipLimiter: reportIpLimiter,
+      ip: clientIpOf(request), ipLimiter: reportIpLimiter, areaIpLimiter: areaReportIpLimiter,
     });
     response.setHeader('cache-control', 'no-store');
     return json(response, result.status, result.body);
@@ -1285,6 +1285,11 @@ export const server = createServer(async (request, response) => {
     response.setHeader('cache-control', result.cacheControl);
     return json(response, result.status, result.body);
   }
+  if (request.method === 'GET' && request.url === '/banned/area') {
+    const result = handleBannedArea({ bans: adminAreaBans });
+    response.setHeader('cache-control', result.cacheControl);
+    return json(response, result.status, result.body);
+  }
   if (request.url.startsWith('/admin/')) {
     // Set before any response on this path, including the "body too large"
     // 400 below — every /admin/ response is uncacheable, not just the happy
@@ -1298,7 +1303,7 @@ export const server = createServer(async (request, response) => {
     }
     const result = await handleAdmin(
       { method: request.method, url: request.url, headers: request.headers, body },
-      { store: reportStore, bans: adminBans, remoteAddress: request.socket.remoteAddress },
+      { store: reportStore, bans: adminBans, areaBans: adminAreaBans, remoteAddress: request.socket.remoteAddress },
     );
     return json(response, result.status, result.body);
   }
@@ -1466,7 +1471,15 @@ const REPORT_MAX_FUTURE_SECONDS = 60;
 const REPORT_RETENTION_DAYS = 90;
 
 const REPORT_REASONS = new Set(['spam', 'abuse', 'violence', 'sexual', 'other']);
-const REPORT_CONTEXTS = new Set(['direct', 'channel', 'airdrop', 'general']);
+const REPORT_CONTEXTS = new Set(['direct', 'channel', 'airdrop', 'general', 'area']);
+
+// A report from the public area chat (2026-11-02). Signed by a key made for
+// that one report, never the account's — so it carries work instead of a
+// known key, and its address is held to fewer an hour than the other
+// reports' twenty (docs/superpowers/specs/2026-11-02-area-chat-design.md).
+const AREA_REPORT_POW_BITS = Number(process.env.AREA_REPORT_POW_BITS || 16);
+const AREA_REPORTS_PER_IP_HOUR = 10;
+const GEOHASH_CITY_OR_REGION = /^[0-9b-hjkmnp-z]{3,4}$/;
 const REPORT_MESSAGE_KINDS = new Set(['text', 'photo', 'video', 'voice', 'file', 'sticker', 'other']);
 
 const HEX64 = /^[0-9a-f]{64}$/i;
@@ -1486,10 +1499,19 @@ export function parseReportPayload(content) {
   }
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
 
-  const { reason, note, target, targetNpub, context, channelId, message } = payload;
+  const { reason, note, target, targetNpub, context, channelId, message, eventId, geohash } = payload;
   if (!REPORT_REASONS.has(reason)) return null;
   if (!REPORT_CONTEXTS.has(context)) return null;
   if (context === 'direct' && typeof target !== 'string') return null;
+  // An area report names the author's area key, the event and the city or
+  // region it was published under — what a moderator deletes on the relay.
+  // Those two fields belong to it alone.
+  if (context === 'area') {
+    if (typeof target !== 'string' || typeof eventId !== 'string' || !HEX64.test(eventId) ||
+        typeof geohash !== 'string' || !GEOHASH_CITY_OR_REGION.test(geohash)) return null;
+  } else if (eventId !== undefined || geohash !== undefined) {
+    return null;
+  }
   // Channel frames expose only the author's 8-byte signing fingerprint.
   // Requiring a full mesh identity here made every real channel report fail.
   if (target !== undefined && (typeof target !== 'string' ||
@@ -1521,6 +1543,8 @@ export function parseReportPayload(content) {
     ...(target !== undefined ? { target } : {}),
     ...(targetNpub !== undefined ? { targetNpub } : {}),
     ...(channelId !== undefined ? { channelId } : {}),
+    ...(eventId !== undefined ? { eventId: eventId.toLowerCase() } : {}),
+    ...(geohash !== undefined ? { geohash } : {}),
     ...(parsedMessage !== undefined ? { message: parsedMessage } : {}),
   };
 }
@@ -1794,6 +1818,7 @@ const reportStore = createReportStore();
 const MAX_OPEN_REPORTS = 5000;
 // Per client address; `total` is the service-wide backstop above, not here.
 const reportIpLimiter = createRateLimiter({ perKey: 20, total: Infinity });
+const areaReportIpLimiter = createRateLimiter({ perKey: AREA_REPORTS_PER_IP_HOUR, total: Infinity });
 // New npubs only — see MAX_TOKENS.
 const registerLimiter = createRateLimiter({
   perKey: NEW_REGISTRATIONS_PER_IP_HOUR,
@@ -1816,6 +1841,8 @@ export async function handleReport(event, {
   notify = () => {},
   ip = null,
   ipLimiter = null,
+  areaIpLimiter = null,
+  areaPowBits = AREA_REPORT_POW_BITS,
   maxOpen = MAX_OPEN_REPORTS,
 } = {}) {
   if (!verifyEvent(event) || event.kind !== REPORT_KIND ||
@@ -1829,6 +1856,16 @@ export async function handleReport(event, {
   }
   const payload = parseReportPayload(event.content);
   if (!payload) return { status: 400, body: { ok: false, reason: 'payload' } };
+  if (payload.context === 'area') {
+    // The key is new for every such report, so it is the work and the
+    // address that cost something — not the per-key limit below.
+    if (difficulty(event.id) < areaPowBits) {
+      return { status: 403, body: { ok: false, reason: 'pow', bits: areaPowBits } };
+    }
+    if (areaIpLimiter && !areaIpLimiter.allow(ip ?? 'unknown', nowSeconds)) {
+      return { status: 429, body: { ok: false, reason: 'rate' } };
+    }
+  }
   // The address first. The per-key limit below is no limit to somebody who
   // signs each report with a fresh key, and its service-wide total of 200 an
   // hour is shared by everyone — so one script used to be able to spend it
@@ -2116,6 +2153,148 @@ export function handleBanned({ bans }) {
 
 const adminBans = createBans();
 
+// ---------------------------------------------------------------------------
+// The area chat's ban list (2026-11-02)
+// ---------------------------------------------------------------------------
+
+/// The bytes signed for `GET /banned/area`: like `canonicalBanBody`, its own
+/// fields. `canonicalAreaBanBody` in
+/// `lib/features/area/data/area_ban_list.dart` builds the same string.
+///
+/// **Not a field of `/banned`.** That body's canonical form is built from the
+/// fields it knows, so a new field there would break the check in every
+/// installed build and they would stop applying the whole list.
+export function canonicalAreaBanBody({ v, updatedAt, events, keys }) {
+  return JSON.stringify({
+    v,
+    updatedAt,
+    events: [...events].sort(),
+    keys: [...keys].sort(),
+  });
+}
+
+// An area key lives six hours and a message a day, so a day is all a ban
+// needs to be remembered for — after that the key and the event are gone of
+// their own accord. Short also because this list is public.
+const AREA_BAN_SECONDS = 24 * 60 * 60;
+
+/// What moderators removed from the area chat: event ids and area keys, each
+/// with when, signed with the same key as `/banned`.
+///
+/// Also written as `banned-area.json` (mode 644) for the area relay: its
+/// write policy refuses those keys, and `relay/area-purge.mjs` deletes those
+/// events from its database — the main remedy, since the relay holds the only
+/// copy of a message (relay/README.md, "The area relay").
+export function createAreaBans({
+  path = process.env.AREA_BANNED_PATH || './banned-area.json',
+  signingKeyPkcs8B64 = process.env.BAN_SIGNING_KEY,
+  nowSeconds = () => Math.floor(Date.now() / 1000),
+} = {}) {
+  const events = new Map();
+  const keys = new Map();
+  let updatedAt = 0;
+
+  let privateKey = null;
+  if (signingKeyPkcs8B64) {
+    try {
+      privateKey = createPrivateKey({
+        key: Buffer.from(signingKeyPkcs8B64, 'base64'),
+        format: 'der',
+        type: 'pkcs8',
+      });
+    } catch (error) {
+      log('bans', `area: signing key unusable: ${error.message}`);
+    }
+  }
+
+  try {
+    const raw = JSON.parse(readFileSync(path, 'utf8'));
+    if (Number.isSafeInteger(raw.updatedAt)) updatedAt = raw.updatedAt;
+    for (const e of raw.events ?? []) if (HEX64.test(e?.id ?? '') && Number.isSafeInteger(e.at)) events.set(e.id, e.at);
+    for (const k of raw.keys ?? []) if (HEX64.test(k?.key ?? '') && Number.isSafeInteger(k.at)) keys.set(k.key, k.at);
+  } catch (error) {
+    if (error.code !== 'ENOENT') log('bans', `area: load failed: ${error.message}`);
+  }
+
+  function now() {
+    return typeof nowSeconds === 'function' ? nowSeconds() : nowSeconds;
+  }
+
+  function prune() {
+    const cutoff = now() - AREA_BAN_SECONDS;
+    for (const [k, at] of events) if (at <= cutoff) events.delete(k);
+    for (const [k, at] of keys) if (at <= cutoff) keys.delete(k);
+  }
+
+  function body() {
+    prune();
+    const b = { v: 1, updatedAt, events: [...events.keys()].sort(), keys: [...keys.keys()].sort() };
+    const sig = privateKey
+      ? cryptoSign(null, Buffer.from(canonicalAreaBanBody(b), 'utf8'), privateKey).toString('hex')
+      : '';
+    return { ...b, sig };
+  }
+
+  let cached = body();
+  let cachedAt = now();
+
+  let queue = Promise.resolve();
+  function enqueue(task) {
+    const result = queue.then(task);
+    queue = result.then(() => undefined, () => undefined);
+    return result;
+  }
+
+  async function persist() {
+    const text = JSON.stringify({
+      updatedAt,
+      events: [...events].map(([id, at]) => ({ id, at })),
+      keys: [...keys].map(([key, at]) => ({ key, at })),
+    });
+    const temp = `${path}.${randomUUID()}`;
+    await writeFile(temp, text, { mode: 0o644 });
+    await rename(temp, path);
+  }
+
+  return {
+    configured: privateKey !== null,
+    async ban(report) {
+      return enqueue(async () => {
+        const at = now();
+        if (typeof report.eventId === 'string') events.set(report.eventId.toLowerCase(), at);
+        if (typeof report.target === 'string') keys.set(report.target.toLowerCase(), at);
+        updatedAt = Math.max(at, updatedAt + 1);
+        prune();
+        cached = body();
+        cachedAt = at;
+        await persist();
+      });
+    },
+    isBannedKey(hex) {
+      return keys.has(hex);
+    },
+    // Re-signed when the cached copy is an hour old, so what has aged out of
+    // the day stops being published even if nobody bans anything.
+    list() {
+      if (now() - cachedAt >= 3600) {
+        cached = body();
+        cachedAt = now();
+      }
+      return cached;
+    },
+  };
+}
+
+/// `GET /banned/area` — public and short-cached, like `/banned`.
+export function handleBannedArea({ bans }) {
+  if (!bans.configured) {
+    return { status: 503, cacheControl: 'no-store', body: { ok: false, reason: 'unconfigured' } };
+  }
+  return { status: 200, cacheControl: 'public, max-age=60', body: bans.list() };
+}
+
+const adminAreaBans = createAreaBans();
+
 const ADMIN_DECISION_ROUTE = /^\/admin\/reports\/([^/]+)\/(ban|dismiss)$/;
 
 /// The localhost-only admin API the Telegram bot talks to.
@@ -2151,6 +2330,7 @@ export async function handleAdmin(request, {
   remoteAddress,
   store,
   bans,
+  areaBans = null,
   nowSeconds = Math.floor(Date.now() / 1000),
 } = {}) {
   const notFound = { status: 404, body: { ok: false } };
@@ -2209,7 +2389,16 @@ export async function handleAdmin(request, {
       return { status: 200, body: { ok: true, report: decided.report } };
     }
     try {
-      await bans.ban(decided.report);
+      // An area report's key is a throwaway six-hour key and its event a
+      // public message: they go to the area list (and from it to the area
+      // relay), never into `/banned`, whose canonical body has no field for
+      // them and whose identities set they would only pollute.
+      if (decided.report.context === 'area') {
+        if (!areaBans) throw new Error('no area ban list');
+        await areaBans.ban(decided.report);
+      } else {
+        await bans.ban(decided.report);
+      }
     } catch {
       // Reverted to open, so `decidedAt` goes with it — a ban that never
       // actually took must not start the retention clock.

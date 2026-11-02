@@ -335,3 +335,68 @@ relay's user. strfry reloads a changed plugin by itself; the restart is for the
 config. Put the old config back with the `.bak` if the journal shows the plugin
 failing to start. Once the media relay exists, copy the same file to
 `/opt/cubechat-media-relay/write-policy.mjs`.
+
+## The area relay (/area, 2026-11-02)
+
+The public area chat — district, city and region chats and the notes on the
+map (`docs/superpowers/specs/2026-11-02-area-chat-design.md`). A third strfry
+with its own LMDB on `127.0.0.1:8083`, for the same reason `/media` has one:
+its limits, its write policy and its retention are its own, and a flood of a
+public chat cannot fill the database the private lane lives in.
+
+**Status: in the repository, not on the droplet.** The app's area chat talks
+only to `wss://relay.cubechat.tech/area`; until this is installed it shows
+"no connection" and sends nothing.
+
+What differs from the other two:
+
+- **Public reads.** No AUTH: anybody who knows a city's geohash may read it.
+  The app says so before the first use, and the privacy policy says so.
+- **No access log.** The `/area` block in Caddy has no `log` directive and
+  strfry's logging dumps nothing, so nothing records which address read which
+  city. The write policy's per-address counters are in memory and are tied to
+  no event. There is no ban by address — the owner's decision, because it
+  would need exactly that record.
+- **`area-policy.mjs`**, not `write-policy.mjs` (tests in
+  `area-policy.test.mjs`): kinds 1060 / 1062 / 21060 / 5; at most 4 KiB; NIP-13
+  work of 12 / 16 / 8 bits; exactly one `g` of 3–4 geohash characters; a
+  `cell` only on 1060 and 1062, 5 characters inside `g`; `expiration` required
+  and within 24 h (1060) or 7 days (1062); per address 30 messages a minute,
+  5 notes an hour, 4 presences a minute; keys in `banned-area.json` refused.
+- **Retention** 24 h for messages, 7 days for notes, and every event carries
+  a NIP-40 `expiration` strfry honours on its own. Presence is ephemeral.
+- **Moderation.** A "ban" on an area report in the Telegram bot makes `push/`
+  write `/opt/cubechat-push/banned-area.json` (mode 644) and publish it, signed,
+  at `GET /banned/area`. `cubechat-area-purge.path` sees the file change and
+  runs `area-purge.mjs` as `cubechat-relay`, which `strfry delete`s those event
+  ids and keys. The relay holds the only copy of a public message, so this is
+  the main remedy.
+
+### Install
+
+From the repository, on your own machine:
+
+```powershell
+scp relay/deploy/strfry-area.conf root@209.38.225.225:/tmp/strfry-area.conf
+scp relay/area-policy.mjs relay/area-purge.mjs root@209.38.225.225:/tmp/
+scp relay/deploy/cubechat-area-relay.service relay/deploy/cubechat-area-purge.service relay/deploy/cubechat-area-purge.path root@209.38.225.225:/etc/systemd/system/
+```
+
+On the droplet:
+
+```bash
+mkdir -p /opt/cubechat-area-relay/strfry-db
+install -m 644 /tmp/strfry-area.conf /opt/cubechat-area-relay/strfry.conf
+install -m 755 /tmp/area-policy.mjs /opt/cubechat-area-relay/area-policy.mjs
+install -m 755 /tmp/area-purge.mjs /opt/cubechat-area-relay/area-purge.mjs
+chown -R cubechat-relay:cubechat-relay /opt/cubechat-area-relay
+systemctl daemon-reload
+systemctl enable --now cubechat-area-relay cubechat-area-purge.path
+curl -s -H 'Accept: application/nostr+json' http://127.0.0.1:8083
+```
+
+The last line must name `cubechat area`. Then replace the `relay.cubechat.tech`
+block in Caddy with `deploy/Caddyfile.fragment` exactly as for `/media` above
+(one block, `grep -c` says `1`), and deploy `push/` (it now answers
+`GET /banned/area`; `/health` says `2026-11-02-area-chat`). From your own
+machine, `https://relay.cubechat.tech/area` must name `cubechat area`.

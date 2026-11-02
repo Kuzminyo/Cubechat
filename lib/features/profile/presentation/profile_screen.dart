@@ -63,6 +63,7 @@ import '../../peers/data/peer_discovery_controller.dart';
 import 'widgets/code_pad.dart';
 import '../data/dead_mans_switch_controller.dart';
 import '../../map/presentation/map_sharing_consent.dart';
+import '../../area/data/area_settings.dart';
 import 'settings/settings_section_icons.dart';
 import 'settings/settings_tiles.dart';
 

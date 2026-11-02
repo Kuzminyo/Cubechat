@@ -274,6 +274,47 @@ away (Profile → Internet fallback), the relay list is user-editable, Emergency
 Wipe switches it back off, and a device that has already been switched off stays
 off — the new default applies only where nothing was ever stored.
 
+### Area chat — public, and built so it does not leak place
+
+The **Nearby chat** button on the map opens public chats of the district
+(geohash 5, ~5 km), city (4, ~39 × 20 km) and region (3, ~156 km), and notes
+on the map (`lib/features/area/`, spec
+`docs/superpowers/specs/2026-11-02-area-chat-design.md`). It is **public and
+unencrypted** by design and never touches the mesh, `MessagingService` or the
+private relay pool: plain Nostr events (kinds 1060 message, 1062 note, 21060
+presence) on our own `wss://relay.cubechat.tech/area` only, over a socket of
+its own (`area_relay_link.dart`) that is open only while an area screen is.
+
+The threat model is bitchat's geohash channels and the findings of
+`docs/security-review-jul-27.md` against them:
+
+- **What the relay indexes is never finer than a city.** The `g` tag and every
+  subscription filter are 3–4 characters; a district (5) appears only inside
+  the content of a message typed into the district chat or a note pinned by
+  hand; nothing finer leaves at all, and the fix is coarsened in one function
+  and dropped (`checkAreaCeilings`, `coarsenToDistrict`). The district view is
+  the district and its eight neighbours, filtered on the phone (M10, H7).
+- **Keys are random, per (cell, level), ≤ 6 hours** — never derived from the
+  account seed, its Nostr key or the device key — and a note gets a key of its
+  own. The name lives in `content`, never in an `n` tag (H8).
+- **Nothing is sent in reply to anything received.** No direct messages, no
+  receipts, no typing; presence is off by default, only while a city or region
+  chat is open, only to that level, and symmetric — off, you see no count (H6).
+- **Every inbound event is checked before it reaches memory**: kind and size,
+  the id hash, NIP-13 work (12 / 16 / 8 bits), the exact schema, then BIP-340
+  off the UI isolate — so a relay cannot make the phone verify Schnorr for
+  rubbish, nor speak for anyone (`verifyAreaEvent`, H5). Rooms are bounded
+  (300 messages, 500 keys, 100 notes; frames ≤ 64 KiB) (M12).
+- **One relay, ours, built in** — no public relays, no catalogue (M9). Its
+  honest cost: the operator sees a reader's IP next to the city subscribed
+  to. The `/area` route keeps no access log and the policy's per-address
+  limits are in memory; there is no ban by IP (`relay/README.md`, "The area
+  relay").
+- **Moderation** signs area reports with a throwaway key (16 bits of work),
+  bans go to a separate signed `GET /banned/area` (never the general
+  `/banned`, whose canonical body old builds verify field by field), and the
+  relay deletes the event.
+
 ### Contact cards — starting a chat with no BLE at all
 
 The fallback above assumes you already know the peer, and until now the only way

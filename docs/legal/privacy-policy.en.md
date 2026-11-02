@@ -1,6 +1,6 @@
 # Cubechat Privacy Policy
 
-**Last updated: 1 November 2026**
+**Last updated: 2 November 2026**
 
 Cubechat is a peer-to-peer messenger. Messages travel directly between phones
 over Bluetooth Low Energy, and optionally through public relays that carry them
@@ -105,6 +105,11 @@ Wipe** switches it off too.
 
 The relays are operated by unrelated third parties, not by us. The default list
 is editable in the app.
+
+**One relay is ours and carries no private messages:**
+`relay.cubechat.tech/area`, the public **area chat** (section 6a). It is built
+into the app, cannot be changed, and is used only while an area chat screen is
+open. Nothing private is ever sent to it.
 
 ### 4.3 Group rooms
 
@@ -250,8 +255,9 @@ phone.
 
 ## 6. Location
 
-Cubechat uses your location for two things, and only when you ask for them:
-sending a location into a chat, and showing yourself on the map to friends.
+Cubechat uses your location for three things, and only when you ask for them:
+sending a location into a chat, showing yourself on the map to friends, and
+the public area chat (section 6a), which uses only your approximate district.
 **Nothing is shared until you choose to.** The app does not ask for location
 during the first-run introduction.
 
@@ -259,9 +265,11 @@ during the first-run introduction.
 turns on, the app asks whether you allow your location to be shown on the map,
 and you can decline. It asks again if you turn it off and later back on.
 
-- Your location is shown **only to the contacts on your map**: people you
-  invited, or whose invitation you accepted. It is never shown to strangers,
-  to people nearby, or publicly.
+- Your location on the friends map is shown **only to the contacts on your
+  map**: people you invited, or whose invitation you accepted. Your position
+  on the friends map is never shown to strangers, to people nearby, or
+  publicly. (The area chat in section 6a is a separate, public feature that
+  never uses or reveals your map position.)
 - It is sent **end-to-end encrypted**, the same way as a message. We never
   receive it, and neither do the relays that carry it.
 - While it is on, your pin **keeps updating**, including while Cubechat is in
@@ -297,6 +305,74 @@ message, to the chat you chose, for the time you choose.
 
 Neither of these is avoidable while a map is on screen, and neither is reached
 unless you open the Map tab.
+
+---
+
+## 6a. Area chat and notes (public)
+
+The **Nearby chat** button on the Map tab opens public chats of your district,
+city and region, and notes people leave on the map for up to a week. **This is
+public, not encrypted, and not private messaging.** It is a phone feature only.
+
+**Before anything happens.** The first time you open it, the app tells you in
+words that it is public and asks you to continue or decline. Until you
+continue, it asks for no location and connects nowhere. Profile → Privacy &
+security → *Area chat* switches it off altogether: the button disappears and
+the feature never reads your location or connects.
+
+**Your location.** Approximate location is enough (Android's coarse location,
+iOS's reduced accuracy). It is read once when the screen opens and every five
+minutes while it stays open — **never in the background**, and "Always" is not
+needed. The phone turns the reading into a geohash cell of about 5 × 5 km (your
+"district") straight away; the coordinates themselves are neither sent nor
+kept. Place names ("Podil", "Kyiv") come from your phone's own geocoder, asked
+about the centre of the cell, not about where you are.
+
+**What leaves your phone, and to whom.** Everything goes to our own relay,
+`relay.cubechat.tech/area` — never to public relays.
+
+- **What you read:** to show you the chats, the phone asks the relay for
+  messages of your city-sized cells (about 39 × 20 km; the four around your
+  district at most) and your region (about 156 km). The relay never sees
+  anything finer than that from reading alone. If you open another city from
+  the map ("Read here"), the relay learns which city you are reading; nothing
+  else is sent for it, and you cannot write there.
+- **What you write:** a message carries its text, the city or region it
+  belongs to, a temporary name, a temporary key and the time. A message in the
+  *district* chat also carries your district cell (about 5 km) — only because
+  you typed it into that chat. Anyone who reads that place can read it, and so
+  can we, as the relay's operator.
+- **Notes:** a note carries its text, your city, a key used for that note
+  only, and a time rounded to ten minutes. It carries a district only if you
+  pin one on the map yourself; it never takes one from your location.
+- **"Show that I'm here"** is **off by default**. When you turn it on, while a
+  city or region chat is open, the phone sends a small signal about once a
+  minute to that level only, so people there see "≈N here". It is symmetric:
+  with it off you send nothing and do not see the count either. It never
+  exists for a district.
+
+**Who you are there.** You write under a temporary name like "Cube-4F2A" and
+a temporary key, random and **not derived from your account**: a new one at
+least every six hours, for each place and level, and whenever you tap *New
+name*. Your @name, nickname, photo, contacts and account keys are never shown
+or used. If you set your own name and use the same one in two places, the app
+warns you that it links them. There are no private messages, delivery or read
+receipts, or "typing" signals in the area chat, and nothing is ever sent
+automatically in reply to what you receive.
+
+**How long it is kept.** Messages are kept on our relay for **24 hours**,
+notes for 1 hour, 24 hours or 7 days as you choose (**7 days at most**); you can
+delete your own note earlier. On your phone, the area chat keeps only its own
+switches, your current temporary keys (until they expire), the authors you
+blocked there (for a day) and your own notes until they expire. What you read
+there is held in memory only and never written to disk.
+
+**What we, the relay operator, see.** Cubechat has no Tor, so **our relay sees
+the IP address of a reader next to the city they subscribe to, and of a writer
+next to what they write**. We do not log it: the `/area` route keeps no access
+log, its limits per address are counters in memory, and no address is stored
+with any event. For the same reason there is **no ban by IP address**:
+moderation removes events and refuses keys.
 
 ---
 
@@ -360,6 +436,17 @@ IP address. The list is the same for everyone.
 The offensive-content filter runs on your phone only. Nothing about what it
 folds is sent anywhere.
 
+**Reports from the area chat** (section 6a) are **not** signed with your
+account key: each is signed with a key made for that one report, so the report
+service does not learn which account was reading which city. Such a report
+carries the reason and optional note, the author's temporary area key, the
+message's event id and text, and the city or region it was published under.
+Its address is limited to ten reports an hour. A decision to ban removes the
+message from our area relay and refuses that temporary key; it is published,
+signed, at `push.cubechat.tech/banned/area` (event ids and temporary keys of
+the last 24 hours only), which the app fetches when the area chat opens and
+every ten minutes while it stays open.
+
 ---
 
 ## 7b. Cube ID — a short @name (optional)
@@ -419,7 +506,8 @@ kept for 14 days.
   data broker.
 - **No selling or sharing of personal data.** There is nothing to sell.
 - **No server-side content scanning.** We cannot read ordinary messages; the design makes it
-  impossible rather than merely forbidden.
+  impossible rather than merely forbidden. The **area chat** is the exception
+  by design: it is public, and we can read it like anyone else (section 6a).
 
 ---
 
@@ -449,7 +537,11 @@ keeps working.
   keys. This is irreversible: reinstalling produces a *new* identity, and
   existing conversations cannot be resumed.
 - **Emergency Wipe** does the same from inside the app, and switches the
-  internet fallback back off.
+  internet fallback back off. It also switches the area chat off and erases
+  its temporary keys and your notes' keys.
+- **Area chat** — your own note can be deleted from the relay before it
+  expires (*Delete my note*). Messages cannot be recalled; they expire on our
+  relay after 24 hours.
 - **The dead man's switch**, if you configured one, wipes the device after the
   period of inactivity you set.
 - **Push registration** is deleted from our service when you switch push off.

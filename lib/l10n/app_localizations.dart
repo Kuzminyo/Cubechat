@@ -7117,6 +7117,384 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'With the screen off the radio is heard only while background mode is on.'**
   String get radioBackgroundHint;
+
+  /// No description provided for @areaNearby.
+  ///
+  /// In en, this message translates to:
+  /// **'Nearby chat'**
+  String get areaNearby;
+
+  /// No description provided for @areaLevelDistrict.
+  ///
+  /// In en, this message translates to:
+  /// **'District'**
+  String get areaLevelDistrict;
+
+  /// No description provided for @areaLevelCity.
+  ///
+  /// In en, this message translates to:
+  /// **'City'**
+  String get areaLevelCity;
+
+  /// No description provided for @areaLevelRegion.
+  ///
+  /// In en, this message translates to:
+  /// **'Region'**
+  String get areaLevelRegion;
+
+  /// No description provided for @areaPresentCount.
+  ///
+  /// In en, this message translates to:
+  /// **'≈{count} here'**
+  String areaPresentCount(int count);
+
+  /// No description provided for @areaPresentMany.
+  ///
+  /// In en, this message translates to:
+  /// **'50+ here'**
+  String get areaPresentMany;
+
+  /// No description provided for @areaBlockViaBluetooth.
+  ///
+  /// In en, this message translates to:
+  /// **'Your block — over Bluetooth'**
+  String get areaBlockViaBluetooth;
+
+  /// No description provided for @areaOpenNearbyTab.
+  ///
+  /// In en, this message translates to:
+  /// **'Open Nearby'**
+  String get areaOpenNearbyTab;
+
+  /// No description provided for @areaLocating.
+  ///
+  /// In en, this message translates to:
+  /// **'Finding your district…'**
+  String get areaLocating;
+
+  /// No description provided for @areaNoPlace.
+  ///
+  /// In en, this message translates to:
+  /// **'No location yet. The area chat needs your approximate location while this screen is open.'**
+  String get areaNoPlace;
+
+  /// No description provided for @areaLocationDenied.
+  ///
+  /// In en, this message translates to:
+  /// **'Location is off for Cubechat. Allow approximate location in Settings to see your district.'**
+  String get areaLocationDenied;
+
+  /// No description provided for @areaOffline.
+  ///
+  /// In en, this message translates to:
+  /// **'No connection to the area chat'**
+  String get areaOffline;
+
+  /// No description provided for @areaEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'Nobody has written here in the last 24 hours.'**
+  String get areaEmpty;
+
+  /// No description provided for @areaConsentTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'The area chat is public'**
+  String get areaConsentTitle;
+
+  /// No description provided for @areaConsentBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages here are public. Anyone who opens your district or city will read them, and they are kept for 24 hours on the Cubechat server. You write under a temporary name that changes every few hours; nobody sees your @name or your contacts. To know your district, Cubechat asks for your approximate location, only while this screen is open.'**
+  String get areaConsentBody;
+
+  /// No description provided for @areaConsentAllow.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue'**
+  String get areaConsentAllow;
+
+  /// No description provided for @areaConsentDecline.
+  ///
+  /// In en, this message translates to:
+  /// **'Not now'**
+  String get areaConsentDecline;
+
+  /// No description provided for @areaDefaultName.
+  ///
+  /// In en, this message translates to:
+  /// **'Cube-{tag}'**
+  String areaDefaultName(String tag);
+
+  /// No description provided for @areaYouAre.
+  ///
+  /// In en, this message translates to:
+  /// **'You are {name} · new name in {hours} h'**
+  String areaYouAre(String name, int hours);
+
+  /// No description provided for @areaNewName.
+  ///
+  /// In en, this message translates to:
+  /// **'New name'**
+  String get areaNewName;
+
+  /// No description provided for @areaSetName.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose a name'**
+  String get areaSetName;
+
+  /// No description provided for @areaNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Only for this name\'s few hours. Leave empty for the automatic one.'**
+  String get areaNameHint;
+
+  /// No description provided for @areaNameSameWarning.
+  ///
+  /// In en, this message translates to:
+  /// **'The same name ties you together across districts'**
+  String get areaNameSameWarning;
+
+  /// No description provided for @areaShowPresence.
+  ///
+  /// In en, this message translates to:
+  /// **'Show that I\'m here'**
+  String get areaShowPresence;
+
+  /// No description provided for @areaPresenceOffHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Turn on \"Show that I\'m here\" to see how many people are near'**
+  String get areaPresenceOffHint;
+
+  /// No description provided for @areaReadOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'You can write only where you are'**
+  String get areaReadOnly;
+
+  /// No description provided for @areaComposerHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Message everyone here'**
+  String get areaComposerHint;
+
+  /// No description provided for @areaSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Send'**
+  String get areaSend;
+
+  /// No description provided for @areaWaitALittle.
+  ///
+  /// In en, this message translates to:
+  /// **'Wait a little'**
+  String get areaWaitALittle;
+
+  /// No description provided for @areaFlood.
+  ///
+  /// In en, this message translates to:
+  /// **'Flood ({count}) · Show'**
+  String areaFlood(int count);
+
+  /// No description provided for @areaReply.
+  ///
+  /// In en, this message translates to:
+  /// **'Reply'**
+  String get areaReply;
+
+  /// No description provided for @areaHide.
+  ///
+  /// In en, this message translates to:
+  /// **'Hide'**
+  String get areaHide;
+
+  /// No description provided for @areaBlock.
+  ///
+  /// In en, this message translates to:
+  /// **'Block until their name changes'**
+  String get areaBlock;
+
+  /// No description provided for @areaBlocked.
+  ///
+  /// In en, this message translates to:
+  /// **'Blocked until their name changes'**
+  String get areaBlocked;
+
+  /// No description provided for @areaReport.
+  ///
+  /// In en, this message translates to:
+  /// **'Report'**
+  String get areaReport;
+
+  /// No description provided for @areaOpenLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Open link'**
+  String get areaOpenLink;
+
+  /// No description provided for @areaOpenLinkConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Open {url}?'**
+  String areaOpenLinkConfirm(String url);
+
+  /// No description provided for @areaOpen.
+  ///
+  /// In en, this message translates to:
+  /// **'Open'**
+  String get areaOpen;
+
+  /// No description provided for @areaReadHere.
+  ///
+  /// In en, this message translates to:
+  /// **'Read here'**
+  String get areaReadHere;
+
+  /// No description provided for @areaReadHereHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Reading only. You can write only where you are; the relay learns which place you read.'**
+  String get areaReadHereHint;
+
+  /// No description provided for @areaNotes.
+  ///
+  /// In en, this message translates to:
+  /// **'Notes'**
+  String get areaNotes;
+
+  /// No description provided for @areaNotesCount.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =0{No notes} one{{count} note} other{{count} notes}}'**
+  String areaNotesCount(int count);
+
+  /// No description provided for @areaLeaveNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave a note'**
+  String get areaLeaveNote;
+
+  /// No description provided for @areaNoteHint.
+  ///
+  /// In en, this message translates to:
+  /// **'A short note for your city'**
+  String get areaNoteHint;
+
+  /// No description provided for @areaNoteLifetime.
+  ///
+  /// In en, this message translates to:
+  /// **'Keeps for'**
+  String get areaNoteLifetime;
+
+  /// No description provided for @areaNote1h.
+  ///
+  /// In en, this message translates to:
+  /// **'1 h'**
+  String get areaNote1h;
+
+  /// No description provided for @areaNote24h.
+  ///
+  /// In en, this message translates to:
+  /// **'24 h'**
+  String get areaNote24h;
+
+  /// No description provided for @areaNote7d.
+  ///
+  /// In en, this message translates to:
+  /// **'7 days'**
+  String get areaNote7d;
+
+  /// No description provided for @areaPinToDistrict.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin to a district'**
+  String get areaPinToDistrict;
+
+  /// No description provided for @areaPinHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Tap the map inside your city; the pin snaps to its district.'**
+  String get areaPinHint;
+
+  /// No description provided for @areaPinOutside.
+  ///
+  /// In en, this message translates to:
+  /// **'Only inside your city'**
+  String get areaPinOutside;
+
+  /// No description provided for @areaNoteDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete my note'**
+  String get areaNoteDelete;
+
+  /// No description provided for @areaNoNotes.
+  ///
+  /// In en, this message translates to:
+  /// **'No notes here yet'**
+  String get areaNoNotes;
+
+  /// No description provided for @areaNotesLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'Three notes a day'**
+  String get areaNotesLimit;
+
+  /// No description provided for @areaNoteLeft.
+  ///
+  /// In en, this message translates to:
+  /// **'Note left'**
+  String get areaNoteLeft;
+
+  /// No description provided for @areaNoteSend.
+  ///
+  /// In en, this message translates to:
+  /// **'Leave'**
+  String get areaNoteSend;
+
+  /// No description provided for @areaOwnNote.
+  ///
+  /// In en, this message translates to:
+  /// **'Your note'**
+  String get areaOwnNote;
+
+  /// No description provided for @areaNotePinned.
+  ///
+  /// In en, this message translates to:
+  /// **'Pinned to a district'**
+  String get areaNotePinned;
+
+  /// No description provided for @areaHidden.
+  ///
+  /// In en, this message translates to:
+  /// **'Hidden'**
+  String get areaHidden;
+
+  /// No description provided for @areaPublicBadge.
+  ///
+  /// In en, this message translates to:
+  /// **'Public · kept 24 h'**
+  String get areaPublicBadge;
+
+  /// No description provided for @areaSettingTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Area chat'**
+  String get areaSettingTitle;
+
+  /// No description provided for @areaSettingOnHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The Nearby chat button on the map: public chats of your district and city, under a temporary name.'**
+  String get areaSettingOnHint;
+
+  /// No description provided for @areaSettingOffHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Off: no button on the map, and the area chat never asks for your location or connects.'**
+  String get areaSettingOffHint;
 }
 
 class _AppLocalizationsDelegate

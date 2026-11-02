@@ -1980,5 +1980,99 @@
   "radioTurnOff": "Turn the radio off",
   "radioPersonalCallsTitle": "Take personal calls",
   "radioPersonalCallsHint": "While the radio is off, a contact who talks to you tunes it to them.",
-  "radioBackgroundHint": "With the screen off the radio is heard only while background mode is on."
+  "radioBackgroundHint": "With the screen off the radio is heard only while background mode is on.",
+  "areaNearby": "Nearby chat",
+  "areaLevelDistrict": "District",
+  "areaLevelCity": "City",
+  "areaLevelRegion": "Region",
+  "areaPresentCount": "≈{count} here",
+  "@areaPresentCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "areaPresentMany": "50+ here",
+  "areaBlockViaBluetooth": "Your block — over Bluetooth",
+  "areaOpenNearbyTab": "Open Nearby",
+  "areaLocating": "Finding your district…",
+  "areaNoPlace": "No location yet. The area chat needs your approximate location while this screen is open.",
+  "areaLocationDenied": "Location is off for Cubechat. Allow approximate location in Settings to see your district.",
+  "areaOffline": "No connection to the area chat",
+  "areaEmpty": "Nobody has written here in the last 24 hours.",
+  "areaConsentTitle": "The area chat is public",
+  "areaConsentBody": "Messages here are public. Anyone who opens your district or city will read them, and they are kept for 24 hours on the Cubechat server. You write under a temporary name that changes every few hours; nobody sees your @name or your contacts. To know your district, Cubechat asks for your approximate location, only while this screen is open.",
+  "areaConsentAllow": "Continue",
+  "areaConsentDecline": "Not now",
+  "areaDefaultName": "Cube-{tag}",
+  "@areaDefaultName": {
+    "placeholders": {
+      "tag": { "type": "String" }
+    }
+  },
+  "areaYouAre": "You are {name} · new name in {hours} h",
+  "@areaYouAre": {
+    "placeholders": {
+      "name": { "type": "String" },
+      "hours": { "type": "int" }
+    }
+  },
+  "areaNewName": "New name",
+  "areaSetName": "Choose a name",
+  "areaNameHint": "Only for this name's few hours. Leave empty for the automatic one.",
+  "areaNameSameWarning": "The same name ties you together across districts",
+  "areaShowPresence": "Show that I'm here",
+  "areaPresenceOffHint": "Turn on \"Show that I'm here\" to see how many people are near",
+  "areaReadOnly": "You can write only where you are",
+  "areaComposerHint": "Message everyone here",
+  "areaSend": "Send",
+  "areaWaitALittle": "Wait a little",
+  "areaFlood": "Flood ({count}) · Show",
+  "@areaFlood": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "areaReply": "Reply",
+  "areaHide": "Hide",
+  "areaBlock": "Block until their name changes",
+  "areaBlocked": "Blocked until their name changes",
+  "areaReport": "Report",
+  "areaOpenLink": "Open link",
+  "areaOpenLinkConfirm": "Open {url}?",
+  "@areaOpenLinkConfirm": {
+    "placeholders": {
+      "url": { "type": "String" }
+    }
+  },
+  "areaOpen": "Open",
+  "areaReadHere": "Read here",
+  "areaReadHereHint": "Reading only. You can write only where you are; the relay learns which place you read.",
+  "areaNotes": "Notes",
+  "areaNotesCount": "{count, plural, =0{No notes} one{{count} note} other{{count} notes}}",
+  "@areaNotesCount": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "areaLeaveNote": "Leave a note",
+  "areaNoteHint": "A short note for your city",
+  "areaNoteLifetime": "Keeps for",
+  "areaNote1h": "1 h",
+  "areaNote24h": "24 h",
+  "areaNote7d": "7 days",
+  "areaPinToDistrict": "Pin to a district",
+  "areaPinHint": "Tap the map inside your city; the pin snaps to its district.",
+  "areaPinOutside": "Only inside your city",
+  "areaNoteDelete": "Delete my note",
+  "areaNoNotes": "No notes here yet",
+  "areaNotesLimit": "Three notes a day",
+  "areaNoteLeft": "Note left",
+  "areaNoteSend": "Leave",
+  "areaOwnNote": "Your note",
+  "areaNotePinned": "Pinned to a district",
+  "areaHidden": "Hidden",
+  "areaPublicBadge": "Public · kept 24 h",
+  "areaSettingTitle": "Area chat",
+  "areaSettingOnHint": "The Nearby chat button on the map: public chats of your district and city, under a temporary name.",
+  "areaSettingOffHint": "Off: no button on the map, and the area chat never asks for your location or connects."
 }

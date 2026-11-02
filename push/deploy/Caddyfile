@@ -74,7 +74,19 @@ push.cubechat.tech {
 # so the media relay ran with nobody reaching it and every chunk went through
 # the root, held back from nobody. Found and restored 2026-10-14. Same lesson
 # as above: the live config and this file are one thing.
+#
+# /area (2026-11-02) is the area chat's own strfry on :8083 (relay/README.md,
+# "The area relay"). No `log` directive: no access log of who read which city.
 relay.cubechat.tech {
+	handle_path /area* {
+		reverse_proxy 127.0.0.1:8083 {
+			transport http {
+				versions 1.1
+				keepalive off
+			}
+		}
+	}
+
 	handle_path /media* {
 		reverse_proxy 127.0.0.1:8082 {
 			transport http {

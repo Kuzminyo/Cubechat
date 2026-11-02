@@ -6,7 +6,11 @@ enum ReportReason { spam, abuse, violence, sexual, other }
 
 /// Where the reported thing was seen. Mirrors `REPORT_CONTEXTS` on the
 /// server the same way [ReportReason] does.
-enum ReportContext { direct, channel, airdrop, general }
+///
+/// [area] is the public area chat (2026-11-02): such a report is signed by a
+/// key of its own rather than the account's, and names the event and the
+/// cell it was seen in — see `AreaReporter`.
+enum ReportContext { direct, channel, airdrop, general, area }
 
 /// What kind of message is attached to the report, if any. Mirrors
 /// `REPORT_MESSAGE_KINDS` on the server the same way [ReportReason] does.
@@ -30,7 +34,18 @@ class ModerationReport {
     this.messageText,
     this.messageKind,
     this.messageSentAt,
+    this.eventId,
+    this.geohash,
   });
+
+  /// An area chat report's event id (64 hex) — what a moderator deletes on
+  /// the relay. Required by the server for [ReportContext.area], refused
+  /// everywhere else.
+  final String? eventId;
+
+  /// The city (4) or region (3) the reported event was published under, for
+  /// [ReportContext.area].
+  final String? geohash;
 
   final ReportReason reason;
 
@@ -87,6 +102,8 @@ class ModerationReport {
       if (target != null) 'target': target,
       if (targetNpub != null) 'targetNpub': targetNpub,
       if (channelId != null) 'channelId': channelId,
+      if (eventId != null) 'eventId': eventId,
+      if (geohash != null) 'geohash': geohash,
       if (hasMessage)
         'message': {
           if (messageText != null)
@@ -124,6 +141,8 @@ class ModerationReport {
       final target = json['target'];
       final targetNpub = json['targetNpub'];
       final channelId = json['channelId'];
+      final eventId = json['eventId'];
+      final geohash = json['geohash'];
 
       return ModerationReport(
         reason: reason,
@@ -135,6 +154,8 @@ class ModerationReport {
         messageText: messageText,
         messageKind: messageKind,
         messageSentAt: messageSentAt,
+        eventId: eventId is String ? eventId : null,
+        geohash: geohash is String ? geohash : null,
       );
     } catch (_) {
       return null;

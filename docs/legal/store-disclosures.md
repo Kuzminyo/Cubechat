@@ -31,6 +31,8 @@ before App Review.
 |---|---|---|---|---|
 | **Identifiers → User ID** | App Functionality | Yes | No | Pseudonymous public keys in push registration and signed reports; the optional Cube ID @name and the public card it points to (`id.cubechat.tech`, privacy policy §7b) |
 | **User Content → Other User Content** | App Functionality | Yes | No | Notes and selected message text in submitted reports |
+| **User Content → Other User Content** (area chat) | App Functionality | **No** | No | Public area chat messages and map notes, kept on `relay.cubechat.tech/area` for 24 h (notes ≤ 7 days), signed by random keys that live ≤ 6 h and are derived from nothing of the account (`lib/features/area/data/area_keys.dart`, privacy policy §6a) |
+| **Location → Coarse Location** | App Functionality | **No** | No | The area chat: a ~5 km geohash cell inside a message the user typed into the district chat, or a note's hand-pinned district; city/region cells (~39 km / ~156 km) in every area event and subscription. Coarsened on the phone in `coarsenToDistrict` (`lib/features/area/domain/area_level.dart`); never in the background; off until the in-app consent |
 
 Both categories are linked to a stable in-app public key. Cubechat does not
 require a real-world name, email or phone number, but the persistent key makes
@@ -43,7 +45,7 @@ reports identifiable within the app. The iOS manifest declares the same categori
 | **Contact Info → Email address** | **Collected, optional** — App Functionality; linked to the user (their Cube ID @name); not used for tracking | Only if the user adds a recovery e-mail in Cube ID: stored on `id.cubechat.tech` beside the name and sent to Resend to deliver the confirmation and recovery letters (`id/src/registry.js`, `id/src/mail.js`, privacy policy §7b). Name, phone and postal address: not collected |
 | Health & Fitness | Not collected | No such API is used |
 | Financial Info | Not collected | No payments |
-| **Location** | **Not collected** | Position is end-to-end encrypted to chosen contacts only and never reaches us — `lib/features/map/data/map_presence_controller.dart` |
+| **Location → Precise Location** | **Not collected** | The friends map's position is end-to-end encrypted to chosen contacts only and never reaches us — `lib/features/map/data/map_presence_controller.dart`. **Coarse Location is collected** since the area chat (2026-11-02) — see the table above |
 | Sensitive Info | Not collected | — |
 | Contacts (address book) | Not collected | No address-book permission is requested; check `Info.plist` for the absence of `NSContactsUsageDescription` |
 | Ordinary messages, photos, audio | Not collected unless selected for a report | A report can contain selected message text; ordinary traffic remains end-to-end encrypted |
@@ -82,6 +84,8 @@ Declare these types:
 | **Device or other IDs** | Yes | **Yes for shortened report identifiers** | No | Optional | **App functionality** (notifications and moderation) |
 | **Other user-generated content** | Yes | **Yes** | No | Optional | **App functionality** (user-submitted abuse reports) |
 | **Personal info → User IDs** | Yes | No | No | Optional | **App functionality** (the Cube ID @name; deletable with "Release") |
+| **Location → Approximate location** | Yes | No | No | Optional | **App functionality** (the public area chat: district / city / region cells, privacy policy §6a) |
+| **Messages → Other in-app messages** | Yes | No | No | Optional | **App functionality** (public area chat messages and map notes, kept 24 h / ≤ 7 days on our relay) |
 
 A private Telegram bot forwards the report reason, note, up to 1000
 characters of an excerpt, and shortened reporter and target identifiers to
@@ -91,7 +95,7 @@ separate from that report flow.
 
 Ordinary encrypted content is not collected. Distinguish it from explicitly submitted report content:
 
-- **Messages** — ordinary traffic is not collected; selected text in a submitted report is collected.
+- **Messages** — ordinary traffic is not collected; selected text in a submitted report is collected. **Public area chat messages and notes are collected** (declared above): they sit on our `/area` relay for 24 hours (notes up to 7 days) for anyone reading that place.
 - **Photos and videos / Audio files / Files and docs** — not collected. They
   travel encrypted between devices and are stored in the app's private
   container. Walkie-talkie voice with relays on also passes through
@@ -107,10 +111,15 @@ Ordinary encrypted content is not collected. Distinguish it from explicitly subm
   reached the phone only over Bluetooth is passed on the same way. The
   developer cannot read any of it — not collected
   (`lib/features/devices/data/device_sync.dart`).
-- **Location (approximate and precise)** — not collected. Shared only with
+- **Location (precise)** — not collected. The friends map shares it only with
   contacts the user picks, end-to-end encrypted, expiring after six minutes.
   Sharing stays off until switched on; the permission is requested at the end
   of first-run onboarding, which grants nothing by itself.
+- **Location (approximate)** — **collected** by the area chat (declared
+  above), and only after its in-app consent: a city or region cell in every
+  area event and subscription, and a ~5 km district cell only in a message
+  typed into the district chat or a note pinned by hand. Read while the screen
+  is open, never in the background (`lib/features/area/data/area_location.dart`).
 
 ### Section 3 — Sensitive permissions that need a declaration
 
@@ -196,5 +205,11 @@ A short list, because these are the changes that would make a declaration false:
   keep it that way, because a default is what most people will actually be
   running.
 - **A new third-party map tile source** belongs in Privacy Policy §6.
+- **The area chat's cell precision and retention.** Coarse Location above is
+  true only while `g` stays ≤ 4 characters, a district (5) leaves only inside
+  a typed district message or a hand-pinned note, and nothing finer leaves at
+  all (`checkAreaCeilings`, `test/area_event_test.dart`); and while
+  `relay/deploy/strfry-area.conf` keeps messages 24 h and notes ≤ 7 days.
+  Change either, and Privacy Policy §6a and both store answers change with it.
 - **Requesting the address book** would add Contacts, which is currently
   answerable as "not collected" only because the permission does not exist.

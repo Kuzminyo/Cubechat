@@ -1,6 +1,6 @@
 # Cubechat Terms of Use
 
-**Last updated: 25 September 2026**
+**Last updated: 2 November 2026**
 
 > This document is not legal advice; have it reviewed before you rely on it.
 
@@ -37,6 +37,12 @@ and password. Share them accordingly.
 **Legal use of encryption.** Some jurisdictions restrict encryption software.
 Using Cubechat where it is unlawful to do so is your responsibility, not ours.
 
+**The area chat is public.** The district, city and region chats and the
+notes on the map are read by anyone who opens that place, and by us. The rules
+above apply there in full, and one more: **do not publish anybody's address,
+whereabouts or other personal details** — your own included. We may remove any
+message or note there, and refuse the temporary key that posted it.
+
 ---
 
 ## 3. Reports and enforcement
@@ -54,6 +60,11 @@ folds rude words from people you have not written to and in channels.
 
 Do not submit knowingly false or malicious reports. A report is not a way to
 send us your entire conversation; only the selected content is transmitted.
+
+In the public area chat a ban works differently, because nobody there has an
+identity to ban: the reported message or note is deleted from our relay, and
+the temporary key that posted it is refused. Blocking someone there lasts until
+their name changes — a few hours at most.
 
 ---
 ## 4. Age
@@ -78,12 +89,16 @@ guaranteed either.
 
 ---
 
-## 6. The relays are not ours
+## 6. The relays
 
-The Nostr relays used by the optional internet fallback are public services run
-by third parties. We do not control them, do not guarantee their availability,
-and are not responsible for their conduct or their retention. You may edit the
-relay list, and the feature is off unless you enable it.
+The public Nostr relays used by the internet fallback are run by third
+parties. We do not control them, do not guarantee their availability, and are
+not responsible for their conduct or their retention. The fallback is on by
+default; you may switch it off and edit the relay list.
+
+We also run relays of our own at `relay.cubechat.tech`: one that carries
+sealed frames, as the public ones do, and `/area`, which carries the public
+area chat. We do not guarantee their availability either.
 
 ---
 
