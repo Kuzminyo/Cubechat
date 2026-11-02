@@ -24,7 +24,9 @@ a recipient tag and a timestamp. That is the same metadata every public relay in
 the list already sees, which is why moving to our own is a straight improvement
 and not a new exposure — one fewer stranger holding it.
 
-The one exception, since 2026-10-31, is the walkie-talkie: kind **21059**,
+The one exception, since 2026-10-31, is the walkie-talkie: kind **23517**
+(21059 until 2026-11-02, and still sent alongside it until the first build cut
+on or after 2027-01-01 — NIP-59 registered 21059 as "Ephemeral Gift Wrap"),
 ephemeral, so strfry forwards it to whoever is subscribed and stores nothing.
 It carries a radio channel tag (`y`) instead of a recipient, and a throwaway
 author key. `write-policy.mjs` caps it at 16 KiB an event
@@ -297,8 +299,8 @@ rate, kept for one to two weeks on a droplet with ~21 GB free. A full LMDB is
 the text lane down as well as the media one.
 
 `write-policy.mjs` (tests: `node --test` in this directory) stores only kind
-1059 and passes the walkie-talkie's ephemeral 21059 up to 16 KiB an event
-(`RADIO_MAX_BYTES`, since 2026-10-31), holds each source address to 3000 events a minute and 1 GiB an hour —
+1059 and passes the walkie-talkie's ephemeral 23517 (and the legacy 21059) up
+to 16 KiB an event (`RADIO_MAX_BYTES`, since 2026-10-31), holds each source address to 3000 events a minute and 1 GiB an hour —
 a 115 MB video is ~1800 chunks over a few minutes — and refuses every write
 while the disk has less than 3 GiB free. strfry's own imports and syncs pass.
 The three numbers are environment variables (`EVENTS_PER_IP_MINUTE`,

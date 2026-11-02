@@ -8,13 +8,17 @@
 // and a full LMDB takes the text lane down with the media one.
 //
 // Three rules, cheapest first:
-//   1. Only kind 1059, and the walkie-talkie's 21059. 1059 is every frame the
-//      app keeps on a relay (`kCubechatFrameKind`); 24242/24243 go to the HTTP
-//      servers and 22242 is an AUTH message, which never reaches a write
-//      policy. 21059 (`kRadioEventKind`, 2026-10-31) is ephemeral — strfry
-//      hands it to whoever is subscribed and stores nothing — and is held to
-//      RADIO_MAX_BYTES, since voice is at most three 300 ms chunks an event
-//      (~3 KB) and anything larger is not the app.
+//   1. Only kind 1059, and the walkie-talkie's 23517 and 21059. 1059 is every
+//      frame the app keeps on a relay (`kCubechatFrameKind`); 24242/24243 go
+//      to the HTTP servers and 22242 is an AUTH message, which never reaches a
+//      write policy. 23517 (`kRadioEventKind`, 2026-11-02) is ephemeral —
+//      strfry hands it to whoever is subscribed and stores nothing — and is
+//      held to RADIO_MAX_BYTES, since voice is at most three 300 ms chunks an
+//      event (~3 KB) and anything larger is not the app. 21059
+//      (`kLegacyRadioEventKind`) is the same thing under the kind build 1182
+//      used, until NIP-59 took it for "Ephemeral Gift Wrap"; newer builds send
+//      both until the first build cut on or after 2027-01-01, and once that
+//      build is out it can leave this set.
 //   2. Per source address: events a minute and bytes an hour. Sized for a real
 //      transfer — a 115 MB video is ~1800 chunks of ~87 KB on the wire, a few
 //      minutes of sending — with room for a carrier NAT that puts many phones
@@ -33,8 +37,8 @@ import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 
 const FRAME_KIND = 1059;
-const RADIO_KIND = 21059;
-const ALLOWED_KINDS = new Set([FRAME_KIND, RADIO_KIND]);
+const RADIO_KINDS = new Set([23517, 21059]);
+const ALLOWED_KINDS = new Set([FRAME_KIND, ...RADIO_KINDS]);
 
 export const defaults = {
   eventsPerMinute: Number(process.env.EVENTS_PER_IP_MINUTE || 3000),
@@ -66,7 +70,7 @@ export function decide(request, state, { now, freeBytes, limits = defaults }) {
 
   const ip = String(request.sourceInfo || 'unknown');
   const size = Buffer.byteLength(JSON.stringify(event));
-  if (event.kind === RADIO_KIND && size > (limits.radioMaxBytes ?? defaults.radioMaxBytes)) {
+  if (RADIO_KINDS.has(event.kind) && size > (limits.radioMaxBytes ?? defaults.radioMaxBytes)) {
     return answer('reject', 'invalid: radio event too large');
   }
   let entry = state.get(ip);

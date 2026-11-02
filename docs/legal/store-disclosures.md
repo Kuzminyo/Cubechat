@@ -96,7 +96,9 @@ Ordinary encrypted content is not collected. Distinguish it from explicitly subm
   travel encrypted between devices and are stored in the app's private
   container. Walkie-talkie voice with relays on also passes through
   `relay.cubechat.tech` as ephemeral, end-to-end encrypted Nostr events
-  (kind 21059) that the relay forwards in real time and never stores, signed
+  (kind 23517, and until 2027 also the older kind 21059 so that earlier app
+  versions still hear newer ones) that the relay forwards in real time and
+  never stores, signed
   with a throwaway key per connection — not collected
   (`lib/core/transport/nostr/radio_relay_link.dart`, `relay/write-policy.mjs`).
   The devices of one account keep one conversation by sending each other

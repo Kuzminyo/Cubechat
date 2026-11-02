@@ -12,15 +12,43 @@ import 'nostr_relay_protocol.dart';
 import 'nostr_signer.dart';
 import 'nostr_transport.dart';
 
-/// The walkie-talkie's event kind on our relay (2026-10-31, stage 4a).
+/// The walkie-talkie's event kind on our relay (2026-11-02).
 ///
 /// Ephemeral (NIP-01 20000–29999): strfry hands it to whoever is subscribed at
 /// that moment and stores nothing — `rejectEphemeralEventsOlderThanSeconds =
 /// 60` in `relay/deploy/strfry.conf` — which is the radio's "never kept"
-/// promise said by the relay itself. 21059 next to [kCubechatFrameKind] so a
-/// reader of the relay policy sees they belong together. No build before this
-/// one subscribes to it, so nothing installed ever sees one.
-const int kRadioEventKind = 21059;
+/// promise said by the relay itself.
+///
+/// Not 21059 any more: the NIP list registered that as "Ephemeral Gift Wrap"
+/// (NIP-59), whose content is a sealed rumor, not our `cr1:` batch, so a
+/// foreign client on a relay carrying both could take a voice batch for a
+/// gift wrap. 23517 is in no NIP text (checked against nostr-protocol/nips at
+/// 400d157, 2026-10-27), and is no round number or `…059` a neighbour would
+/// reach for next.
+const int kRadioEventKind = 23517;
+
+/// The radio's kind in build 1182, the only build that put voice on the relay
+/// before [kRadioEventKind]; it listens on nothing else.
+///
+/// **Sent and heard alongside the new kind until the first build cut on or
+/// after 2027-01-01**, which drops it from both [kRadioSendKinds] and
+/// [kRadioListenKinds]. Sending it keeps a 1182 phone hearing a newer one;
+/// hearing it keeps a newer phone hearing a 1182 one. Two months, because 1182
+/// is a tester build of 2026-10-31 and the radio's relay lane two days old
+/// when this changed; the cost meanwhile is a second signature per batch (~1
+/// a second per talker, `nostr-sign` in [CostMeter]) and a second event,
+/// ~130 a minute against the relay's 3000 per address. After that build ships,
+/// `relay/write-policy.mjs` may refuse it — a refused copy nobody listens to
+/// costs nothing but a log line.
+const int kLegacyRadioEventKind = 21059;
+
+/// Kinds each batch is published under, the new one first: the same content
+/// signed once per kind, since the kind is part of the event id.
+const List<int> kRadioSendKinds = [kRadioEventKind, kLegacyRadioEventKind];
+
+/// Kinds the subscription asks for. A newer sender's batch arrives once per
+/// kind; [RadioRelayLink] drops the second copy.
+const List<int> kRadioListenKinds = [kRadioEventKind, kLegacyRadioEventKind];
 
 /// Tag carrying the radio tag in hex: a group's fixed one, or a pair's that
 /// turns over with the hourly peer-id epoch (`RadioCrypto.derivePairTag`).
@@ -162,7 +190,15 @@ class RadioRelayLink {
 
   static const String _subId = 'radio';
 
+  /// Event contents remembered to drop a twin. A batch sent under every kind
+  /// in [kRadioSendKinds] reaches us as byte-identical content under two ids,
+  /// a few milliseconds apart; eight events is several seconds of every
+  /// talker on a channel. (origin, msgId) dedup further on would catch the
+  /// frames too — this keeps the twin out of the decode and out of the counts.
+  static const int _recentContents = 8;
+
   Set<String> _tags = const {};
+  final Set<String> _heardContents = <String>{};
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _sub;
   NostrEventSigner? _signer;
@@ -279,7 +315,7 @@ class RadioRelayLink {
         'REQ',
         _subId,
         {
-          'kinds': [kRadioEventKind],
+          'kinds': kRadioListenKinds,
           '#$kRadioTagName': _tags.toList(),
           'since': since,
         },
@@ -291,7 +327,10 @@ class RadioRelayLink {
     final msg = NostrRelayProtocol.parse(raw);
     switch (msg) {
       case RelayEvent(:final subscriptionId, :final event):
-        if (subscriptionId != _subId || event.kind != kRadioEventKind) return;
+        if (subscriptionId != _subId ||
+            !kRadioListenKinds.contains(event.kind)) {
+          return;
+        }
         // Our own voice, sent back to us because we listen on the tag we talk
         // on. Dropped later by origin anyway; this saves the decrypt.
         if (event.pubkey == _signer?.npubHex) return;
@@ -302,6 +341,10 @@ class RadioRelayLink {
           frames = RadioRelayCodec.decode(event.content);
         } on FormatException {
           return;
+        }
+        if (!_heardContents.add(event.content)) return;
+        if (_heardContents.length > _recentContents) {
+          _heardContents.remove(_heardContents.first);
         }
         _heardChunks += frames.length;
         _noteActivity();
@@ -329,22 +372,28 @@ class RadioRelayLink {
     final signer = _signer;
     if (frames == null || frames.isEmpty || signer == null || !_open) return;
     try {
-      final event = NostrEvent(
-        pubkey: signer.npubHex,
-        createdAt: _clock().millisecondsSinceEpoch ~/ 1000,
-        kind: kRadioEventKind,
-        tags: [
-          [kRadioTagName, tagHex],
-        ],
-        content: RadioRelayCodec.encode(frames),
-      );
-      final signed = await CostMeter.instance.measure(
-        'nostr-sign',
-        () => signer.sign(event),
-      );
-      if (!_open) return;
-      if (_write(NostrRelayProtocol.event(signed))) {
-        _sentEvents++;
+      final content = RadioRelayCodec.encode(frames);
+      final createdAt = _clock().millisecondsSinceEpoch ~/ 1000;
+      var sent = 0;
+      for (final kind in kRadioSendKinds) {
+        final event = NostrEvent(
+          pubkey: signer.npubHex,
+          createdAt: createdAt,
+          kind: kind,
+          tags: [
+            [kRadioTagName, tagHex],
+          ],
+          content: content,
+        );
+        final signed = await CostMeter.instance.measure(
+          'nostr-sign',
+          () => signer.sign(event),
+        );
+        if (!_open) break;
+        if (_write(NostrRelayProtocol.event(signed))) sent++;
+      }
+      if (sent > 0) {
+        _sentEvents += sent;
         _sentChunks += frames.length;
         _noteActivity();
       }
