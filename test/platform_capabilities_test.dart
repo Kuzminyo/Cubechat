@@ -44,12 +44,13 @@ void main() {
     }
   });
 
-  test('calls on Windows, where the WebRTC library is shipped, and nowhere '
-      'else on a computer', () {
+  test('calls on Windows and the Mac, where the WebRTC plugin is shipped, '
+      'and nowhere else on a computer', () {
     expect(PlatformCapabilities.forPlatform(TargetPlatform.windows).calls,
         isTrue);
+    // Since 2026-11-01: the plugin's macOS tree is back.
     expect(
-        PlatformCapabilities.forPlatform(TargetPlatform.macOS).calls, isFalse);
+        PlatformCapabilities.forPlatform(TargetPlatform.macOS).calls, isTrue);
     expect(
         PlatformCapabilities.forPlatform(TargetPlatform.linux).calls, isFalse);
     expect(

@@ -220,3 +220,19 @@ class PluginDesktopShell with WindowListener, TrayListener
 
 /// Whether this build keeps a computer on the line with its window closed.
 bool get desktopPresenceSupported => PlatformInfo.isWindows;
+
+/// Bring this computer's window to the front for a call: through the tray on
+/// Windows, and on a Mac — whose app outlives a closed window natively — by
+/// showing and focusing it. Nothing elsewhere.
+Future<void> revealDesktopWindow() async {
+  final presence = DesktopPresence.instance;
+  if (presence != null) return presence.reveal();
+  if (!PlatformInfo.isMacOS) return;
+  try {
+    await windowManager.ensureInitialized();
+    await windowManager.show();
+    await windowManager.focus();
+  } catch (e) {
+    DebugLog.instance.log('DESKTOP', 'window not brought forward: $e');
+  }
+}

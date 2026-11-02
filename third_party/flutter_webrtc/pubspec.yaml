@@ -33,6 +33,10 @@ flutter:
         pluginClass: FlutterWebRTCPlugin
       windows:
         pluginClass: FlutterWebRTCPlugin
-# cubechat: macos, linux and elinux removed with their native trees. Windows
-# came back on 2026-10-12 for calls on a computer — only its own 18 MB
-# libwebrtc.dll, not the 97 MB of every desktop's. See CUBECHAT_PATCH.md.
+      macos:
+        pluginClass: FlutterWebRTCPlugin
+# cubechat: linux and elinux removed with their native trees. Windows came
+# back on 2026-10-12 for calls on a computer — only its own 18 MB
+# libwebrtc.dll, not the 97 MB of every desktop's — and macOS on 2026-11-01:
+# 360 KB of sources, WebRTC itself comes from the WebRTC-SDK pod as on iOS.
+# See CUBECHAT_PATCH.md.

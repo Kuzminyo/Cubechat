@@ -234,7 +234,7 @@ class NotificationService {
       // The window may be hidden in the tray; the click brings it back.
       final toast = LocalNotification(title: title, body: body)
         ..onClick = () {
-          unawaited(DesktopPresence.instance?.reveal());
+          unawaited(revealDesktopWindow());
           onSelectChat?.call(threadKey);
         };
       await toast.show();

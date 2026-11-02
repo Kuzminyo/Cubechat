@@ -11,8 +11,12 @@
 	     local network (lib/features/backup, cubechat:l1: links). -->
 	<key>com.apple.security.network.server</key>
 	<true/>
-	<!-- Voice messages. -->
+	<!-- Voice messages and calls. -->
 	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<!-- Video calls. Without it the sandbox hands getUserMedia no camera and
+	     the call goes on with no picture from this side. -->
+	<key>com.apple.security.device.camera</key>
 	<true/>
 	<!-- Attaching a file, dropping one on the window, saving one out. -->
 	<key>com.apple.security.files.user-selected.read-write</key>

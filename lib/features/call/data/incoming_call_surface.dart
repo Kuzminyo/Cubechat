@@ -427,7 +427,11 @@ IncomingCallSurface platformCallSurface({
 }) {
   if (PlatformInfo.isAndroid) return AndroidIncomingCallSurface(labels: labels);
   if (PlatformInfo.isIOS) return IosCallKitSurface(onVoipToken: onVoipToken);
-  if (PlatformInfo.isWindows) return WindowsIncomingCallSurface(labels: labels);
+  // The Mac takes the same surface: local_notifier raises its notification
+  // with the two buttons there too, and the tone is the app's own.
+  if (PlatformInfo.isWindows || PlatformInfo.isMacOS) {
+    return WindowsIncomingCallSurface(labels: labels);
+  }
   return const NoIncomingCallSurface();
 }
 
@@ -533,7 +537,7 @@ class WindowsIncomingCallSurface implements IncomingCallSurface {
     final words = labels();
     // From the tray, where a closed window waits: the call screen comes up
     // in front, as a phone's full-screen call does.
-    unawaited(DesktopPresence.instance?.reveal());
+    unawaited(revealDesktopWindow());
     await _tones.play(CallTone.incoming);
     try {
       await _toast.show(

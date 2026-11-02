@@ -111,11 +111,15 @@ same invites. Spec: `docs/superpowers/specs/2026-10-12-desktop-calls-design.md`.
 - Builds before it throw on the unknown kind and drop it: an old phone just
   does not know about the computer's call.
 
-**Windows** (`PlatformCapabilities.windows`): `WindowsIncomingCallSurface` —
-a local_notifier toast with Answer/Decline and the ringtone, while CubeChat
-runs (no pushes on a computer). The microphone is never asked for; a refused
-one throws `CallMicrophoneUnavailable` and ends the call as `microphone`.
-flutter_webrtc's Windows tree is vendored, see its `CUBECHAT_PATCH.md`.
+**Windows and the Mac** (`PlatformCapabilities.windows`, the Mac since
+2026-11-01): `WindowsIncomingCallSurface` — a local_notifier toast with
+Answer/Decline and the ringtone, while CubeChat runs (no pushes on a computer);
+`revealDesktopWindow` brings the window forward (the tray on Windows, show and
+focus on a Mac). The microphone is never asked for; a refused one throws
+`CallMicrophoneUnavailable` and ends the call as `microphone`. flutter_webrtc's
+Windows and macOS trees are vendored, see its `CUBECHAT_PATCH.md`. The Mac's
+sandbox needs `device.audio-input` and `device.camera` in both entitlements
+files, or capture fails and the call goes on without it.
 
 ## Rules that each fixed a real failure
 

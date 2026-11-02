@@ -39,10 +39,21 @@ desktops (`PlatformCapabilities.windows`). The DLL is committed, like
 `windows/opus/libopus_x64.dll`, so a build needs no pub cache and CI fetches
 nothing. `common/cpp` was already here and is identical to upstream's.
 
+## macOS back (2026-11-01)
+
+Calls on a Mac. `macos/` copied from the published
+`flutter_webrtc-0.12.12+hotfix.1` archive (pub.dev sha256
+`b832dc76…f62e08b`, checked against the API): the podspec and `Classes/`,
+360 KB. WebRTC itself is the `WebRTC-SDK` pod at `125.6422.06`, the same
+version iOS uses, fetched by CocoaPods — nothing prebuilt is committed.
+`macos/Classes/FlutterRTCDesktopCapturer.m` is the patched iOS file: upstream
+ships the two identical, and the private `buttonPressed:` call is in both.
+`pubspec.yaml` declares `macos` again.
+
 ## Upgrading
 
-Take the new version from the pub cache, reapply all three changes (including
-the Windows tree above, from the new version), and check:
+Take the new version from the pub cache, reapply all four changes (including
+the Windows and macOS trees above, from the new version), and check:
 
 ```bash
 grep -rn "NSSelectorFromString(@\"buttonPressed" third_party/flutter_webrtc

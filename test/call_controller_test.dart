@@ -555,8 +555,9 @@ void main() {
     test('a computer without calls neither rings nor answers busy', () async {
       // Signed in with a phone's account, the computer gets the phone's
       // invite too; a busy from it would end the call the phone is ringing
-      // for. Windows has calls since 2026-10-12; a Mac or Linux box does not.
-      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      // for. Windows has calls since 2026-10-12, the Mac since 2026-11-01; a
+      // Linux box does not.
+      debugDefaultTargetPlatformOverride = TargetPlatform.linux;
       addTearDown(() => debugDefaultTargetPlatformOverride = null);
       receive(inviteFor(id(9)));
       expect(call.active, isFalse);

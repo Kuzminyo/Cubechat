@@ -6,7 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 /// The phone is the whole product; a computer is a relay-only client with no
 /// Bluetooth stack, no Google map SDK (it draws tiles), no camera plugin, the
 /// WebRTC library for Windows only (so calls there and on no other desktop),
-/// ML Kit only on the phones and no phone gallery. Screens ask
+/// ML Kit only on the phones and no phone gallery. Calls since 2026-11-01 on a
+/// Mac as well (the same [windows] set). Screens ask
 /// these flags rather than `Platform.isWindows`, so the list of what a desktop
 /// hides lives here and not as a check scattered over every screen — see
 /// docs/superpowers/specs/2026-10-10-windows-desktop-design.md.
@@ -71,9 +72,9 @@ class PlatformCapabilities {
     gallery: false,
   );
 
-  /// A Windows computer: [desktop], with calls. The WebRTC library is shipped
-  /// for Windows only among the desktops (2026-10-12, see
-  /// third_party/flutter_webrtc/CUBECHAT_PATCH.md).
+  /// A Windows computer or a Mac: [desktop], with calls. The WebRTC plugin
+  /// carries Windows (2026-10-12) and macOS (2026-11-01) among the desktops,
+  /// see third_party/flutter_webrtc/CUBECHAT_PATCH.md; Linux stays without.
   static const PlatformCapabilities windows = PlatformCapabilities(
     bluetooth: false,
     maps: true,
@@ -92,7 +93,7 @@ class PlatformCapabilities {
     if (web) return desktop;
     return switch (platform) {
       TargetPlatform.android || TargetPlatform.iOS => phone,
-      TargetPlatform.windows => windows,
+      TargetPlatform.windows || TargetPlatform.macOS => windows,
       _ => desktop,
     };
   }

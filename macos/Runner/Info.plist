@@ -29,7 +29,9 @@
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>CubeChat needs the microphone for voice messages.</string>
+	<string>CubeChat needs the microphone for voice messages and calls.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>CubeChat uses the camera in video calls, only while its button is on.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 </dict>
