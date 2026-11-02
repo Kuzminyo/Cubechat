@@ -142,12 +142,20 @@ class WebRtcCallMedia implements CallMedia {
 
   /// What a video call's encoder may spend, in bits per second. Every byte of
   /// it crosses our TURN server on the way in and again on the way out: at
-  /// 1 Mbit/s an hour of talking is about 450 MB each way through the
+  /// 800 kbit/s an hour of talking is about 360 MB each way through the
   /// droplet. WebRTC adapts below this on a poor link; the cap is what keeps
   /// a good one from spending two or three times as much on a picture a
-  /// phone screen does not show the difference of. Raising it is a decision
-  /// about the server bill, not about the code.
-  static const int videoMaxBitrate = 1000000;
+  /// phone screen does not show the difference of.
+  ///
+  /// **Under coturn's own ceiling, not merely near it.** The server allows
+  /// each session `max-bps=128000` bytes a second (`push/tool/
+  /// configure_turn.py`), 1.02 Mbit/s. A picture at 1 Mbit/s — the first cap,
+  /// 2026-11-02 — plus up to 32 kbit/s of voice plus SRTP, RTP and TURN
+  /// headers is over it, and coturn drops what is over: a picture that
+  /// stutters at exactly the quality it was meant to look best at. 800 leaves
+  /// a fifth for the rest. Raise both together, and the server's
+  /// `bps-capacity` with them — that is a decision about the bill.
+  static const int videoMaxBitrate = 800000;
   static const int videoMaxFramerate = 30;
 
   /// Placed as a video call — the audio mode, nothing else.
