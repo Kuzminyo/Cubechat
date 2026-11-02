@@ -89,6 +89,10 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
     // Only an announcement can say "I have no picture" — every other caller
     // simply doesn't know, and must not be able to erase one by omission.
     bool avatarKnown = false,
+    // True only from an announcement broadcast to whoever is in range. Any
+    // other road here — a handshake, a card, an introduction sealed to us —
+    // is somebody this device dealt with, and clears it for good.
+    bool stranger = false,
   }) {
     final now = DateTime.now();
     final existing = state[pubkeyHex];
@@ -201,6 +205,7 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
       blockedAt: existing?.blockedAt,
       mutedAt: existing?.mutedAt,
       allowsForwardLink: existing?.allowsForwardLink ?? true,
+      isStranger: existing == null ? stranger : existing.isStranger && stranger,
     );
     state = {...state, pubkeyHex: entry};
     _persist(entry);
@@ -462,6 +467,58 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
     }
   }
 
+  /// Strangers kept at most — see [pruneStrangers].
+  static const int strangerCap = 200;
+
+  /// Forget the strangers seen longest ago, until [keep] are left. Returns
+  /// the keys forgotten.
+  ///
+  /// An announcement is self-signed, so anybody in range can make one a
+  /// second under a fresh key, and every one became an entry here — on disk,
+  /// and in every derivation of the chat list. bitchat's review of its own
+  /// app found the same (M14, July 2026).
+  ///
+  /// Only [KnownPeer.isStranger] entries are candidates, and of those only
+  /// the ones [isKept] does not claim — the caller knows about history,
+  /// favourites and live sessions, which this roster does not. Verified,
+  /// blocked and muted are excluded here as well: each is something the user
+  /// did, and a block forgotten would let the person straight back in.
+  ///
+  /// Least recently seen first, so someone still in range keeps renewing
+  /// their place and a flood mostly displaces itself.
+  Future<List<String>> pruneStrangers({
+    required bool Function(KnownPeer) isKept,
+    int keep = strangerCap,
+  }) async {
+    final strangers = [
+      for (final p in state.values)
+        if (p.isStranger &&
+            !p.isVerified &&
+            !p.isBlocked &&
+            !p.isMuted &&
+            !isKept(p))
+          p,
+    ];
+    if (strangers.length <= keep) return const <String>[];
+    strangers.sort((a, b) => a.lastSeen.compareTo(b.lastSeen));
+    final drop = [
+      for (final p in strangers.take(strangers.length - keep)) p.pubkeyHex,
+    ];
+    final next = {...state};
+    for (final id in drop) {
+      next.remove(id);
+      // A queued presence mark must not bring one back on the next flush.
+      _pendingPresence.remove(id);
+    }
+    state = next;
+    try {
+      await _box?.deleteAll(drop);
+    } catch (e) {
+      debugPrint('KnownPeers prune failed: $e');
+    }
+    return drop;
+  }
+
   /// Drop a single peer.
   Future<void> forget(String pubkeyHex) async {
     if (!state.containsKey(pubkeyHex)) return;
@@ -501,6 +558,7 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
         if (!p.allowsForwardLink) 'noForwardLink': true,
         if (p.avatarHash != null) 'avatarHashHex': _hexOf(p.avatarHash!),
         if (p.hidesLastSeen) 'hidesLastSeen': true,
+        if (p.isStranger) 'stranger': true,
       };
 
   static KnownPeer _decode(Map<dynamic, dynamic> m) {
@@ -530,6 +588,7 @@ class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
       allowsForwardLink: m['noForwardLink'] != true,
       avatarHash: avatarRaw == null ? null : _hexDecode(avatarRaw),
       hidesLastSeen: m['hidesLastSeen'] == true,
+      isStranger: m['stranger'] == true,
     );
   }
 

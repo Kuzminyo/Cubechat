@@ -39,6 +39,9 @@ import '../locale/locale_controller.dart';
 import '../../features/files/data/file_transfer_controller.dart';
 import '../../features/map/data/shared_map_locations_provider.dart';
 import '../../features/peers/data/known_peers_controller.dart';
+import '../../features/peers/data/contact_aliases_controller.dart';
+import '../../features/chats/data/favorites_controller.dart';
+import '../../features/chats/data/pinned_chats_controller.dart';
 import '../../features/peers/data/removed_contacts_controller.dart';
 import '../../features/peers/data/peer_avatars_controller.dart';
 import '../../features/peers/data/peer_discovery_controller.dart';
@@ -10388,6 +10391,7 @@ class MessagingService {
             'to us — back in the roster',
       );
     }
+    final isNew = _ref.read(knownPeersControllerProvider)[pubkeyHex] == null;
     _ref.read(knownPeersControllerProvider.notifier).upsert(
           pubkeyHex: pubkeyHex,
           displayName: ann.nickname,
@@ -10399,13 +10403,64 @@ class MessagingService {
           // its absence. A v0x04 one has no field for it and must not be read
           // as "they removed it".
           avatarKnown: ann.isAvatarAware,
+          // Heard, not met: an introduction sealed to us is somebody who chose
+          // to reach us, and a broadcast is anybody at all.
+          stranger: !addressedToUs,
         );
+    if (isNew && !addressedToUs) unawaited(_pruneStrangers());
     unawaited(_reconcileAvatar(pubkeyHex, ann));
     DebugLog.instance.log(
         'MESH',
         'registered SIGNED announce: "${ann.nickname}" ($pubkeyHex) via $peerId '
             '(+ signed prekey + nostr pubkey)');
     return true;
+  }
+
+  /// Let the roster forget strangers past its cap — see
+  /// [KnownPeersController.pruneStrangers].
+  ///
+  /// Waits for the roster and the chat summaries first: before they land,
+  /// somebody with a whole conversation behind them would look like a
+  /// stranger with none.
+  Future<void> _pruneStrangers() async {
+    final roster = _ref.read(knownPeersControllerProvider.notifier);
+    final messages = _ref.read(messagesControllerProvider.notifier);
+    await roster.loaded;
+    await messages.summariesLoaded;
+    if (_disposed) return;
+    final history = _ref.read(messagesControllerProvider);
+    final summaries = messages.summaries;
+    final favorites = _ref.read(favoritesControllerProvider).toSet();
+    final pinned = _ref.read(pinnedChatsControllerProvider).toSet();
+    final aliases = _ref.read(contactAliasesControllerProvider);
+    final requests = _ref.read(messageRequestsProvider.notifier);
+    final live = {
+      for (final s in _ref.read(chatSessionManagerProvider).values)
+        s.remotePubkeyHex,
+    };
+    final dropped = await roster.pruneStrangers(
+      isKept: (p) {
+        final id = p.pubkeyHex;
+        return (history[id]?.isNotEmpty ?? false) ||
+            summaries.containsKey(id) ||
+            favorites.contains(id) ||
+            pinned.contains(id) ||
+            aliases.containsKey(id) ||
+            requests.isPending(id) ||
+            live.contains(id);
+      },
+    );
+    if (dropped.isEmpty) return;
+    final avatars = _ref.read(peerAvatarsControllerProvider.notifier);
+    for (final id in dropped) {
+      _avatarRequested.removeWhere((mark) => mark.startsWith('$id:'));
+      unawaited(avatars.forget(id));
+    }
+    DebugLog.instance.log(
+      'MESH',
+      'forgot ${dropped.length} stranger(s) heard longest ago '
+          '(over ${KnownPeersController.strangerCap})',
+    );
   }
 
   /// Peers we have already asked for a picture this process, by

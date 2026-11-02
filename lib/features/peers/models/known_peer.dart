@@ -35,9 +35,20 @@ class KnownPeer {
     this.allowsForwardLink = true,
     this.avatarHash,
     this.hidesLastSeen = false,
+    this.isStranger = false,
   });
 
   final String pubkeyHex;
+
+  /// Known only from an announcement heard in passing — nobody here has
+  /// talked to them, met them in a handshake, imported their card or been
+  /// introduced to them. Such an entry may be forgotten to make room; see
+  /// `KnownPeersController.pruneStrangers`.
+  ///
+  /// Only ever set by the broadcast path and cleared by everything else, so
+  /// an entry stored before the field existed reads false and is never
+  /// forgotten for being one.
+  final bool isStranger;
   final String displayName;
   /// Last evidence that their *radio* was around: an announcement, a
   /// handshake, anything that says the phone is reachable.
@@ -143,6 +154,7 @@ class KnownPeer {
     bool? allowsForwardLink,
     Uint8List? avatarHash,
     bool? hidesLastSeen,
+    bool? isStranger,
     bool clearVerifiedAt = false,
     bool clearSignKeyRotatedAt = false,
     bool clearBlockedAt = false,
@@ -166,6 +178,7 @@ class KnownPeer {
       allowsForwardLink: allowsForwardLink ?? this.allowsForwardLink,
       avatarHash: clearAvatarHash ? null : (avatarHash ?? this.avatarHash),
       hidesLastSeen: hidesLastSeen ?? this.hidesLastSeen,
+      isStranger: isStranger ?? this.isStranger,
     );
   }
 }
