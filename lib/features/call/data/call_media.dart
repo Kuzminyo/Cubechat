@@ -161,7 +161,10 @@ class WebRtcCallMedia implements CallMedia {
   MediaStream? _camera;
   MediaStream? _remote;
   RTCRtpTransceiver? _videoTransceiver;
-  Future<bool> _cameraWork = Future.value(false);
+  /// Camera work still running, or null when there is none — the way
+  /// [_qualityWork] is kept, so [close] waits only for work that exists and
+  /// never on a finished future from another zone.
+  Future<void>? _cameraWork;
   Timer? _videoTimer;
   Future<void>? _videoWork;
   num? _framesSeen;
@@ -364,9 +367,9 @@ class WebRtcCallMedia implements CallMedia {
     }
     // In the same queue as the camera button, which can be pressed from the
     // moment the transceiver exists: two opens at once would capture twice.
-    await (_cameraWork = _cameraWork.then(
-      (_) => _cameraWanted ? _openCamera() : Future.value(false),
-    ));
+    await _inCameraQueue(
+      () => _cameraWanted ? _openCamera() : Future.value(false),
+    );
     _checkOpen();
     final description =
         remote == null ? await peer.createOffer() : await peer.createAnswer();
@@ -549,7 +552,7 @@ class WebRtcCallMedia implements CallMedia {
     if (_videoTransceiver == null || _closed) {
       return Future.value(on && !_closed);
     }
-    return _cameraWork = _cameraWork.then((_) async {
+    return _inCameraQueue(() async {
       if (on) return _openCamera();
       await _closeCamera();
       return false;
@@ -557,7 +560,7 @@ class WebRtcCallMedia implements CallMedia {
   }
 
   @override
-  Future<void> switchCamera() => _cameraWork = _cameraWork.then((_) async {
+  Future<void> switchCamera() => _inCameraQueue(() async {
         final track = _camera?.getVideoTracks().firstOrNull;
         if (_closed) return false;
         if (track == null) {
@@ -576,6 +579,22 @@ class WebRtcCallMedia implements CallMedia {
         }
         return true;
       });
+
+  /// One camera step at a time — opening, closing, flipping — behind any
+  /// still running, so two presses cannot capture twice. [_cameraWork] goes
+  /// back to null when the queue is empty.
+  Future<bool> _inCameraQueue(Future<bool> Function() step) {
+    final previous = _cameraWork;
+    final result = previous == null ? step() : previous.then((_) => step());
+    late final Future<void> settled;
+    settled = result.then<void>((_) {}, onError: (Object _) {}).whenComplete(
+      () {
+        if (identical(_cameraWork, settled)) _cameraWork = null;
+      },
+    );
+    _cameraWork = settled;
+    return result;
+  }
 
   /// Capture the camera and put it on the picture's sender. A camera that
   /// will not open — refused, busy with another app, none on this computer —

@@ -51,6 +51,25 @@ void main() {
           };
         case 'addTrack':
           return _sender();
+        // Every offer carries a picture line since video calls (2026-11-02),
+        // with no camera on it: an empty track map is how the plugin says so.
+        case 'addTransceiver':
+          return {
+            'transceiverId': 'video',
+            'direction': 'sendrecv',
+            'mid': '1',
+            'sender': {
+              ..._sender(),
+              'senderId': 'video-sender',
+              'track': <String, Object?>{},
+              'ownsTrack': false,
+            },
+            'receiver': {
+              'receiverId': 'video-receiver',
+              'track': {..._track, 'id': 'remote-video', 'kind': 'video'},
+              'rtpParameters': _sender()['rtpParameters'],
+            },
+          };
         case 'createOffer':
         case 'getLocalDescription':
           return {
