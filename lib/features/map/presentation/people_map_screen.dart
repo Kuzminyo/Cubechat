@@ -75,6 +75,25 @@ final mapAddressReaderProvider = Provider<MapAddressReader>(
   (ref) => const MapAddressService().read,
 );
 
+/// The dark layer drawn from ordinary OpenStreetMap tiles: inverted, then
+/// turned half round the colour wheel, so roads go dark and water stays blue.
+/// flutter_map's own `darkModeTilesContainerBuilder` matrix, applied once over
+/// the whole tile layer rather than per tile — a filter is a pass of its own,
+/// and a screen of tiles would be dozens (`test/layer_budget_test.dart`).
+extension _DarkTiles on Widget {
+  Widget darkenedIf(bool dark) => dark
+      ? ColorFiltered(
+          colorFilter: const ColorFilter.matrix(<double>[
+            0.574, -1.43, -0.144, 0, 255, //
+            -0.426, -0.43, -0.144, 0, 255, //
+            -0.426, -1.43, 0.856, 0, 255, //
+            0, 0, 0, 1, 0, //
+          ]),
+          child: this,
+        )
+      : this;
+}
+
 class PeopleMapScreen extends ConsumerStatefulWidget {
   const PeopleMapScreen({
     super.key,
@@ -939,7 +958,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
           maxNativeZoom: layer.maxNativeZoom,
           // OpenStreetMap's tile policy asks every client to name itself.
           userAgentPackageName: 'app.cubechat',
-        ),
+        ).darkenedIf(layer.darkened),
         PolylineLayer(
           polylines: [
             for (final (_, _, from, to) in _webPairs(nodes, null))

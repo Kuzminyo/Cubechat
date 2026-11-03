@@ -39,8 +39,12 @@ extension MapLayerTiles on MapLayer {
 
   String get urlTemplate => switch (this) {
         MapLayer.standard => 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-        MapLayer.dark =>
-          'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
+        // OpenStreetMap's own tiles, darkened in the app ([darkened]). It was
+        // CARTO's dark_nolabels until 2026-11-01, when CARTO began answering
+        // every keyless request with an "API KEY REQUIRED" tile — the whole
+        // dark map on a computer was that watermark. No key, no account, and
+        // one less service to depend on.
+        MapLayer.dark => 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
         // Esri's imagery has no subdomains and no retina variant: one host,
         // one size, and {r} would be sent literally if it were left in.
         MapLayer.satellite =>
@@ -51,21 +55,25 @@ extension MapLayerTiles on MapLayer {
 
   List<String> get subdomains => switch (this) {
         MapLayer.standard => const [],
-        MapLayer.dark => const ['a', 'b', 'c', 'd'],
+        MapLayer.dark => const [],
         MapLayer.satellite => const [],
         MapLayer.terrain => const ['a', 'b', 'c'],
       };
 
-  /// Retina tiles exist only for the CARTO style; asking the others for `@2x`
-  /// gets a 404 per tile.
-  bool get supportsRetina => this == MapLayer.dark;
+  /// Retina tiles existed only for the CARTO style; asking the others for
+  /// `@2x` gets a 404 per tile, and CARTO is gone (see [urlTemplate]).
+  bool get supportsRetina => false;
+
+  /// Drawn darker in the app, from ordinary tiles — the dark layer's whole
+  /// look since it stopped being CARTO's (see [urlTemplate]).
+  bool get darkened => this == MapLayer.dark;
 
   /// The deepest zoom each service actually renders. Past it flutter_map
   /// upscales the last real tile instead of requesting squares that come back
   /// blank — which is what a bare grid at maximum zoom was.
   int get maxNativeZoom => switch (this) {
         MapLayer.standard => 19,
-        MapLayer.dark => 20,
+        MapLayer.dark => 19,
         MapLayer.satellite => 19,
         MapLayer.terrain => 17,
       };
@@ -83,7 +91,6 @@ extension MapLayerTiles on MapLayer {
               'OpenStreetMap contributors',
               'https://www.openstreetmap.org/copyright'
             ),
-            ('CARTO', 'https://carto.com/attributions'),
           ],
         MapLayer.satellite => const [
             ('Esri, Maxar, Earthstar Geographics', 'https://www.esri.com/'),

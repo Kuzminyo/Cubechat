@@ -1,6 +1,6 @@
 # Cubechat Privacy Policy
 
-**Last updated: 2 November 2026**
+**Last updated: 3 November 2026**
 
 Cubechat is a peer-to-peer messenger. Messages travel directly between phones
 over Bluetooth Low Energy, and optionally through public relays that carry them
@@ -292,11 +292,12 @@ message, to the chat you chose, for the time you choose.
 
 **Third parties who see something:**
 
-- **Map tiles** are fetched from OpenStreetMap, CARTO, Esri ArcGIS,
-  OpenTopoMap or Google Maps, depending on the layer you pick. Those servers
-  see your IP address and which map squares you asked for — which reveals
-  roughly where you are looking, though not necessarily where you are. On a
-  computer the map always comes from the first four, since Google's map has no
+- **Map tiles** are fetched from OpenStreetMap, Esri ArcGIS, OpenTopoMap or
+  Google Maps, depending on the layer you pick; the dark layer is
+  OpenStreetMap's tiles, darkened on the device. Those servers see your IP
+  address and which map squares you asked for — which reveals roughly where
+  you are looking, though not necessarily where you are. On a computer the
+  map always comes from the first three, since Google's map has no
   Windows version. A computer only shows the map: it never reads or sends its
   own location, even when the phone it was signed in from shares one.
 - **Reverse geocoding** (turning coordinates into a street name) is performed
