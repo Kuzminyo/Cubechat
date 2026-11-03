@@ -481,18 +481,10 @@ class _QuickReactionCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            t.customizeQuickReaction,
-            style: TextStyle(
-              color: AppColors.textOnGlass,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            t.customizeQuickReactionHint,
-            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
+          SettingText(
+            title: t.customizeQuickReaction,
+            details: t.customizeQuickReactionHint,
+            titleStyle: _cardTitle,
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -913,24 +905,11 @@ class _CircleAudioCard extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  t.customizeCircleAudioTitle,
-                  style: TextStyle(
-                    color: AppColors.textOnGlass,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  exclusive
+                SettingText(
+                  title: t.customizeCircleAudioTitle,
+                  hint: exclusive
                       ? t.customizeCircleAudioOn
                       : t.customizeCircleAudioOff,
-                  style: TextStyle(
-                    color: AppColors.textOnGlassDim,
-                    fontSize: 12,
-                    height: 1.35,
-                  ),
                 ),
               ],
             ),
@@ -966,13 +945,16 @@ class _MediaQualityCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            t.customizeMediaQualityTitle,
-            style: TextStyle(
-              color: AppColors.textOnGlass,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-            ),
+          // What the chosen step costs opens from the ⓘ; it was a paragraph
+          // under the buttons.
+          SettingText(
+            title: t.customizeMediaQualityTitle,
+            details: switch (current) {
+              MediaQuality.economy => t.customizeMediaQualityEconomyHint,
+              MediaQuality.standard => t.customizeMediaQualityStandardHint,
+              MediaQuality.high => t.customizeMediaQualityHighHint,
+            },
+            titleStyle: _cardTitle,
           ),
           const SizedBox(height: 10),
           SegmentedButton<MediaQuality>(
@@ -998,19 +980,6 @@ class _MediaQualityCard extends ConsumerWidget {
             showSelectedIcon: false,
             onSelectionChanged: (picked) =>
                 unawaited(notifier.set(picked.first)),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            switch (current) {
-              MediaQuality.economy => t.customizeMediaQualityEconomyHint,
-              MediaQuality.standard => t.customizeMediaQualityStandardHint,
-              MediaQuality.high => t.customizeMediaQualityHighHint,
-            },
-            style: TextStyle(
-              color: AppColors.textOnGlassDim,
-              fontSize: 12,
-              height: 1.35,
-            ),
           ),
         ],
       ),
@@ -1039,22 +1008,9 @@ class _MediaDownloadCard extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  t.customizeDeferMediaTitle,
-                  style: TextStyle(
-                    color: AppColors.textOnGlass,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  t.customizeDeferMediaHint,
-                  style: TextStyle(
-                    color: AppColors.textOnGlassDim,
-                    fontSize: 12,
-                    height: 1.35,
-                  ),
+                SettingText(
+                  title: t.customizeDeferMediaTitle,
+                  hint: t.customizeDeferMediaHint,
                 ),
               ],
             ),
@@ -1090,13 +1046,10 @@ class _TranscribeLanguageCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            t.customizeTranscribeLanguageTitle,
-            style: TextStyle(
-              color: AppColors.textOnGlass,
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-            ),
+          SettingText(
+            title: t.customizeTranscribeLanguageTitle,
+            details: t.customizeTranscribeLanguageHint,
+            titleStyle: _cardTitle,
           ),
           const SizedBox(height: 10),
           SegmentedButton<TranscriptionLanguage>(
@@ -1126,15 +1079,6 @@ class _TranscribeLanguageCard extends ConsumerWidget {
             showSelectedIcon: false,
             onSelectionChanged: (picked) =>
                 unawaited(notifier.set(picked.first)),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            t.customizeTranscribeLanguageHint,
-            style: TextStyle(
-              color: AppColors.textOnGlassDim,
-              fontSize: 12,
-              height: 1.35,
-            ),
           ),
         ],
       ),
@@ -1169,22 +1113,9 @@ class _ArchiveRowCard extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  t.customizeArchiveRowTitle,
-                  style: TextStyle(
-                    color: AppColors.textOnGlass,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  t.customizeArchiveRowHint,
-                  style: TextStyle(
-                    color: AppColors.textOnGlassDim,
-                    fontSize: 12,
-                    height: 1.35,
-                  ),
+                SettingText(
+                  title: t.customizeArchiveRowTitle,
+                  hint: t.customizeArchiveRowHint,
                 ),
               ],
             ),
@@ -1315,6 +1246,14 @@ class _NavBarCard extends ConsumerWidget {
     );
   }
 }
+
+/// A card's heading — larger than a row's name, as the cards' own headings
+/// were drawn before they gained the ⓘ.
+TextStyle get _cardTitle => TextStyle(
+      color: AppColors.textOnGlass,
+      fontSize: 15,
+      fontWeight: FontWeight.w600,
+    );
 
 class _SectionLabel extends StatelessWidget {
   const _SectionLabel({required this.text});

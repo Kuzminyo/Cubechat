@@ -127,14 +127,12 @@ void main() {
     }
   });
 
-  testWidgets('connection: mesh, transport, background, relays',
-      (tester) async {
+  testWidgets('connection: mesh, background, relays', (tester) async {
     await pumpScreen(tester, const ConnectionSectionScreen());
 
     expect(find.text(t.sectionConnection), findsOneWidget);
     for (final title in [
       t.profileMeshSwitch,
-      t.profileTransportMesh,
       t.profileBackground,
       t.relaysTitle,
     ]) {
@@ -324,7 +322,6 @@ void main() {
       ],
       'connection': [
         t.profileMeshSwitch,
-        t.profileTransportMesh,
         t.profileBackground,
         t.relaysTitle,
       ],

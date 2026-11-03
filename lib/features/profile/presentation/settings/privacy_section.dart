@@ -25,25 +25,13 @@ class PrivacySectionScreen extends ConsumerWidget {
             if (PlatformInfo.isAndroid) _inset(const _ShareSheetTile()),
           ],
         ),
-        // Under the group it explains — last seen and read receipts — rather
-        // than at the foot of the screen under Protection, where it read as
-        // being about the lock.
-        Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
-          child: Text(
-            t.profilePrivacyExplainer,
-            style: TextStyle(
-              color: AppColors.textOnGlassDim,
-              fontSize: 11.5,
-              height: 1.35,
-            ),
-          ),
-        ),
-        SettingsSubheader(t.strangerReachTitle),
+        // The paragraph on how last seen and read receipts cut both ways sat
+        // here; it opens from the ⓘ on Last seen now.
+        SettingsSubheader(t.strangerReachTitle, info: t.strangerReachHint),
         SettingsGroup(
           children: [
             _inset(
-              const StrangerReachSelector(showTitle: false),
+              const StrangerReachSelector(showTitle: false, showHint: false),
               vertical: 14,
             ),
           ],

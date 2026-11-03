@@ -411,9 +411,11 @@ class _LinkRow extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
+                  // One line, like every row in Data: the screen it opens
+                  // says the rest.
                   Text(
                     hint,
-                    maxLines: 2,
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: AppColors.textOnGlassDim,

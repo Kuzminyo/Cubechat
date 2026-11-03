@@ -57,14 +57,9 @@ class _NotificationPreviewSelector extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          t.notifPreviewTitle,
-          style: TextStyle(
-            color: AppColors.textOnGlass,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
+        // Who else can read a banner — the lock screen, apps with access to
+        // notifications — opens from the ⓘ; it was a paragraph under these.
+        SettingText(title: t.notifPreviewTitle, details: t.notifPreviewHint),
         const SizedBox(height: 8),
         SizedBox(
           width: double.infinity,
@@ -107,15 +102,6 @@ class _NotificationPreviewSelector extends ConsumerWidget {
                     : Colors.transparent,
               ),
             ),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          t.notifPreviewHint,
-          style: TextStyle(
-            color: AppColors.textOnGlassDim,
-            fontSize: 11.5,
-            height: 1.35,
           ),
         ),
       ],

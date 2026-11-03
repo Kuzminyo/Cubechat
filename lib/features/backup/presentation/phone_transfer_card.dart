@@ -48,7 +48,9 @@ class PhoneTransferCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   t.phoneTransferSameWifi,
-                  maxLines: 2,
+                  // One line, like every row in Data: the screen it opens
+                  // says the rest.
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,

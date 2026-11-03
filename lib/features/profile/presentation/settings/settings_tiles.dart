@@ -3,7 +3,146 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/colors.dart';
 import '../../../../core/theme/typography.dart';
 import '../../../../core/util/haptics.dart';
+import '../../../../core/widgets/glass_sheet.dart';
 import 'settings_section_icons.dart';
+
+/// A setting's name and one line under it; the rest on asking.
+///
+/// The section screens read as pages of small print: three-line hints under
+/// every switch and whole paragraphs between them ("no extra text", asked for
+/// 2026-11-03). The hint now gets one line. When it does not fit, or there is
+/// a longer account ([details]), an ⓘ beside the name says so and a tap on
+/// the words opens all of it in a sheet — nothing that was written is gone,
+/// it is one tap away instead of always in the way.
+class SettingText extends StatelessWidget {
+  const SettingText({
+    super.key,
+    required this.title,
+    this.hint = '',
+    this.details,
+    this.titleStyle,
+  });
+
+  final String title;
+
+  /// One line under the name; empty for none.
+  final String hint;
+  final String? details;
+
+  /// The name's style, where a card's heading wants to be larger than a row's.
+  final TextStyle? titleStyle;
+
+  static const _hintStyle = TextStyle(fontSize: 11.5, height: 1.3);
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, box) {
+          final hintStyle = _hintStyle.copyWith(color: AppColors.textOnGlassDim);
+          var more = details != null;
+          if (!more && hint.isNotEmpty) {
+            // Measured in the style the Text below will inherit — the theme's
+            // font — or a hint that fits is judged not to.
+            final painter = TextPainter(
+              text: TextSpan(
+                text: hint,
+                style: DefaultTextStyle.of(context).style.merge(hintStyle),
+              ),
+              maxLines: 1,
+              textDirection: Directionality.of(context),
+              textScaler: MediaQuery.textScalerOf(context),
+            )..layout(maxWidth: box.maxWidth);
+            more = painter.didExceedMaxLines;
+            painter.dispose();
+          }
+          final text = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      title,
+                      style: titleStyle ??
+                          TextStyle(
+                            color: AppColors.textOnGlass,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                    ),
+                  ),
+                  if (more) ...[
+                    const SizedBox(width: 5),
+                    Icon(
+                      Icons.info_outline_rounded,
+                      size: 15,
+                      color: AppColors.textOnGlassFaint,
+                    ),
+                  ],
+                ],
+              ),
+              if (hint.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(
+                  hint,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: hintStyle,
+                ),
+              ],
+            ],
+          );
+          if (!more) return text;
+          return Semantics(
+            button: true,
+            hint: hint.isEmpty ? details : hint,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => showSettingInfo(
+                context,
+                title: title,
+                text: [
+                  if (hint.isNotEmpty) hint,
+                  if (details case final more?) more,
+                ].join('\n\n'),
+              ),
+              child: text,
+            ),
+          );
+        },
+      );
+}
+
+/// A setting's whole explanation, in a sheet.
+Future<void> showSettingInfo(
+  BuildContext context, {
+  required String title,
+  required String text,
+}) =>
+    showGlassSheet<void>(
+      context: context,
+      builder: (_) => SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: AppTypography.heading(size: AppMenu.title)),
+              const SizedBox(height: 12),
+              Text(
+                text,
+                style: TextStyle(
+                  color: AppColors.textOnGlassDim,
+                  fontSize: 14,
+                  height: 1.45,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
 
 /// One glass block holding a run of rows, with a hairline between them.
 ///
@@ -181,24 +320,46 @@ class SettingsSectionRow extends StatelessWidget {
 
 /// The grey capitals above a group inside a section screen.
 class SettingsSubheader extends StatelessWidget {
-  const SettingsSubheader(this.text, {super.key});
+  const SettingsSubheader(this.text, {super.key, this.info});
 
   final String text;
 
+  /// What the group under it is about, opened from an ⓘ beside the heading
+  /// rather than printed under the group.
+  final String? info;
+
   @override
   Widget build(BuildContext context) {
+    final label = Text(
+      text.toUpperCase(),
+      style: TextStyle(
+        fontFamily: 'Inter',
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 1.1,
+        color: AppColors.textOnGlassDim,
+      ),
+    );
+    final info = this.info;
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-      child: Text(
-        text.toUpperCase(),
-        style: TextStyle(
-          fontFamily: 'Inter',
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1.1,
-          color: AppColors.textOnGlassDim,
-        ),
-      ),
+      child: info == null
+          ? label
+          : GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => showSettingInfo(context, title: text, text: info),
+              child: Row(
+                children: [
+                  Flexible(child: label),
+                  const SizedBox(width: 6),
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 15,
+                    color: AppColors.textOnGlassFaint,
+                  ),
+                ],
+              ),
+            ),
     );
   }
 }

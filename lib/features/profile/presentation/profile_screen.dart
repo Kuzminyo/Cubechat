@@ -397,6 +397,8 @@ class _BackgroundModeCard extends ConsumerWidget {
                     const SizedBox(height: 2),
                     Text(
                       t.profileBackgroundSubtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           color: AppColors.textOnGlassDim, fontSize: 11.5),
                     ),
@@ -493,6 +495,8 @@ class _RelayFallbackCard extends ConsumerWidget {
                 const SizedBox(height: 2),
                 Text(
                   on ? t.relaysCardSubtitle : t.relaysStateIdle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
                     fontSize: 11.5,
@@ -558,6 +562,8 @@ class _FileTransfersCard extends ConsumerWidget {
                   active == 0
                       ? t.profileFileTransfersSubtitle
                       : '$active · ${t.profileFileTransfersSubtitle}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
                     fontSize: 11.5,
@@ -619,6 +625,8 @@ class _BackupCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   t.profileBackupSubtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
                     fontSize: 11.5,
@@ -720,63 +728,21 @@ class _DiscoverableCard extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.glass(0.08),
-                      border: Border.all(color: AppColors.glass(0.18)),
-                    ),
-                    child: Icon(
-                      on
-                          ? Icons.visibility_rounded
-                          : Icons.visibility_off_rounded,
-                      color:
-                          on ? AppColors.textOnGlass : AppColors.brandPrimary,
-                      size: 18,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          t.profileDiscoverable,
-                          style: TextStyle(
-                              color: AppColors.textOnGlass, fontSize: 14),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          on
-                              ? t.profileDiscoverableOnHint
-                              : t.profileDiscoverableOffHint,
-                          style: TextStyle(
-                              color: AppColors.textOnGlassDim, fontSize: 11.5),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Switch(
-                    value: on,
-                    activeThumbColor: AppColors.brandPrimary,
-                    onChanged: (v) => ref
-                        .read(discoverySettingsProvider.notifier)
-                        .setDiscoverable(v),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                t.profileDiscoverableExplainer,
-                style: TextStyle(
-                  color: AppColors.textOnGlassDim,
-                  fontSize: 11.5,
-                  height: 1.35,
-                ),
+              // The paragraph that followed — what exactly is broadcast, on
+              // and off — now opens from the ⓘ, like every other long one.
+              _SettingSwitch(
+                icon: on
+                    ? Icons.visibility_rounded
+                    : Icons.visibility_off_rounded,
+                title: t.profileDiscoverable,
+                hint: on
+                    ? t.profileDiscoverableOnHint
+                    : t.profileDiscoverableOffHint,
+                details: t.profileDiscoverableExplainer,
+                value: on,
+                onChanged: (v) => ref
+                    .read(discoverySettingsProvider.notifier)
+                    .setDiscoverable(v),
               ),
             ],
           ),
@@ -1002,6 +968,7 @@ class _SettingSwitch extends StatelessWidget {
     required this.hint,
     required this.value,
     required this.onChanged,
+    this.details,
   });
 
   final IconData icon;
@@ -1010,41 +977,17 @@ class _SettingSwitch extends StatelessWidget {
   final bool value;
   final ValueChanged<bool> onChanged;
 
+  /// The longer account, read only on asking — see [SettingText].
+  final String? details;
+
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: AppColors.glass(0.08),
-            border: Border.all(color: AppColors.glass(0.18)),
-          ),
-          child: Icon(
-            icon,
-            color: value ? AppColors.textOnGlass : AppColors.brandPrimary,
-            size: 18,
-          ),
-        ),
+        _SettingBadge(icon: icon, lit: !value),
         const SizedBox(width: 12),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                hint,
-                style:
-                    TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
-              ),
-            ],
-          ),
+          child: SettingText(title: title, hint: hint, details: details),
         ),
         Switch(
           value: value,
@@ -1057,6 +1000,32 @@ class _SettingSwitch extends StatelessWidget {
       ],
     );
   }
+}
+
+/// The round glass badge a setting's icon sits in.
+class _SettingBadge extends StatelessWidget {
+  const _SettingBadge({required this.icon, this.lit = false});
+
+  final IconData icon;
+
+  /// In the accent rather than white — a switch that is off.
+  final bool lit;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppColors.glass(0.08),
+          border: Border.all(color: AppColors.glass(0.18)),
+        ),
+        child: Icon(
+          icon,
+          color: lit ? AppColors.brandPrimary : AppColors.textOnGlass,
+          size: 18,
+        ),
+      );
 }
 
 /// "Install an update from a file" — the way to update that keeps lock-screen
@@ -1525,6 +1494,9 @@ class _LastSeenTile extends ConsumerWidget {
           : Icons.history_toggle_off_rounded,
       title: t.profileLastSeen,
       hint: s.shareLastSeen ? t.profileLastSeenOnHint : t.profileLastSeenOffHint,
+      // How this and read receipts cut both ways. It was a paragraph under
+      // the group; it is about this row more than any other.
+      details: t.profilePrivacyExplainer,
       value: s.shareLastSeen,
       onChanged: n.setShareLastSeen,
     );
@@ -1745,52 +1717,6 @@ String _dataSummary(WidgetRef ref, AppLocalizations t) {
   return active > 0
       ? t.profileSummaryTransfersActive(active)
       : t.profileSummaryCardBackup;
-}
-
-/// Static "how messages travel" row. Was a card of its own; inside the
-/// connection group it is the first line of an answer the rest of the group
-/// completes.
-class _TransportRow extends StatelessWidget {
-  const _TransportRow();
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppLocalizations.of(context);
-    return _frame(
-      false,
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.brandPrimary.withValues(alpha: 0.18),
-              border: Border.all(
-                  color: AppColors.brandPrimary.withValues(alpha: 0.4)),
-            ),
-            child: Icon(Icons.bluetooth_rounded,
-                color: AppColors.brandPrimary, size: 18),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              t.profileTransportMesh,
-              style: TextStyle(color: AppColors.textOnGlass, fontSize: 14),
-            ),
-          ),
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.online,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 // The palette swatches and the interface-size pills both used to live here,
