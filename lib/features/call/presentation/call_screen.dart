@@ -878,13 +878,18 @@ class _CallScreenState extends ConsumerState<CallScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: _overVideo ? Colors.white : AppColors.textPrimary,
+        // Shrunk to its cell rather than cut: five controls leave about 72
+        // points each on a 360 phone, and "Lautsprecher" or "Altoparlante"
+        // ended in an ellipsis that hid which button it was.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            maxLines: 1,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: _overVideo ? Colors.white : AppColors.textPrimary,
+            ),
           ),
         ),
       ],
