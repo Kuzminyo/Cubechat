@@ -252,12 +252,28 @@ class ThemeController extends Notifier<AppPalette> {
     _scheduleLauncherIcon(palette);
   }
 
+  /// Paint [palette] without choosing it — what the hue strip does while the
+  /// finger is still on it.
+  ///
+  /// The strip used to call [select] on every frame of a drag, and [select]
+  /// changes the id the app's root is keyed on. The first step of a drag
+  /// therefore threw away the whole tree, the slider under the finger with it,
+  /// and the gesture died: the thumb moved one notch and stopped. Here the
+  /// colours are written and every element marked dirty, which repaints the
+  /// screen in the new hue, but [state] — and with it the key — stays put
+  /// until the finger lifts and [select] is called once.
+  void preview(AppPalette palette) {
+    _apply(palette);
+    _rebuildEverything();
+  }
+
   /// How long the palette has to stay put before the launcher icon follows.
   ///
-  /// The hue strip calls [select] on every frame of a drag, and on iOS each
-  /// icon switch raises a system alert: sliding across the wheel would switch
-  /// the icon, and alert, once per icon it passed. So the icon waits for the
-  /// finger to settle, and only the last choice reaches the platform.
+  /// On iOS each icon switch raises a system alert. The hue strip now selects
+  /// once per drag rather than once per frame, but tapping through the presets
+  /// or nudging the wheel twice would still alert once per icon passed. So the
+  /// icon waits for the choice to settle, and only the last one reaches the
+  /// platform.
   @visibleForTesting
   static Duration launcherIconSettle = const Duration(milliseconds: 700);
 

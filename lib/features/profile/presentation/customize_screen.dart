@@ -237,7 +237,10 @@ class _ThemeCard extends ConsumerWidget {
           HueStrip(
             selected: current.isCustom,
             hue: current.hue ?? 210,
-            onPick: (h) => unawaited(
+            onPick: (h) => ref
+                .read(themeControllerProvider.notifier)
+                .preview(AppPalette.hue(h)),
+            onPickEnd: (h) => unawaited(
               ref.read(themeControllerProvider.notifier).select(
                     AppPalette.hue(h),
                   ),

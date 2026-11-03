@@ -71,12 +71,13 @@ Future<void> showHueSheet({
 /// a label readable at any angle of the wheel; the note at the top of
 /// `theme_controller.dart` is where that restraint is explained and where the
 /// ratios live.
-class HueStrip extends StatelessWidget {
+class HueStrip extends StatefulWidget {
   const HueStrip({
     super.key,
     required this.selected,
     required this.hue,
     required this.onPick,
+    this.onPickEnd,
   });
 
   /// Whether this is the choice currently in force, which is what the ring
@@ -84,10 +85,28 @@ class HueStrip extends StatelessWidget {
   final bool selected;
 
   final double hue;
+
+  /// Every step of the drag.
   final ValueChanged<double> onPick;
+
+  /// The finger lifted on this hue. Given when a step of the drag only
+  /// previews the colour and the choice itself is made here — the interface
+  /// theme, where choosing rebuilds the app — see [ThemeController.preview].
+  final ValueChanged<double>? onPickEnd;
+
+  @override
+  State<HueStrip> createState() => _HueStripState();
+}
+
+class _HueStripState extends State<HueStrip> {
+  /// Where the finger is, while it is down. The owner may not move [hue]
+  /// until the drag ends, and the thumb has to follow the finger regardless.
+  double? _dragging;
 
   @override
   Widget build(BuildContext context) {
+    final hue = _dragging ?? widget.hue;
+    final selected = widget.selected || _dragging != null;
     final preview = AppPalette.hue(hue);
     return Row(
       children: [
@@ -137,7 +156,15 @@ class HueStrip extends StatelessWidget {
             child: Slider(
               value: hue.clamp(0, 359),
               max: 359,
-              onChanged: onPick,
+              onChanged: (h) {
+                setState(() => _dragging = h);
+                widget.onPick(h);
+              },
+              // Cleared first: choosing may throw this whole tree away.
+              onChangeEnd: (h) {
+                setState(() => _dragging = null);
+                widget.onPickEnd?.call(h);
+              },
             ),
           ),
         ),

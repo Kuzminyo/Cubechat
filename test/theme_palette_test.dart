@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:cubechat/core/theme/colors.dart';
 import 'package:cubechat/core/theme/theme_controller.dart';
+import 'package:cubechat/core/widgets/hue_strip.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -127,6 +128,53 @@ void main() {
           .select(AppPalette.hue(30));
       expect(AppColors.brandPrimary, AppPalette.hue(30).brandPrimary);
       expect(AppColors.bgDeep, AppPalette.hue(30).bgDeep);
+    });
+
+    // Every step of a drag used to call select, which changes the id the app
+    // root is keyed on: the tree, the slider under the finger with it, was
+    // thrown away on the first step and the thumb stopped after one notch.
+    test('a preview paints the hue without choosing it', () async {
+      final notifier = container.read(themeControllerProvider.notifier);
+      await notifier.loaded;
+      final before = container.read(themeControllerProvider).id;
+      notifier.preview(AppPalette.hue(200));
+      expect(AppColors.brandPrimary, AppPalette.hue(200).brandPrimary);
+      expect(container.read(themeControllerProvider).id, before);
+    });
+
+    testWidgets('a drag across the strip previews each step and chooses once',
+        (tester) async {
+      final steps = <double>[];
+      final chosen = <double>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SizedBox(
+                width: 360,
+                child: HueStrip(
+                  selected: false,
+                  hue: 0,
+                  onPick: steps.add,
+                  onPickEnd: chosen.add,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final slider = tester.getRect(find.byType(Slider));
+      final gesture =
+          await tester.startGesture(slider.centerLeft.translate(20, 0));
+      for (var i = 0; i < 5; i++) {
+        await gesture.moveBy(const Offset(30, 0));
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pump();
+      expect(steps.length, greaterThan(1));
+      expect(chosen, hasLength(1));
+      expect(chosen.single, steps.last);
     });
   });
 }
