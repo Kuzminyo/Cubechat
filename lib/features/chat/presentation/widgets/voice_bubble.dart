@@ -8,6 +8,19 @@ import '../../data/voice_playback_controller.dart';
 import '../../models/message.dart';
 import 'playback_author.dart';
 
+/// How wide a voice note's player is, by how long the note is: 140 points for
+/// a second or two, growing 3 a second to the old fixed 200 at twenty.
+///
+/// Every note was 200 wide, so a "да" took as much of the screen as a
+/// minute's story and a run of short replies read as a wall of identical
+/// slabs. "Short voice notes in a normal bubble, the size of a text" was the
+/// ask (2026-11-03). Read from the declared length, not the decoder's, so a
+/// bubble does not change width the moment it starts to play. 140 still
+/// leaves the waveform 94 points — about twenty bars.
+@visibleForTesting
+double voiceBubbleWidth(Duration length) =>
+    (140 + length.inMilliseconds / 1000 * 3).clamp(140, 200).toDouble();
+
 /// Renders a voice message: play/pause button + progress bar + duration.
 ///
 /// Owns no player. It used to own one each, disposed with the widget — which
@@ -175,7 +188,8 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
     // Its own line under the row keeps the waveform centred and puts the length
     // right beneath it: 36 of play button and 10 of gap in.
     final player = SizedBox(
-      width: widget.transcriptionButton == null ? 200 : 248,
+      width: voiceBubbleWidth(declared) +
+          (widget.transcriptionButton == null ? 0 : 48),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
