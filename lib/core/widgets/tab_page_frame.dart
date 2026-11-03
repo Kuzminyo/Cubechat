@@ -382,7 +382,7 @@ class _TabPageFrameState extends State<TabPageFrame> {
               left: lerpDouble(
                 pad,
                 width -
-                    TabHeader.sidePadding -
+                    TabHeader.endPadding -
                     widget.trailingActionsWidth -
                     TabPageFrame.bubble -
                     2,

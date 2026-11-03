@@ -28,6 +28,13 @@ class TabHeader extends StatelessWidget {
   });
 
   static const double sidePadding = 20;
+
+  /// The right-hand margin, narrower than [sidePadding]: the buttons end
+  /// where the cards and the switch below them end (16, `TabPageFrame`'s
+  /// margin). At 20 the Contacts megaphone stood 4 points short of the cards'
+  /// edge and read as misaligned (screenshot, 2026-11-03). The left keeps 20,
+  /// where the mark and title start.
+  static const double endPadding = 16;
   static const double topPadding = 12;
 
   /// The square the mark is drawn in; a mark smaller than this is centred in
@@ -88,7 +95,7 @@ class TabHeader extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(
         sidePadding,
         topPadding,
-        sidePadding,
+        endPadding,
         bottomPadding,
       ),
       child: Column(

@@ -1929,7 +1929,7 @@ class _TitleRowWithSearch extends StatelessWidget {
         final left = lerpDouble(
           _sidePad,
           box.maxWidth -
-              TabHeader.sidePadding -
+              TabHeader.endPadding -
               HeaderIconButton.target -
               _bubble -
               2,
