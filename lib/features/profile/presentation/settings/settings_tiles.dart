@@ -76,12 +76,12 @@ class SettingsSectionRow extends StatelessWidget {
     this.danger = false,
   });
 
-  /// The badge and its glyph at a contact profile's size (`_GridRow` in
-  /// `contact_profile_screen.dart`: a 42-point box, a 22-point icon). They
-  /// were 34 and 19 here, so the profile's icons looked a size smaller than
-  /// the ones a contact's page shows (asked for, 2026-11-03).
-  static const double badge = 42;
-  static const double iconSize = 22;
+  /// The badge and its glyph: 34 points and 19. They were raised to a
+  /// contact page's 42 and 22 on the morning of 2026-11-03 and put back the
+  /// same day — at that size the list read as too heavy ("return the size
+  /// the icons were").
+  static const double badge = 34;
+  static const double iconSize = 19;
   static const double sidePadding = 14;
   static const double gap = 13;
 
@@ -117,7 +117,7 @@ class SettingsSectionRow extends StatelessWidget {
               // A tint of the theme's colour with the icon in the colour
               // itself — so a rose theme gets rose badges. Red for the wipe
               // row only. Filled exactly as a contact's page fills its boxes:
-              // at the same 42 points this badge still read a size larger,
+              // at the same size as theirs this badge still read larger,
               // because a 30%-to-12% gradient inside a 42%-alpha edge draws
               // the whole box, where the contact's flat 14% leaves only the
               // glyph to see (2026-11-03, after the sizes were matched).
@@ -125,7 +125,7 @@ class SettingsSectionRow extends StatelessWidget {
                 width: badge,
                 height: badge,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(10),
                   color: accent.withValues(alpha: 0.14),
                 ),
                 child: Icon(section.icon, size: iconSize, color: accent),
