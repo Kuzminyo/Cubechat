@@ -7,7 +7,7 @@ import 'settings_section_icons.dart';
 
 /// One glass block holding a run of rows, with a hairline between them.
 ///
-/// The hairline starts past the icon badge (62 px), as in iOS Settings, so a
+/// The hairline starts past the icon badge, as in iOS Settings, so a
 /// group reads as one surface with rows in it rather than a stack of slabs —
 /// the stack of slabs is what the profile looked like before, and "eyes run
 /// all over" was the complaint that replaced it.
@@ -54,7 +54,11 @@ class SettingsGroupDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(left: 62),
+      padding: const EdgeInsets.only(
+        left: SettingsSectionRow.sidePadding +
+            SettingsSectionRow.badge +
+            SettingsSectionRow.gap,
+      ),
       child: Container(height: 1, color: AppColors.glass(0.07)),
     );
   }
@@ -71,6 +75,15 @@ class SettingsSectionRow extends StatelessWidget {
     required this.onTap,
     this.danger = false,
   });
+
+  /// The badge and its glyph at a contact profile's size (`_GridRow` in
+  /// `contact_profile_screen.dart`: a 42-point box, a 22-point icon). They
+  /// were 34 and 19 here, so the profile's icons looked a size smaller than
+  /// the ones a contact's page shows (asked for, 2026-11-03).
+  static const double badge = 42;
+  static const double iconSize = 22;
+  static const double sidePadding = 14;
+  static const double gap = 13;
 
   final SettingsSection section;
   final String title;
@@ -93,9 +106,12 @@ class SettingsSectionRow extends StatelessWidget {
         onTap();
       },
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 54),
+        constraints: const BoxConstraints(minHeight: badge + 20),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(
+            horizontal: sidePadding,
+            vertical: 10,
+          ),
           child: Row(
             children: [
               // Glass in the theme's colour: a tint of the accent over the
@@ -103,10 +119,10 @@ class SettingsSectionRow extends StatelessWidget {
               // so a rose theme gets rose badges and the row stays one
               // surface. Red for the wipe row only.
               Container(
-                width: 34,
-                height: 34,
+                width: badge,
+                height: badge,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(14),
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -117,9 +133,9 @@ class SettingsSectionRow extends StatelessWidget {
                   ),
                   border: Border.all(color: accent.withValues(alpha: 0.42)),
                 ),
-                child: Icon(section.icon, size: 19, color: accent),
+                child: Icon(section.icon, size: iconSize, color: accent),
               ),
-              const SizedBox(width: 13),
+              const SizedBox(width: gap),
               // The title wins the width and may take a second line — the
               // Ukrainian "Конфіденційність і безпека" beside "Через запит"
               // does not fit one line of a 360 dp phone, and a cut section
