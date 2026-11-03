@@ -4483,4 +4483,12 @@ class AppLocalizationsIt extends AppLocalizations {
   @override
   String get mapLayerStandardHint =>
       'Mappa stradale chiara — l’opzione più stabile';
+
+  @override
+  String get callYourMicOff => 'Il tuo microfono è spento';
+
+  @override
+  String callTheirCameraOff(String name) {
+    return 'La fotocamera di $name è spenta';
+  }
 }

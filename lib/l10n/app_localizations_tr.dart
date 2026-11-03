@@ -4456,4 +4456,12 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get mapLayerStandardHint => 'Açık sokak haritası — en kararlı seçenek';
+
+  @override
+  String get callYourMicOff => 'Mikrofonunuz kapalı';
+
+  @override
+  String callTheirCameraOff(String name) {
+    return '$name kamerayı kapattı';
+  }
 }

@@ -4329,4 +4329,12 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get mapLayerStandardHint => '밝은 거리 지도 — 가장 안정적인 기본값';
+
+  @override
+  String get callYourMicOff => '내 마이크가 꺼져 있습니다';
+
+  @override
+  String callTheirCameraOff(String name) {
+    return '$name 님의 카메라가 꺼져 있습니다';
+  }
 }

@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "Строка архива",
   "customizeArchiveRowHint": "Показывать над списком чатов. Архивные чаты всё равно получают сообщения.",
   "mapLayerStandard": "Обычная",
-  "mapLayerStandardHint": "Светлая карта улиц — самый стабильный вариант"
+  "mapLayerStandardHint": "Светлая карта улиц — самый стабильный вариант",
+  "callYourMicOff": "Ваш микрофон выключен",
+  "callTheirCameraOff": "Камера {name} выключена"
 }

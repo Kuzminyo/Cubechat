@@ -2111,5 +2111,14 @@
   "customizeArchiveRowTitle": "Archive row",
   "customizeArchiveRowHint": "Show it above the chat list. Archived conversations keep receiving either way.",
   "mapLayerStandard": "Standard",
-  "mapLayerStandardHint": "Light street map — the most stable default"
+  "mapLayerStandardHint": "Light street map — the most stable default",
+  "callYourMicOff": "Your microphone is off",
+  "callTheirCameraOff": "{name}'s camera is off",
+  "@callTheirCameraOff": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  }
 }

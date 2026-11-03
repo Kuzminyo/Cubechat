@@ -4538,4 +4538,12 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get mapLayerStandardHint => 'خريطة شوارع فاتحة — الخيار الأكثر ثباتًا';
+
+  @override
+  String get callYourMicOff => 'الميكروفون لديك مغلق';
+
+  @override
+  String callTheirCameraOff(String name) {
+    return 'كاميرا $name مغلقة';
+  }
 }

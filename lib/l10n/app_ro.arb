@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "Rândul arhivei",
   "customizeArchiveRowHint": "Afișează-l deasupra listei de chaturi. Chaturile arhivate primesc mesaje oricum.",
   "mapLayerStandard": "Standard",
-  "mapLayerStandardHint": "Hartă stradală deschisă — varianta cea mai stabilă"
+  "mapLayerStandardHint": "Hartă stradală deschisă — varianta cea mai stabilă",
+  "callYourMicOff": "Microfonul tău e oprit",
+  "callTheirCameraOff": "Camera lui {name} e oprită"
 }

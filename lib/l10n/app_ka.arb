@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "არქივის ხაზი",
   "customizeArchiveRowHint": "ჩვენება ჩატების სიის ზემოთ. დაარქივებული ჩატები შეტყობინებებს მაინც იღებს.",
   "mapLayerStandard": "სტანდარტული",
-  "mapLayerStandardHint": "ღია ფერის ქუჩების რუკა — ყველაზე სტაბილური ვარიანტი"
+  "mapLayerStandardHint": "ღია ფერის ქუჩების რუკა — ყველაზე სტაბილური ვარიანტი",
+  "callYourMicOff": "თქვენი მიკროფონი გამორთულია",
+  "callTheirCameraOff": "{name}: კამერა გამორთულია"
 }

@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "Linha do arquivo",
   "customizeArchiveRowHint": "Mostrar acima da lista de conversas. Conversas arquivadas continuam recebendo mensagens de qualquer forma.",
   "mapLayerStandard": "Padrão",
-  "mapLayerStandardHint": "Mapa de ruas claro — a opção mais estável"
+  "mapLayerStandardHint": "Mapa de ruas claro — a opção mais estável",
+  "callYourMicOff": "Seu microfone está desligado",
+  "callTheirCameraOff": "A câmera de {name} está desligada"
 }

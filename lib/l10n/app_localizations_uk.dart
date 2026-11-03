@@ -4491,4 +4491,12 @@ class AppLocalizationsUk extends AppLocalizations {
   @override
   String get mapLayerStandardHint =>
       'Світла карта вулиць — найстабільніший варіант';
+
+  @override
+  String get callYourMicOff => 'Ваш мікрофон вимкнено';
+
+  @override
+  String callTheirCameraOff(String name) {
+    return 'Камеру $name вимкнено';
+  }
 }

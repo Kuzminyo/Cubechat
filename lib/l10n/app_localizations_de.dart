@@ -4479,4 +4479,12 @@ class AppLocalizationsDe extends AppLocalizations {
 
   @override
   String get mapLayerStandardHint => 'Helle Straßenkarte — die stabilste Wahl';
+
+  @override
+  String get callYourMicOff => 'Dein Mikrofon ist aus';
+
+  @override
+  String callTheirCameraOff(String name) {
+    return 'Kamera von $name ist aus';
+  }
 }

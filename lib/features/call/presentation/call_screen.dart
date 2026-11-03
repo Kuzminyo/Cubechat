@@ -576,38 +576,46 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     // Answer before Decline. They were the other way round, and "swap answer
     // and decline" was asked for - which also leaves the red button at the
     // right-hand end in every state of the call, ringing or talking.
+    //
+    // Left to right (asked for with screenshots, 2026-11-03): where the sound
+    // goes, the camera, the microphone, then the red button. With our camera
+    // on, the first place is flipping it, and the sound moves to the corner
+    // of the header — a face on screen is a phone held away from the ear.
+    final flipFirst = local != null && !incoming;
     final controls = <Widget>[
+      if (flipFirst)
+        _control(
+          Icons.cameraswitch_rounded,
+          t.callFlipCamera,
+          () => unawaited(call.switchCamera()),
+          selected: true,
+        )
+      // From the moment this phone dials, not only once the other side
+      // answers: the ringing can go on the loudspeaker too.
+      else if (call.canUseSpeaker)
+        _control(
+          routeIcon(route),
+          call.hasHeadsetRoute ? routeName : t.callSpeaker,
+          () => unawaited(_onSpeaker()),
+          selected: route != CallAudioRouteKind.earpiece,
+        ),
+      // While a video call rings, so the person called can answer with the
+      // camera already off; once any call is answered, so a voice call can
+      // become a video one. Lit white while it is *off*, like the muted
+      // microphone beside it: white is the state somebody has to notice.
+      if (call.canVideo)
+        _control(
+          call.cameraOn ? Icons.videocam_rounded : Icons.videocam_off_rounded,
+          t.callCamera,
+          () => unawaited(call.toggleCamera()),
+          selected: !call.cameraOn,
+        ),
       if (call.active)
         _control(
           call.micMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
           t.callMicrophone,
           () => unawaited(call.toggleMute()),
           selected: call.micMuted,
-        ),
-      // Beside the microphone. While a video call rings, so the person
-      // called can answer with the camera already off; once any call is
-      // answered, so a voice call can become a video one.
-      if (call.canVideo)
-        _control(
-          call.cameraOn ? Icons.videocam_rounded : Icons.videocam_off_rounded,
-          t.callCamera,
-          () => unawaited(call.toggleCamera()),
-          selected: call.cameraOn,
-        ),
-      if (local != null && !incoming)
-        _control(
-          Icons.cameraswitch_rounded,
-          t.callFlipCamera,
-          () => unawaited(call.switchCamera()),
-        ),
-      // From the moment this phone dials, not only once the other side
-      // answers: the ringing can go on the loudspeaker too.
-      if (call.canUseSpeaker)
-        _control(
-          routeIcon(route),
-          call.hasHeadsetRoute ? routeName : t.callSpeaker,
-          () => unawaited(_onSpeaker()),
-          selected: route != CallAudioRouteKind.earpiece,
         ),
       if (incoming)
         _control(
@@ -629,12 +637,35 @@ class _CallScreenState extends ConsumerState<CallScreen> {
         _control(Icons.close_rounded, t.callClose, call.dismiss),
     ];
 
-    _overVideo = big != null;
+    // White words everywhere now: over a picture under its shades, and over
+    // the coloured field a call without one is drawn on.
+    _overVideo = true;
     final top = MediaQuery.paddingOf(context).top;
+    // What the person on the other end has to be told about, in pills over
+    // the buttons. Their microphone is not here: nothing on the wire says it.
+    final notices = <(IconData, String)>[
+      if (call.active && call.micMuted)
+        (Icons.mic_off_rounded, t.callYourMicOff),
+      if (talking && call.video && remote == null)
+        (Icons.videocam_off_rounded, t.callTheirCameraOff(call.name)),
+    ];
+    final cornerSpeaker = flipFirst && call.canUseSpeaker;
     return Material(
       color: AppColors.bgDeep,
       child: Stack(
         children: [
+          // A call without a picture is drawn on a field of the theme's own
+          // colour: cooler while it is being placed, the brand's once it is
+          // talking, so a glance says which. Two stops, one paint — no
+          // animation runs while it holds still.
+          Positioned.fill(
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 600),
+              decoration: BoxDecoration(
+                gradient: _callField(talking: talking),
+              ),
+            ),
+          ),
           if (big != null) ...[
             Positioned.fill(
               child: _VideoSurface(stream: big, mirror: mirrorBig),
@@ -658,15 +689,18 @@ class _CallScreenState extends ConsumerState<CallScreen> {
               child: _Shade(fromTop: false),
             ),
           ],
+          // Fills the screen and still scrolls on one too short for it — a
+          // landscape phone, a large interface size — with room for the
+          // spacers that put the avatar in the middle and the buttons at the
+          // foot.
           SafeArea(
-            child: LayoutBuilder(
-              builder: (context, bounds) => SingleChildScrollView(
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(minHeight: bounds.maxHeight),
+            child: CustomScrollView(
+              slivers: [
+                SliverFillRemaining(
+                  hasScrollBody: false,
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         SizedBox(
                           height: 48,
@@ -679,105 +713,113 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                                   excludeSemantics: true,
                                   child: IconButton(
                                     onPressed: widget.onMinimize,
-                                    icon: Icon(
-                                      Icons.keyboard_arrow_down_rounded,
-                                      size: 30,
-                                      color: _overVideo
-                                          ? Colors.white
-                                          : AppColors.textPrimary,
+                                    icon: const Icon(
+                                      Icons.close_fullscreen_rounded,
+                                      size: 26,
+                                      color: Colors.white,
                                     ),
                                   ),
                                 )
                               else
                                 const SizedBox(width: 48),
-                              Expanded(
-                                child: big != null
-                                    // The face takes the middle, so who and
-                                    // how long move up here.
-                                    ? Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Text(
-                                            call.name,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 17,
-                                              fontWeight: FontWeight.w700,
-                                            ),
-                                          ),
-                                          Text(
-                                            status,
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 13,
-                                              fontFeatures: [
-                                                FontFeature.tabularFigures(),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      )
-                                    : Text(
-                                        call.video || call.cameraOn
-                                            ? t.callVideo
-                                            : t.callVoice,
-                                        textAlign: TextAlign.center,
-                                        style: TextStyle(
-                                          color: AppColors.textPrimary,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                              ),
-                              const SizedBox(width: 48),
+                              const Spacer(),
+                              if (cornerSpeaker)
+                                Semantics(
+                                  button: true,
+                                  label: call.hasHeadsetRoute
+                                      ? routeName
+                                      : t.callSpeaker,
+                                  excludeSemantics: true,
+                                  child: IconButton(
+                                    onPressed: () => unawaited(_onSpeaker()),
+                                    icon: Icon(
+                                      routeIcon(route),
+                                      size: 26,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                )
+                              else
+                                const SizedBox(width: 48),
                             ],
                           ),
                         ),
-                        if (big == null)
+                        if (big == null) const Spacer(),
+                        // Who and how long, large. Under the avatar while
+                        // there is no picture; at the top over a face, which
+                        // takes the middle of the screen.
                         Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: 36,
-                            horizontal: 12,
+                          padding: EdgeInsets.only(
+                            top: big == null ? 28 : 0,
+                            bottom: big == null ? 36 : 0,
+                            left: 12,
+                            right: 12,
                           ),
                           child: Column(children: [
-                            // Their picture when they have shared one, the same
-                            // face the chat list shows; initials otherwise.
-                            PeerAvatar(
-                              peerId: call.peerId ?? '',
-                              label: call.name,
-                              size: 120,
-                            ),
-                            const SizedBox(height: 24),
+                            if (big == null) ...[
+                              // Their picture when they have shared one, the
+                              // same face the chat list shows; initials
+                              // otherwise. In two soft rings, so it reads as
+                              // the call's subject from across a room.
+                              _Halo(
+                                child: PeerAvatar(
+                                  peerId: call.peerId ?? '',
+                                  label: call.name,
+                                  size: 150,
+                                ),
+                              ),
+                              const SizedBox(height: 22),
+                            ],
                             Text(
                               call.name,
                               textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: AppColors.textPrimary,
-                                fontSize: 28,
-                                fontWeight: FontWeight.w600,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 30,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 6),
                             Semantics(
                               liveRegion: !talking,
-                              child: Text(
-                                status,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 16,
-                                  fontFeatures: const [
-                                    FontFeature.tabularFigures(),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (talking && call.linkBars > 0) ...[
+                                    _SignalBars(bars: call.linkBars),
+                                    const SizedBox(width: 6),
                                   ],
-                                ),
+                                  Flexible(
+                                    child: Text(
+                                      status,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.9),
+                                        fontSize: 16,
+                                        fontFeatures: const [
+                                          FontFeature.tabularFigures(),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ]),
                         ),
+                        const Spacer(),
                         Column(
                           children: [
+                            for (final (icon, text) in notices)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: _Notice(icon: icon, text: text),
+                              ),
+                            if (notices.isNotEmpty)
+                              const SizedBox(height: 12),
                             Row(
                               children: [
                                 for (final control in controls)
@@ -790,7 +832,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
           // The second picture, small, under the header — where FaceTime and
@@ -798,7 +840,9 @@ class _CallScreenState extends ConsumerState<CallScreen> {
           // used to seeing itself. A tap swaps it with the big one.
           if (small != null)
             Positioned(
-              top: top + 64,
+              // Below the name and the clock, which now stand at the top over
+              // the picture.
+              top: top + 150,
               right: 16,
               width: 104,
               height: 144,
@@ -853,13 +897,16 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     bool selected = false,
     Color? tone,
   }) {
-    final background =
-        tone ?? (selected ? AppColors.brandPrimary : AppColors.glassFillStrong);
+    // White when lit, a frosted white when not: over the coloured field and
+    // over a picture alike, rather than the theme's glass, which disappears
+    // into a field of the theme's own colour.
+    final background = tone ??
+        (selected ? Colors.white : Colors.white.withValues(alpha: 0.22));
     final foreground = tone != null
         ? Colors.white
         : selected
             ? AppColors.bgDeep
-            : AppColors.textPrimary;
+            : Colors.white;
     return Column(
       children: [
         Semantics(
@@ -874,7 +921,9 @@ class _CallScreenState extends ConsumerState<CallScreen> {
               backgroundColor: background,
               foregroundColor: foreground,
             ),
-            icon: Icon(icon, size: 28),
+            // Coloured here: a selected filled-tonal button repaints its icon
+            // in its own scheme colour, which is white on the white disc.
+            icon: Icon(icon, size: 28, color: foreground),
           ),
         ),
         const SizedBox(height: 8),
@@ -955,6 +1004,120 @@ class _VideoSurfaceState extends State<_VideoSurface> {
           objectFit: RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
         )
       : const SizedBox.expand();
+}
+
+/// The field a call is drawn on when there is no picture: the theme's own
+/// colour, from the brand to its lighter partner, kept dark enough for white
+/// words. While the call is being placed the same two colours are turned a
+/// sixth of the wheel towards blue, so ringing and talking look different at
+/// a glance in every theme.
+LinearGradient _callField({required bool talking}) {
+  Color tone(Color c, double lightness) {
+    final hsl = HSLColor.fromColor(c);
+    final hue = talking ? hsl.hue : (hsl.hue + 60) % 360;
+    return hsl
+        .withHue(hue)
+        .withLightness(lightness)
+        .withSaturation((hsl.saturation * 0.85).clamp(0.0, 1.0))
+        .toColor();
+  }
+
+  return LinearGradient(
+    begin: Alignment.topRight,
+    end: Alignment.bottomLeft,
+    colors: [
+      tone(AppColors.brandSecondary, 0.50),
+      tone(AppColors.brandPrimary, 0.38),
+    ],
+  );
+}
+
+/// The avatar in two soft rings.
+class _Halo extends StatelessWidget {
+  const _Halo({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 210,
+        height: 210,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: 0.08),
+        ),
+        child: Container(
+          width: 180,
+          height: 180,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: Colors.white.withValues(alpha: 0.10),
+          ),
+          child: child,
+        ),
+      );
+}
+
+/// Four rising bars, [bars] of them lit — the link as the voice's own
+/// feedback measures it ([CallMedia.linkBars]).
+class _SignalBars extends StatelessWidget {
+  const _SignalBars({required this.bars});
+
+  final int bars;
+
+  @override
+  Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (var i = 0; i < 4; i++) ...[
+            if (i > 0) const SizedBox(width: 2),
+            Container(
+              width: 3,
+              height: 5.0 + i * 3,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(1),
+                color: Colors.white.withValues(alpha: i < bars ? 1 : 0.35),
+              ),
+            ),
+          ],
+        ],
+      );
+}
+
+/// One thing the other side should know — "your microphone is off" — in a
+/// dark pill over the buttons.
+class _Notice extends StatelessWidget {
+  const _Notice({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.28),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: Colors.white),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontSize: 15),
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 /// A short fade to black at one edge of the picture.

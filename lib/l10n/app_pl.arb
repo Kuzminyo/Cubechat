@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "Wiersz archiwum",
   "customizeArchiveRowHint": "Pokazuj nad listą czatów. Zarchiwizowane czaty i tak odbierają wiadomości.",
   "mapLayerStandard": "Standardowa",
-  "mapLayerStandardHint": "Jasna mapa ulic — najstabilniejsza opcja"
+  "mapLayerStandardHint": "Jasna mapa ulic — najstabilniejsza opcja",
+  "callYourMicOff": "Twój mikrofon jest wyłączony",
+  "callTheirCameraOff": "{name} ma wyłączoną kamerę"
 }

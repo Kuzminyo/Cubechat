@@ -15,6 +15,8 @@ import 'package:go_router/go_router.dart';
 class _Media implements CallMedia {
   final _events = StreamController<CallMediaEvent>.broadcast(sync: true);
   @override
+  int get linkBars => 4;
+  @override
   Stream<CallMediaEvent> get events => _events.stream;
   @override
   Future<String> offer(
@@ -231,7 +233,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     final before = tester.getTopLeft(find.text('underneath'));
 
-    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    await tester.tap(find.byIcon(Icons.close_fullscreen_rounded));
     await tester.pump();
     expect(tester.takeException(), isNull);
     expect(find.byType(CallIsland), findsOneWidget);
@@ -263,7 +265,7 @@ void main() {
     unawaited(call.dial('peer'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    await tester.tap(find.byIcon(Icons.close_fullscreen_rounded));
     await tester.pump();
 
     call.hangUp();

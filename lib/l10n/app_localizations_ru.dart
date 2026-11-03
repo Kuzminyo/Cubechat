@@ -4510,4 +4510,12 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get mapLayerStandardHint =>
       'Светлая карта улиц — самый стабильный вариант';
+
+  @override
+  String get callYourMicOff => 'Ваш микрофон выключен';
+
+  @override
+  String callTheirCameraOff(String name) {
+    return 'Камера $name выключена';
+  }
 }

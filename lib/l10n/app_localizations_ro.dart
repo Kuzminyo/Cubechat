@@ -4506,4 +4506,12 @@ class AppLocalizationsRo extends AppLocalizations {
   @override
   String get mapLayerStandardHint =>
       'Hartă stradală deschisă — varianta cea mai stabilă';
+
+  @override
+  String get callYourMicOff => 'Microfonul tău e oprit';
+
+  @override
+  String callTheirCameraOff(String name) {
+    return 'Camera lui $name e oprită';
+  }
 }

@@ -4441,4 +4441,12 @@ class AppLocalizationsHi extends AppLocalizations {
 
   @override
   String get mapLayerStandardHint => 'हल्का सड़क मैप — सबसे स्थिर विकल्प';
+
+  @override
+  String get callYourMicOff => 'आपका माइक बंद है';
+
+  @override
+  String callTheirCameraOff(String name) {
+    return '$name का कैमरा बंद है';
+  }
 }

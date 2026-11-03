@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "Riga dell’archivio",
   "customizeArchiveRowHint": "Mostrala sopra l’elenco delle chat. Le chat archiviate ricevono comunque i messaggi.",
   "mapLayerStandard": "Standard",
-  "mapLayerStandardHint": "Mappa stradale chiara — l’opzione più stabile"
+  "mapLayerStandardHint": "Mappa stradale chiara — l’opzione più stabile",
+  "callYourMicOff": "Il tuo microfono è spento",
+  "callTheirCameraOff": "La fotocamera di {name} è spenta"
 }

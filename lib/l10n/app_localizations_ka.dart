@@ -4458,4 +4458,12 @@ class AppLocalizationsKa extends AppLocalizations {
   @override
   String get mapLayerStandardHint =>
       'ღია ფერის ქუჩების რუკა — ყველაზე სტაბილური ვარიანტი';
+
+  @override
+  String get callYourMicOff => 'თქვენი მიკროფონი გამორთულია';
+
+  @override
+  String callTheirCameraOff(String name) {
+    return '$name: კამერა გამორთულია';
+  }
 }

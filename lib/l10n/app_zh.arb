@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "归档行",
   "customizeArchiveRowHint": "显示在聊天列表上方。已归档的聊天仍会照常接收消息。",
   "mapLayerStandard": "标准",
-  "mapLayerStandardHint": "浅色街道地图——最稳定的选择"
+  "mapLayerStandardHint": "浅色街道地图——最稳定的选择",
+  "callYourMicOff": "你的麦克风已关闭",
+  "callTheirCameraOff": "{name} 的摄像头已关闭"
 }

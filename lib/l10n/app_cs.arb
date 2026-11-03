@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "Řádek archivu",
   "customizeArchiveRowHint": "Zobrazit nad seznamem chatů. Archivované chaty přijímají zprávy tak jako tak.",
   "mapLayerStandard": "Standardní",
-  "mapLayerStandardHint": "Světlá mapa ulic — nejstabilnější volba"
+  "mapLayerStandardHint": "Světlá mapa ulic — nejstabilnější volba",
+  "callYourMicOff": "Váš mikrofon je vypnutý",
+  "callTheirCameraOff": "Kamera uživatele {name} je vypnutá"
 }

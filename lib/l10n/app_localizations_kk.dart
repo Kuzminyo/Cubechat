@@ -4461,4 +4461,12 @@ class AppLocalizationsKk extends AppLocalizations {
   @override
   String get mapLayerStandardHint =>
       'Ашық түсті көше картасы — ең тұрақты нұсқа';
+
+  @override
+  String get callYourMicOff => 'Микрофоныңыз өшірулі';
+
+  @override
+  String callTheirCameraOff(String name) {
+    return '$name: камера өшірулі';
+  }
 }

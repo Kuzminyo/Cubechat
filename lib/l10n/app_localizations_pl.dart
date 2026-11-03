@@ -4525,4 +4525,12 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get mapLayerStandardHint => 'Jasna mapa ulic — najstabilniejsza opcja';
+
+  @override
+  String get callYourMicOff => 'Twój mikrofon jest wyłączony';
+
+  @override
+  String callTheirCameraOff(String name) {
+    return '$name ma wyłączoną kamerę';
+  }
 }

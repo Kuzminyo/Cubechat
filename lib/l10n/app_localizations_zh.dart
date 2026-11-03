@@ -4273,4 +4273,12 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get mapLayerStandardHint => '浅色街道地图——最稳定的选择';
+
+  @override
+  String get callYourMicOff => '你的麦克风已关闭';
+
+  @override
+  String callTheirCameraOff(String name) {
+    return '$name 的摄像头已关闭';
+  }
 }

@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "Мұрағат жолы",
   "customizeArchiveRowHint": "Чаттар тізімінің үстінде көрсету. Мұрағаттағы чаттар бәрібір хабар алады.",
   "mapLayerStandard": "Қалыпты",
-  "mapLayerStandardHint": "Ашық түсті көше картасы — ең тұрақты нұсқа"
+  "mapLayerStandardHint": "Ашық түсті көше картасы — ең тұрақты нұсқа",
+  "callYourMicOff": "Микрофоныңыз өшірулі",
+  "callTheirCameraOff": "{name}: камера өшірулі"
 }

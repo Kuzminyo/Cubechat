@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "Fila del archivo",
   "customizeArchiveRowHint": "Mostrarla sobre la lista de chats. Los chats archivados siguen recibiendo mensajes igualmente.",
   "mapLayerStandard": "Estándar",
-  "mapLayerStandardHint": "Mapa de calles claro — la opción más estable"
+  "mapLayerStandardHint": "Mapa de calles claro — la opción más estable",
+  "callYourMicOff": "Tu micrófono está desactivado",
+  "callTheirCameraOff": "La cámara de {name} está apagada"
 }

@@ -4471,4 +4471,12 @@ class AppLocalizationsCs extends AppLocalizations {
 
   @override
   String get mapLayerStandardHint => 'Světlá mapa ulic — nejstabilnější volba';
+
+  @override
+  String get callYourMicOff => 'Váš mikrofon je vypnutý';
+
+  @override
+  String callTheirCameraOff(String name) {
+    return 'Kamera uživatele $name je vypnutá';
+  }
 }

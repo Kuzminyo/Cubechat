@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "Arşiv satırı",
   "customizeArchiveRowHint": "Sohbet listesinin üstünde gösterin. Arşivlenmiş sohbetler her durumda mesaj almaya devam eder.",
   "mapLayerStandard": "Standart",
-  "mapLayerStandardHint": "Açık sokak haritası — en kararlı seçenek"
+  "mapLayerStandardHint": "Açık sokak haritası — en kararlı seçenek",
+  "callYourMicOff": "Mikrofonunuz kapalı",
+  "callTheirCameraOff": "{name} kamerayı kapattı"
 }

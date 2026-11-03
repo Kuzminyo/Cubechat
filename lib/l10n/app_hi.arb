@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "आर्काइव पंक्ति",
   "customizeArchiveRowHint": "इसे चैट सूची के ऊपर दिखाएँ। आर्काइव की गई चैट को मैसेज मिलते रहते हैं।",
   "mapLayerStandard": "स्टैंडर्ड",
-  "mapLayerStandardHint": "हल्का सड़क मैप — सबसे स्थिर विकल्प"
+  "mapLayerStandardHint": "हल्का सड़क मैप — सबसे स्थिर विकल्प",
+  "callYourMicOff": "आपका माइक बंद है",
+  "callTheirCameraOff": "{name} का कैमरा बंद है"
 }

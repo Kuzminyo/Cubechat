@@ -4326,4 +4326,12 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get mapLayerStandardHint => '明るい道路地図 — 最も安定した選択肢';
+
+  @override
+  String get callYourMicOff => 'マイクがオフです';
+
+  @override
+  String callTheirCameraOff(String name) {
+    return '$name さんのカメラはオフです';
+  }
 }

@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "Ligne des archives",
   "customizeArchiveRowHint": "L’afficher au-dessus de la liste des discussions. Les discussions archivées reçoivent les messages dans tous les cas.",
   "mapLayerStandard": "Standard",
-  "mapLayerStandardHint": "Plan de rues clair — l’option la plus stable"
+  "mapLayerStandardHint": "Plan de rues clair — l’option la plus stable",
+  "callYourMicOff": "Votre micro est coupé",
+  "callTheirCameraOff": "La caméra de {name} est coupée"
 }

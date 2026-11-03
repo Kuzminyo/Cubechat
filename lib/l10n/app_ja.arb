@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "アーカイブ行",
   "customizeArchiveRowHint": "チャット一覧の上に表示します。アーカイブしたチャットもメッセージは受信し続けます。",
   "mapLayerStandard": "標準",
-  "mapLayerStandardHint": "明るい道路地図 — 最も安定した選択肢"
+  "mapLayerStandardHint": "明るい道路地図 — 最も安定した選択肢",
+  "callYourMicOff": "マイクがオフです",
+  "callTheirCameraOff": "{name} さんのカメラはオフです"
 }

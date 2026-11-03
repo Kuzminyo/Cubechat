@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "Archivzeile",
   "customizeArchiveRowHint": "Über der Chatliste anzeigen. Archivierte Chats empfangen so oder so weiter.",
   "mapLayerStandard": "Standard",
-  "mapLayerStandardHint": "Helle Straßenkarte — die stabilste Wahl"
+  "mapLayerStandardHint": "Helle Straßenkarte — die stabilste Wahl",
+  "callYourMicOff": "Dein Mikrofon ist aus",
+  "callTheirCameraOff": "Kamera von {name} ist aus"
 }

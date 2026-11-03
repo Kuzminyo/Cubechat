@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "보관함 행",
   "customizeArchiveRowHint": "채팅 목록 위에 표시합니다. 보관된 채팅도 메시지는 계속 받습니다.",
   "mapLayerStandard": "표준",
-  "mapLayerStandardHint": "밝은 거리 지도 — 가장 안정적인 기본값"
+  "mapLayerStandardHint": "밝은 거리 지도 — 가장 안정적인 기본값",
+  "callYourMicOff": "내 마이크가 꺼져 있습니다",
+  "callTheirCameraOff": "{name} 님의 카메라가 꺼져 있습니다"
 }

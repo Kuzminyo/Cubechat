@@ -1549,5 +1549,7 @@
   "customizeArchiveRowTitle": "صف الأرشيف",
   "customizeArchiveRowHint": "اعرضه فوق قائمة الدردشات. تستمر الدردشات المؤرشفة في تلقي الرسائل في كل الأحوال.",
   "mapLayerStandard": "قياسية",
-  "mapLayerStandardHint": "خريطة شوارع فاتحة — الخيار الأكثر ثباتًا"
+  "mapLayerStandardHint": "خريطة شوارع فاتحة — الخيار الأكثر ثباتًا",
+  "callYourMicOff": "الميكروفون لديك مغلق",
+  "callTheirCameraOff": "كاميرا {name} مغلقة"
 }

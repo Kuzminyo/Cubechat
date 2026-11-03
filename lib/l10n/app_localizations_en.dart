@@ -4444,4 +4444,12 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get mapLayerStandardHint =>
       'Light street map — the most stable default';
+
+  @override
+  String get callYourMicOff => 'Your microphone is off';
+
+  @override
+  String callTheirCameraOff(String name) {
+    return '$name\'s camera is off';
+  }
 }

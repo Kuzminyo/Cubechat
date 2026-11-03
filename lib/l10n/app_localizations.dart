@@ -7751,6 +7751,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Light street map — the most stable default'**
   String get mapLayerStandardHint;
+
+  /// No description provided for @callYourMicOff.
+  ///
+  /// In en, this message translates to:
+  /// **'Your microphone is off'**
+  String get callYourMicOff;
+
+  /// No description provided for @callTheirCameraOff.
+  ///
+  /// In en, this message translates to:
+  /// **'{name}\'s camera is off'**
+  String callTheirCameraOff(String name);
 }
 
 class _AppLocalizationsDelegate

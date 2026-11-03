@@ -1534,5 +1534,7 @@
   "customizeArchiveRowTitle": "Рядок архіву",
   "customizeArchiveRowHint": "Показувати згори списку чатів. Приховані чати далі отримують повідомлення.",
   "mapLayerStandard": "Звичайна",
-  "mapLayerStandardHint": "Світла карта вулиць — найстабільніший варіант"
+  "mapLayerStandardHint": "Світла карта вулиць — найстабільніший варіант",
+  "callYourMicOff": "Ваш мікрофон вимкнено",
+  "callTheirCameraOff": "Камеру {name} вимкнено"
 }
