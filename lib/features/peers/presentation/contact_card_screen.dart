@@ -14,6 +14,7 @@ import '../../../core/util/share_anchor.dart';
 import '../../../core/transport/messaging_service.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_toast.dart';
+import '../../../core/widgets/more_button.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../cube_id/data/cube_id_controller.dart';
 import '../../cube_id/domain/cube_name.dart';
@@ -54,7 +55,15 @@ class ContactCardScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        leading: BackButton(color: AppColors.textOnGlass),
+        // On the dark disc every header button wears (asked for here,
+        // 2026-11-03): a bare arrow read as a stray glyph on the aurora.
+        leading: Center(
+          child: HeaderIconButton(
+            icon: Icons.arrow_back_rounded,
+            tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+        ),
         title: Text(
           t.contactTitle,
           style: AppTypography.heading(size: 18, color: AppColors.textOnGlass),
