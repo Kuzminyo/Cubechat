@@ -1,5 +1,6 @@
 import Flutter
 import UIKit
+import UniformTypeIdentifiers
 
 /// Hands a file to another app and *switches to it*.
 ///
@@ -42,6 +43,14 @@ final class CubechatOpenInPlugin: NSObject, UIDocumentInteractionControllerDeleg
   private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     if call.method == "saveAs" {
       saveAs(call.arguments as? [String: Any], result: result)
+      return
+    }
+    if call.method == "pickFolder" {
+      pickFolder(result: result)
+      return
+    }
+    if call.method == "writeToFolder" {
+      writeToFolder(call.arguments as? [String: Any], result: result)
       return
     }
     guard call.method == "openIn" else {
@@ -126,17 +135,127 @@ final class CubechatOpenInPlugin: NSObject, UIDocumentInteractionControllerDeleg
     top.present(picker, animated: true)
   }
 
+  /// Who is waiting on the folder picker — see [pickFolder].
+  private var pendingFolder: FlutterResult?
+
+  /// Let the user choose, once, a folder in Files — On My iPhone, iCloud
+  /// Drive — that the automatic backup writes to from then on. Kept as a
+  /// security-scoped bookmark, the only thing that lets an app reach a folder
+  /// outside its own container again after a restart.
+  ///
+  /// Answers `{id, name}` — the bookmark in base64 and the folder's name — or
+  /// null when cancelled.
+  private func pickFolder(result: @escaping FlutterResult) {
+    guard pendingFolder == nil, pendingSave == nil else {
+      result(FlutterError(code: "busy", message: "a picker is already open", details: nil))
+      return
+    }
+    guard let top = Self.topViewController() else {
+      result(nil)
+      return
+    }
+    let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.folder])
+    picker.delegate = self
+    picker.allowsMultipleSelection = false
+    pendingFolder = result
+    top.present(picker, animated: true)
+  }
+
+  /// Copy a file into the chosen folder under a fixed name, replacing the one
+  /// there. Written beside it and swapped in only once whole, so a copy cut
+  /// short never leaves the folder without a good backup.
+  ///
+  /// Answers `{outcome, id?}`: outcome "saved", "denied" (the folder is gone
+  /// or no longer reachable — pick it again) or "failed"; `id` is a renewed
+  /// bookmark when iOS reports the old one stale.
+  private func writeToFolder(_ args: [String: Any]?, result: @escaping FlutterResult) {
+    guard
+      let id = args?["folder"] as? String,
+      let bookmark = Data(base64Encoded: id),
+      let name = args?["name"] as? String, !name.isEmpty,
+      let path = args?["path"] as? String,
+      FileManager.default.fileExists(atPath: path)
+    else {
+      result(["outcome": "failed"])
+      return
+    }
+    DispatchQueue.global(qos: .utility).async {
+      var stale = false
+      guard
+        let folder = try? URL(
+          resolvingBookmarkData: bookmark, options: [], relativeTo: nil,
+          bookmarkDataIsStale: &stale)
+      else {
+        DispatchQueue.main.async { result(["outcome": "denied"]) }
+        return
+      }
+      let reachable = folder.startAccessingSecurityScopedResource()
+      defer { if reachable { folder.stopAccessingSecurityScopedResource() } }
+      var reply: [String: Any] = ["outcome": "failed"]
+      if stale, let renewed = try? folder.bookmarkData() {
+        reply["id"] = renewed.base64EncodedString()
+      }
+      let target = folder.appendingPathComponent(name)
+      let partial = folder.appendingPathComponent(name + ".partial")
+      var coordinationError: NSError?
+      var written = false
+      NSFileCoordinator().coordinate(
+        writingItemAt: target, options: .forReplacing, error: &coordinationError
+      ) { destination in
+        let fm = FileManager.default
+        do {
+          try? fm.removeItem(at: partial)
+          try fm.copyItem(at: URL(fileURLWithPath: path), to: partial)
+          if fm.fileExists(atPath: destination.path) {
+            _ = try fm.replaceItemAt(destination, withItemAt: partial)
+          } else {
+            try fm.moveItem(at: partial, to: destination)
+          }
+          written = true
+        } catch {
+          try? fm.removeItem(at: partial)
+        }
+      }
+      reply["outcome"] =
+        written ? "saved" : (reachable || coordinationError != nil ? "failed" : "denied")
+      DispatchQueue.main.async { result(reply) }
+    }
+  }
+
   // MARK: - UIDocumentPickerDelegate
 
   func documentPicker(
     _ controller: UIDocumentPickerViewController,
     didPickDocumentsAt urls: [URL]
   ) {
+    if let folderResult = pendingFolder {
+      pendingFolder = nil
+      guard let folder = urls.first else {
+        folderResult(nil)
+        return
+      }
+      let reachable = folder.startAccessingSecurityScopedResource()
+      defer { if reachable { folder.stopAccessingSecurityScopedResource() } }
+      guard let bookmark = try? folder.bookmarkData() else {
+        folderResult(nil)
+        return
+      }
+      folderResult([
+        "id": bookmark.base64EncodedString(),
+        "name": folder.lastPathComponent,
+      ])
+      return
+    }
     pendingSave?(urls.isEmpty ? "cancelled" : "saved")
     pendingSave = nil
   }
 
   func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+    if let folderResult = pendingFolder {
+      pendingFolder = nil
+      folderResult(nil)
+      return
+    }
     pendingSave?("cancelled")
     pendingSave = nil
   }

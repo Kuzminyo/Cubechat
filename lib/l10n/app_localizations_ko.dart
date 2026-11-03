@@ -4331,6 +4331,41 @@ class AppLocalizationsKo extends AppLocalizations {
   String get mapLayerStandardHint => '밝은 거리 지도 — 가장 안정적인 기본값';
 
   @override
+  String get backupAutoTitle => '자동 백업';
+
+  @override
+  String get backupAutoHint =>
+      '하루에 한 번, 선택한 폴더의 파일 하나에 저장합니다. 새 사본이 이전 사본을 대체합니다.';
+
+  @override
+  String backupAutoFolder(String name) {
+    return '폴더: $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return '마지막 사본: $time';
+  }
+
+  @override
+  String get backupAutoNever => '아직 사본이 없습니다';
+
+  @override
+  String get backupAutoRunning => '사본을 만드는 중…';
+
+  @override
+  String get backupAutoFolderLost => '폴더에 접근할 수 없습니다. 다시 선택하세요.';
+
+  @override
+  String get backupAutoFailed => '마지막 사본을 만들지 못했습니다. 나중에 다시 시도합니다.';
+
+  @override
+  String get backupAutoNow => '지금 백업';
+
+  @override
+  String get backupAutoChangeFolder => '폴더 변경';
+
+  @override
   String get callYourMicOff => '내 마이크가 꺼져 있습니다';
 
   @override

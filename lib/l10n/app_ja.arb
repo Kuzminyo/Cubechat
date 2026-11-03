@@ -1550,6 +1550,16 @@
   "customizeArchiveRowHint": "チャット一覧の上に表示します。アーカイブしたチャットもメッセージは受信し続けます。",
   "mapLayerStandard": "標準",
   "mapLayerStandardHint": "明るい道路地図 — 最も安定した選択肢",
+  "backupAutoTitle": "自動バックアップ",
+  "backupAutoHint": "1日1回、選んだフォルダ内の1つのファイルに保存します。新しいコピーが前のものを置き換えます。",
+  "backupAutoFolder": "フォルダ：{name}",
+  "backupAutoLast": "前回のコピー：{time}",
+  "backupAutoNever": "まだコピーはありません",
+  "backupAutoRunning": "コピーを作成中…",
+  "backupAutoFolderLost": "フォルダにアクセスできません。もう一度選んでください。",
+  "backupAutoFailed": "前回のコピーに失敗しました。後でもう一度試します。",
+  "backupAutoNow": "今すぐバックアップ",
+  "backupAutoChangeFolder": "フォルダを変更",
   "callYourMicOff": "マイクがオフです",
   "callTheirCameraOff": "{name} さんのカメラはオフです"
 }

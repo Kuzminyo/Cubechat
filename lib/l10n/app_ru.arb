@@ -1550,6 +1550,16 @@
   "customizeArchiveRowHint": "Показывать над списком чатов. Архивные чаты всё равно получают сообщения.",
   "mapLayerStandard": "Обычная",
   "mapLayerStandardHint": "Светлая карта улиц — самый стабильный вариант",
+  "backupAutoTitle": "Автоматическая копия",
+  "backupAutoHint": "Раз в сутки в один файл в выбранной папке; каждая копия заменяет предыдущую.",
+  "backupAutoFolder": "Папка: {name}",
+  "backupAutoLast": "Последняя копия: {time}",
+  "backupAutoNever": "Копии ещё нет",
+  "backupAutoRunning": "Создаём копию…",
+  "backupAutoFolderLost": "Папка недоступна. Выберите её снова.",
+  "backupAutoFailed": "Последняя копия не удалась. Попробуем позже.",
+  "backupAutoNow": "Сделать копию сейчас",
+  "backupAutoChangeFolder": "Сменить папку",
   "callYourMicOff": "Ваш микрофон выключен",
   "callTheirCameraOff": "Камера {name} выключена"
 }

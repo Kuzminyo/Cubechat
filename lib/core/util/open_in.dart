@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'dart:ui' show Rect;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 
 import 'debug_log.dart';
@@ -121,3 +123,92 @@ class OpenIn {
 
 /// How a [OpenIn.saveAs] ended.
 enum SaveAsOutcome { saved, cancelled, failed }
+
+/// A folder the user chose once for the automatic backup: [id] is what the
+/// platform needs to reach it again — a tree URI on Android, a bookmark on
+/// iOS, a plain path on a computer — and [name] is what to show.
+typedef BackupFolderRef = ({String id, String name});
+
+/// How writing into a [BackupFolderRef] ended. [denied] means the folder is
+/// gone or its permission was taken back: only picking it again helps.
+enum FolderWriteOutcome { saved, denied, failed }
+
+/// The automatic backup's way into a folder outside the app.
+///
+/// On a phone the app cannot keep a path to such a folder — Android hands
+/// out a tree URI with a persistable grant, iOS a security-scoped bookmark —
+/// so the choice and every later write go through the platform. A computer
+/// has plain paths and needs neither.
+class BackupFolderAccess {
+  const BackupFolderAccess._();
+
+  static bool get _native => PlatformInfo.isIOS || PlatformInfo.isAndroid;
+
+  /// Null when cancelled or unavailable.
+  static Future<BackupFolderRef?> pick() async {
+    if (!_native) {
+      final path = await FilePicker.platform.getDirectoryPath();
+      if (path == null || path.isEmpty) return null;
+      final parts = path.split(RegExp(r'[\\/]')).where((p) => p.isNotEmpty);
+      return (id: path, name: parts.isEmpty ? path : parts.last);
+    }
+    try {
+      final answer =
+          await OpenIn.channel.invokeMapMethod<String, Object?>('pickFolder');
+      final id = answer?['id'];
+      final name = answer?['name'];
+      if (id is! String || id.isEmpty) return null;
+      return (id: id, name: name is String && name.isNotEmpty ? name : id);
+    } catch (e) {
+      DebugLog.instance.log('BACKUP', 'folder picker unavailable: $e');
+      return null;
+    }
+  }
+
+  /// Copy [path] into [folder] as [name], replacing the copy there. A renewed
+  /// folder id, when the platform issued one, comes back beside the outcome
+  /// and should replace the stored one.
+  static Future<({FolderWriteOutcome outcome, String? renewedId})> write(
+    BackupFolderRef folder, {
+    required String name,
+    required String path,
+  }) async {
+    if (!_native) {
+      try {
+        final dir = Directory(folder.id);
+        if (!dir.existsSync()) {
+          return (outcome: FolderWriteOutcome.denied, renewedId: null);
+        }
+        final target = '${dir.path}${Platform.pathSeparator}$name';
+        final partial = File('$target.partial');
+        await File(path).copy(partial.path);
+        await partial.rename(target);
+        return (outcome: FolderWriteOutcome.saved, renewedId: null);
+      } on FileSystemException {
+        return (outcome: FolderWriteOutcome.failed, renewedId: null);
+      }
+    }
+    try {
+      final answer = await OpenIn.channel.invokeMethod<Object?>(
+        'writeToFolder',
+        {'folder': folder.id, 'name': name, 'path': path},
+      );
+      // Android answers a bare string; iOS a map that can carry a renewed
+      // bookmark.
+      final map = answer is Map ? answer : null;
+      final word = map != null ? map['outcome'] : answer;
+      final renewed = map?['id'];
+      return (
+        outcome: switch (word) {
+          'saved' => FolderWriteOutcome.saved,
+          'denied' => FolderWriteOutcome.denied,
+          _ => FolderWriteOutcome.failed,
+        },
+        renewedId: renewed is String && renewed.isNotEmpty ? renewed : null,
+      );
+    } catch (e) {
+      DebugLog.instance.log('BACKUP', 'folder write failed: ${e.runtimeType}');
+      return (outcome: FolderWriteOutcome.failed, renewedId: null);
+    }
+  }
+}

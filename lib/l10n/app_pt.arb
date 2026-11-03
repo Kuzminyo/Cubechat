@@ -1550,6 +1550,16 @@
   "customizeArchiveRowHint": "Mostrar acima da lista de conversas. Conversas arquivadas continuam recebendo mensagens de qualquer forma.",
   "mapLayerStandard": "Padrão",
   "mapLayerStandardHint": "Mapa de ruas claro — a opção mais estável",
+  "backupAutoTitle": "Backup automático",
+  "backupAutoHint": "Uma vez por dia em um único arquivo na pasta escolhida; cada cópia substitui a anterior.",
+  "backupAutoFolder": "Pasta: {name}",
+  "backupAutoLast": "Última cópia: {time}",
+  "backupAutoNever": "Ainda sem cópia",
+  "backupAutoRunning": "Criando cópia…",
+  "backupAutoFolderLost": "Não foi possível acessar a pasta. Escolha-a de novo.",
+  "backupAutoFailed": "A última cópia falhou. Tentaremos mais tarde.",
+  "backupAutoNow": "Fazer backup agora",
+  "backupAutoChangeFolder": "Trocar pasta",
   "callYourMicOff": "Seu microfone está desligado",
   "callTheirCameraOff": "A câmera de {name} está desligada"
 }

@@ -4540,6 +4540,41 @@ class AppLocalizationsAr extends AppLocalizations {
   String get mapLayerStandardHint => 'خريطة شوارع فاتحة — الخيار الأكثر ثباتًا';
 
   @override
+  String get backupAutoTitle => 'نسخ احتياطي تلقائي';
+
+  @override
+  String get backupAutoHint =>
+      'مرة يوميًا في ملف واحد داخل المجلد الذي تختاره؛ كل نسخة تحل محل السابقة.';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'المجلد: $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return 'آخر نسخة: $time';
+  }
+
+  @override
+  String get backupAutoNever => 'لا توجد نسخة بعد';
+
+  @override
+  String get backupAutoRunning => 'جارٍ إنشاء نسخة…';
+
+  @override
+  String get backupAutoFolderLost => 'تعذّر الوصول إلى المجلد. اختره مرة أخرى.';
+
+  @override
+  String get backupAutoFailed => 'فشلت آخر نسخة. ستُعاد المحاولة لاحقًا.';
+
+  @override
+  String get backupAutoNow => 'نسخ احتياطي الآن';
+
+  @override
+  String get backupAutoChangeFolder => 'تغيير المجلد';
+
+  @override
   String get callYourMicOff => 'الميكروفون لديك مغلق';
 
   @override

@@ -4527,6 +4527,43 @@ class AppLocalizationsPl extends AppLocalizations {
   String get mapLayerStandardHint => 'Jasna mapa ulic — najstabilniejsza opcja';
 
   @override
+  String get backupAutoTitle => 'Automatyczna kopia';
+
+  @override
+  String get backupAutoHint =>
+      'Raz dziennie do jednego pliku w wybranym folderze; każda kopia zastępuje poprzednią.';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'Folder: $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return 'Ostatnia kopia: $time';
+  }
+
+  @override
+  String get backupAutoNever => 'Brak kopii';
+
+  @override
+  String get backupAutoRunning => 'Tworzenie kopii…';
+
+  @override
+  String get backupAutoFolderLost =>
+      'Folder jest niedostępny. Wybierz go ponownie.';
+
+  @override
+  String get backupAutoFailed =>
+      'Ostatnia kopia się nie udała. Spróbujemy później.';
+
+  @override
+  String get backupAutoNow => 'Utwórz kopię teraz';
+
+  @override
+  String get backupAutoChangeFolder => 'Zmień folder';
+
+  @override
   String get callYourMicOff => 'Twój mikrofon jest wyłączony';
 
   @override

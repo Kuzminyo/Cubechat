@@ -4508,6 +4508,42 @@ class AppLocalizationsRo extends AppLocalizations {
       'Hartă stradală deschisă — varianta cea mai stabilă';
 
   @override
+  String get backupAutoTitle => 'Backup automat';
+
+  @override
+  String get backupAutoHint =>
+      'O dată pe zi, într-un singur fișier din dosarul ales; fiecare copie o înlocuiește pe cea dinainte.';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'Dosar: $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return 'Ultima copie: $time';
+  }
+
+  @override
+  String get backupAutoNever => 'Încă nicio copie';
+
+  @override
+  String get backupAutoRunning => 'Se face copia…';
+
+  @override
+  String get backupAutoFolderLost => 'Dosarul nu e accesibil. Alege-l din nou.';
+
+  @override
+  String get backupAutoFailed =>
+      'Ultima copie a eșuat. Se reîncearcă mai târziu.';
+
+  @override
+  String get backupAutoNow => 'Fă backup acum';
+
+  @override
+  String get backupAutoChangeFolder => 'Schimbă dosarul';
+
+  @override
   String get callYourMicOff => 'Microfonul tău e oprit';
 
   @override

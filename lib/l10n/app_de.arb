@@ -1550,6 +1550,16 @@
   "customizeArchiveRowHint": "Über der Chatliste anzeigen. Archivierte Chats empfangen so oder so weiter.",
   "mapLayerStandard": "Standard",
   "mapLayerStandardHint": "Helle Straßenkarte — die stabilste Wahl",
+  "backupAutoTitle": "Automatische Sicherung",
+  "backupAutoHint": "Einmal am Tag in eine Datei im gewählten Ordner; jede Kopie ersetzt die vorige.",
+  "backupAutoFolder": "Ordner: {name}",
+  "backupAutoLast": "Letzte Kopie: {time}",
+  "backupAutoNever": "Noch keine Kopie",
+  "backupAutoRunning": "Kopie wird erstellt…",
+  "backupAutoFolderLost": "Ordner nicht erreichbar. Wähle ihn erneut.",
+  "backupAutoFailed": "Die letzte Kopie ist fehlgeschlagen. Später neuer Versuch.",
+  "backupAutoNow": "Jetzt sichern",
+  "backupAutoChangeFolder": "Ordner ändern",
   "callYourMicOff": "Dein Mikrofon ist aus",
   "callTheirCameraOff": "Kamera von {name} ist aus"
 }

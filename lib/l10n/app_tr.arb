@@ -1550,6 +1550,16 @@
   "customizeArchiveRowHint": "Sohbet listesinin üstünde gösterin. Arşivlenmiş sohbetler her durumda mesaj almaya devam eder.",
   "mapLayerStandard": "Standart",
   "mapLayerStandardHint": "Açık sokak haritası — en kararlı seçenek",
+  "backupAutoTitle": "Otomatik yedek",
+  "backupAutoHint": "Günde bir kez, seçtiğiniz klasördeki tek bir dosyaya; her kopya öncekinin yerini alır.",
+  "backupAutoFolder": "Klasör: {name}",
+  "backupAutoLast": "Son kopya: {time}",
+  "backupAutoNever": "Henüz kopya yok",
+  "backupAutoRunning": "Kopya oluşturuluyor…",
+  "backupAutoFolderLost": "Klasöre erişilemiyor. Yeniden seçin.",
+  "backupAutoFailed": "Son kopya başarısız oldu. Daha sonra yeniden denenecek.",
+  "backupAutoNow": "Şimdi yedekle",
+  "backupAutoChangeFolder": "Klasörü değiştir",
   "callYourMicOff": "Mikrofonunuz kapalı",
   "callTheirCameraOff": "{name} kamerayı kapattı"
 }

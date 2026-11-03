@@ -4495,6 +4495,43 @@ class AppLocalizationsFr extends AppLocalizations {
       'Plan de rues clair — l’option la plus stable';
 
   @override
+  String get backupAutoTitle => 'Sauvegarde automatique';
+
+  @override
+  String get backupAutoHint =>
+      'Une fois par jour dans un seul fichier du dossier choisi ; chaque copie remplace la précédente.';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'Dossier : $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return 'Dernière copie : $time';
+  }
+
+  @override
+  String get backupAutoNever => 'Aucune copie pour l’instant';
+
+  @override
+  String get backupAutoRunning => 'Copie en cours…';
+
+  @override
+  String get backupAutoFolderLost =>
+      'Dossier inaccessible. Choisissez-le à nouveau.';
+
+  @override
+  String get backupAutoFailed =>
+      'La dernière copie a échoué. Nouvel essai plus tard.';
+
+  @override
+  String get backupAutoNow => 'Sauvegarder maintenant';
+
+  @override
+  String get backupAutoChangeFolder => 'Changer de dossier';
+
+  @override
   String get callYourMicOff => 'Votre micro est coupé';
 
   @override

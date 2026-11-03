@@ -4493,6 +4493,41 @@ class AppLocalizationsUk extends AppLocalizations {
       'Світла карта вулиць — найстабільніший варіант';
 
   @override
+  String get backupAutoTitle => 'Автоматична копія';
+
+  @override
+  String get backupAutoHint =>
+      'Раз на добу в один файл у вибраній теці; кожна копія замінює попередню.';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'Тека: $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return 'Остання копія: $time';
+  }
+
+  @override
+  String get backupAutoNever => 'Копії ще немає';
+
+  @override
+  String get backupAutoRunning => 'Створюємо копію…';
+
+  @override
+  String get backupAutoFolderLost => 'Теку не знайдено. Виберіть її знову.';
+
+  @override
+  String get backupAutoFailed => 'Остання копія не вдалася. Спробуємо пізніше.';
+
+  @override
+  String get backupAutoNow => 'Копіювати зараз';
+
+  @override
+  String get backupAutoChangeFolder => 'Змінити теку';
+
+  @override
   String get callYourMicOff => 'Ваш мікрофон вимкнено';
 
   @override

@@ -4484,6 +4484,43 @@ class AppLocalizationsPt extends AppLocalizations {
       'Mapa de ruas claro — a opção mais estável';
 
   @override
+  String get backupAutoTitle => 'Backup automático';
+
+  @override
+  String get backupAutoHint =>
+      'Uma vez por dia em um único arquivo na pasta escolhida; cada cópia substitui a anterior.';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'Pasta: $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return 'Última cópia: $time';
+  }
+
+  @override
+  String get backupAutoNever => 'Ainda sem cópia';
+
+  @override
+  String get backupAutoRunning => 'Criando cópia…';
+
+  @override
+  String get backupAutoFolderLost =>
+      'Não foi possível acessar a pasta. Escolha-a de novo.';
+
+  @override
+  String get backupAutoFailed =>
+      'A última cópia falhou. Tentaremos mais tarde.';
+
+  @override
+  String get backupAutoNow => 'Fazer backup agora';
+
+  @override
+  String get backupAutoChangeFolder => 'Trocar pasta';
+
+  @override
   String get callYourMicOff => 'Seu microfone está desligado';
 
   @override

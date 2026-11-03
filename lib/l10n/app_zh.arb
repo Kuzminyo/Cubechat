@@ -1550,6 +1550,16 @@
   "customizeArchiveRowHint": "显示在聊天列表上方。已归档的聊天仍会照常接收消息。",
   "mapLayerStandard": "标准",
   "mapLayerStandardHint": "浅色街道地图——最稳定的选择",
+  "backupAutoTitle": "自动备份",
+  "backupAutoHint": "每天一次，备份到所选文件夹中的同一个文件；新副本会替换旧副本。",
+  "backupAutoFolder": "文件夹：{name}",
+  "backupAutoLast": "上次备份：{time}",
+  "backupAutoNever": "尚无备份",
+  "backupAutoRunning": "正在备份…",
+  "backupAutoFolderLost": "无法访问该文件夹，请重新选择。",
+  "backupAutoFailed": "上次备份失败，稍后会重试。",
+  "backupAutoNow": "立即备份",
+  "backupAutoChangeFolder": "更换文件夹",
   "callYourMicOff": "你的麦克风已关闭",
   "callTheirCameraOff": "{name} 的摄像头已关闭"
 }

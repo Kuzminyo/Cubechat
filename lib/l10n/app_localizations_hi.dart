@@ -4443,6 +4443,43 @@ class AppLocalizationsHi extends AppLocalizations {
   String get mapLayerStandardHint => 'हल्का सड़क मैप — सबसे स्थिर विकल्प';
 
   @override
+  String get backupAutoTitle => 'ऑटो बैकअप';
+
+  @override
+  String get backupAutoHint =>
+      'दिन में एक बार, चुने गए फ़ोल्डर की एक ही फ़ाइल में; हर कॉपी पिछली कॉपी की जगह लेती है।';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'फ़ोल्डर: $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return 'आख़िरी कॉपी: $time';
+  }
+
+  @override
+  String get backupAutoNever => 'अभी कोई कॉपी नहीं';
+
+  @override
+  String get backupAutoRunning => 'कॉपी बन रही है…';
+
+  @override
+  String get backupAutoFolderLost =>
+      'फ़ोल्डर तक नहीं पहुँचा जा सका। इसे फिर से चुनें।';
+
+  @override
+  String get backupAutoFailed =>
+      'आख़िरी कॉपी नहीं बन पाई। बाद में फिर कोशिश होगी।';
+
+  @override
+  String get backupAutoNow => 'अभी बैकअप लें';
+
+  @override
+  String get backupAutoChangeFolder => 'फ़ोल्डर बदलें';
+
+  @override
   String get callYourMicOff => 'आपका माइक बंद है';
 
   @override

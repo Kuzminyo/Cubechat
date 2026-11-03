@@ -1550,6 +1550,16 @@
   "customizeArchiveRowHint": "ჩვენება ჩატების სიის ზემოთ. დაარქივებული ჩატები შეტყობინებებს მაინც იღებს.",
   "mapLayerStandard": "სტანდარტული",
   "mapLayerStandardHint": "ღია ფერის ქუჩების რუკა — ყველაზე სტაბილური ვარიანტი",
+  "backupAutoTitle": "ავტომატური ასლი",
+  "backupAutoHint": "დღეში ერთხელ, არჩეულ საქაღალდეში ერთ ფაილად; ყოველი ასლი წინას ცვლის.",
+  "backupAutoFolder": "საქაღალდე: {name}",
+  "backupAutoLast": "ბოლო ასლი: {time}",
+  "backupAutoNever": "ასლი ჯერ არ არის",
+  "backupAutoRunning": "ასლი იქმნება…",
+  "backupAutoFolderLost": "საქაღალდე მიუწვდომელია. აირჩიეთ ხელახლა.",
+  "backupAutoFailed": "ბოლო ასლი ვერ შეიქმნა. მოგვიანებით ვცდით ხელახლა.",
+  "backupAutoNow": "ასლის შექმნა ახლა",
+  "backupAutoChangeFolder": "საქაღალდის შეცვლა",
   "callYourMicOff": "თქვენი მიკროფონი გამორთულია",
   "callTheirCameraOff": "{name}: კამერა გამორთულია"
 }

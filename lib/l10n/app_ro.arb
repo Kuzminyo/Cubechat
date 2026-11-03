@@ -1550,6 +1550,16 @@
   "customizeArchiveRowHint": "Afișează-l deasupra listei de chaturi. Chaturile arhivate primesc mesaje oricum.",
   "mapLayerStandard": "Standard",
   "mapLayerStandardHint": "Hartă stradală deschisă — varianta cea mai stabilă",
+  "backupAutoTitle": "Backup automat",
+  "backupAutoHint": "O dată pe zi, într-un singur fișier din dosarul ales; fiecare copie o înlocuiește pe cea dinainte.",
+  "backupAutoFolder": "Dosar: {name}",
+  "backupAutoLast": "Ultima copie: {time}",
+  "backupAutoNever": "Încă nicio copie",
+  "backupAutoRunning": "Se face copia…",
+  "backupAutoFolderLost": "Dosarul nu e accesibil. Alege-l din nou.",
+  "backupAutoFailed": "Ultima copie a eșuat. Se reîncearcă mai târziu.",
+  "backupAutoNow": "Fă backup acum",
+  "backupAutoChangeFolder": "Schimbă dosarul",
   "callYourMicOff": "Microfonul tău e oprit",
   "callTheirCameraOff": "Camera lui {name} e oprită"
 }

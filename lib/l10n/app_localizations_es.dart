@@ -4480,6 +4480,43 @@ class AppLocalizationsEs extends AppLocalizations {
       'Mapa de calles claro — la opción más estable';
 
   @override
+  String get backupAutoTitle => 'Copia automática';
+
+  @override
+  String get backupAutoHint =>
+      'Una vez al día en un solo archivo de la carpeta que elijas; cada copia reemplaza la anterior.';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'Carpeta: $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return 'Última copia: $time';
+  }
+
+  @override
+  String get backupAutoNever => 'Aún no hay copia';
+
+  @override
+  String get backupAutoRunning => 'Creando copia…';
+
+  @override
+  String get backupAutoFolderLost =>
+      'No se puede acceder a la carpeta. Elígela de nuevo.';
+
+  @override
+  String get backupAutoFailed =>
+      'La última copia falló. Se reintentará más tarde.';
+
+  @override
+  String get backupAutoNow => 'Copiar ahora';
+
+  @override
+  String get backupAutoChangeFolder => 'Cambiar carpeta';
+
+  @override
   String get callYourMicOff => 'Tu micrófono está desactivado';
 
   @override

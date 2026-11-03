@@ -1535,6 +1535,16 @@
   "customizeArchiveRowHint": "Показувати згори списку чатів. Приховані чати далі отримують повідомлення.",
   "mapLayerStandard": "Звичайна",
   "mapLayerStandardHint": "Світла карта вулиць — найстабільніший варіант",
+  "backupAutoTitle": "Автоматична копія",
+  "backupAutoHint": "Раз на добу в один файл у вибраній теці; кожна копія замінює попередню.",
+  "backupAutoFolder": "Тека: {name}",
+  "backupAutoLast": "Остання копія: {time}",
+  "backupAutoNever": "Копії ще немає",
+  "backupAutoRunning": "Створюємо копію…",
+  "backupAutoFolderLost": "Теку не знайдено. Виберіть її знову.",
+  "backupAutoFailed": "Остання копія не вдалася. Спробуємо пізніше.",
+  "backupAutoNow": "Копіювати зараз",
+  "backupAutoChangeFolder": "Змінити теку",
   "callYourMicOff": "Ваш мікрофон вимкнено",
   "callTheirCameraOff": "Камеру {name} вимкнено"
 }

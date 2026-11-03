@@ -4481,6 +4481,43 @@ class AppLocalizationsDe extends AppLocalizations {
   String get mapLayerStandardHint => 'Helle Straßenkarte — die stabilste Wahl';
 
   @override
+  String get backupAutoTitle => 'Automatische Sicherung';
+
+  @override
+  String get backupAutoHint =>
+      'Einmal am Tag in eine Datei im gewählten Ordner; jede Kopie ersetzt die vorige.';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'Ordner: $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return 'Letzte Kopie: $time';
+  }
+
+  @override
+  String get backupAutoNever => 'Noch keine Kopie';
+
+  @override
+  String get backupAutoRunning => 'Kopie wird erstellt…';
+
+  @override
+  String get backupAutoFolderLost =>
+      'Ordner nicht erreichbar. Wähle ihn erneut.';
+
+  @override
+  String get backupAutoFailed =>
+      'Die letzte Kopie ist fehlgeschlagen. Später neuer Versuch.';
+
+  @override
+  String get backupAutoNow => 'Jetzt sichern';
+
+  @override
+  String get backupAutoChangeFolder => 'Ordner ändern';
+
+  @override
   String get callYourMicOff => 'Dein Mikrofon ist aus';
 
   @override

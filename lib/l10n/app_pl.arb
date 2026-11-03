@@ -1550,6 +1550,16 @@
   "customizeArchiveRowHint": "Pokazuj nad listą czatów. Zarchiwizowane czaty i tak odbierają wiadomości.",
   "mapLayerStandard": "Standardowa",
   "mapLayerStandardHint": "Jasna mapa ulic — najstabilniejsza opcja",
+  "backupAutoTitle": "Automatyczna kopia",
+  "backupAutoHint": "Raz dziennie do jednego pliku w wybranym folderze; każda kopia zastępuje poprzednią.",
+  "backupAutoFolder": "Folder: {name}",
+  "backupAutoLast": "Ostatnia kopia: {time}",
+  "backupAutoNever": "Brak kopii",
+  "backupAutoRunning": "Tworzenie kopii…",
+  "backupAutoFolderLost": "Folder jest niedostępny. Wybierz go ponownie.",
+  "backupAutoFailed": "Ostatnia kopia się nie udała. Spróbujemy później.",
+  "backupAutoNow": "Utwórz kopię teraz",
+  "backupAutoChangeFolder": "Zmień folder",
   "callYourMicOff": "Twój mikrofon jest wyłączony",
   "callTheirCameraOff": "{name} ma wyłączoną kamerę"
 }

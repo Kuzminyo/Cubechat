@@ -4463,6 +4463,43 @@ class AppLocalizationsKk extends AppLocalizations {
       'Ашық түсті көше картасы — ең тұрақты нұсқа';
 
   @override
+  String get backupAutoTitle => 'Автоматты көшірме';
+
+  @override
+  String get backupAutoHint =>
+      'Күніне бір рет таңдалған қалтадағы бір файлға; әр көшірме алдыңғысын ауыстырады.';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'Қалта: $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return 'Соңғы көшірме: $time';
+  }
+
+  @override
+  String get backupAutoNever => 'Әзірге көшірме жоқ';
+
+  @override
+  String get backupAutoRunning => 'Көшірме жасалуда…';
+
+  @override
+  String get backupAutoFolderLost =>
+      'Қалтаға қол жеткізу мүмкін емес. Оны қайта таңдаңыз.';
+
+  @override
+  String get backupAutoFailed =>
+      'Соңғы көшірме сәтсіз аяқталды. Кейінірек қайталанады.';
+
+  @override
+  String get backupAutoNow => 'Қазір көшіру';
+
+  @override
+  String get backupAutoChangeFolder => 'Қалтаны өзгерту';
+
+  @override
   String get callYourMicOff => 'Микрофоныңыз өшірулі';
 
   @override

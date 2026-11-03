@@ -7752,6 +7752,66 @@ abstract class AppLocalizations {
   /// **'Light street map — the most stable default'**
   String get mapLayerStandardHint;
 
+  /// No description provided for @backupAutoTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic backup'**
+  String get backupAutoTitle;
+
+  /// No description provided for @backupAutoHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Once a day into one file in a folder you choose; each copy replaces the last.'**
+  String get backupAutoHint;
+
+  /// No description provided for @backupAutoFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Folder: {name}'**
+  String backupAutoFolder(String name);
+
+  /// No description provided for @backupAutoLast.
+  ///
+  /// In en, this message translates to:
+  /// **'Last copy: {time}'**
+  String backupAutoLast(String time);
+
+  /// No description provided for @backupAutoNever.
+  ///
+  /// In en, this message translates to:
+  /// **'No copy yet'**
+  String get backupAutoNever;
+
+  /// No description provided for @backupAutoRunning.
+  ///
+  /// In en, this message translates to:
+  /// **'Making a copy…'**
+  String get backupAutoRunning;
+
+  /// No description provided for @backupAutoFolderLost.
+  ///
+  /// In en, this message translates to:
+  /// **'The folder can\'t be reached. Choose it again.'**
+  String get backupAutoFolderLost;
+
+  /// No description provided for @backupAutoFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The last copy failed. It will try again later.'**
+  String get backupAutoFailed;
+
+  /// No description provided for @backupAutoNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Back up now'**
+  String get backupAutoNow;
+
+  /// No description provided for @backupAutoChangeFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Change folder'**
+  String get backupAutoChangeFolder;
+
   /// No description provided for @callYourMicOff.
   ///
   /// In en, this message translates to:

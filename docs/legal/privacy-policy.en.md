@@ -521,6 +521,15 @@ choose, and both stay under your control — the file goes wherever you put it.
 If you lose the passphrase, the backup cannot be recovered. We do not hold a
 key.
 
+**Automatic backup** (off unless you turn it on, *Data → Encrypted backup*).
+Once a day, while the app is open, the same encrypted backup is written to a
+folder you choose once, replacing the previous copy there. To do that without
+asking, the passphrase is kept on the phone in the system's secure store
+(Keychain on iOS, Keystore on Android) and is removed when you turn the
+feature off. If the folder you choose is synced to a cloud — iCloud Drive,
+Google Drive — that provider stores the encrypted file under its own terms;
+the file never passes through any server of ours.
+
 **Phone to phone, and phone to computer.** A transfer between two phones, or
 copying your account to the Windows app (*Data → Connect a computer*), goes
 directly between the two devices over the local Wi-Fi network; it does not pass

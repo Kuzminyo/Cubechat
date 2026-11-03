@@ -1550,6 +1550,16 @@
   "customizeArchiveRowHint": "اعرضه فوق قائمة الدردشات. تستمر الدردشات المؤرشفة في تلقي الرسائل في كل الأحوال.",
   "mapLayerStandard": "قياسية",
   "mapLayerStandardHint": "خريطة شوارع فاتحة — الخيار الأكثر ثباتًا",
+  "backupAutoTitle": "نسخ احتياطي تلقائي",
+  "backupAutoHint": "مرة يوميًا في ملف واحد داخل المجلد الذي تختاره؛ كل نسخة تحل محل السابقة.",
+  "backupAutoFolder": "المجلد: {name}",
+  "backupAutoLast": "آخر نسخة: {time}",
+  "backupAutoNever": "لا توجد نسخة بعد",
+  "backupAutoRunning": "جارٍ إنشاء نسخة…",
+  "backupAutoFolderLost": "تعذّر الوصول إلى المجلد. اختره مرة أخرى.",
+  "backupAutoFailed": "فشلت آخر نسخة. ستُعاد المحاولة لاحقًا.",
+  "backupAutoNow": "نسخ احتياطي الآن",
+  "backupAutoChangeFolder": "تغيير المجلد",
   "callYourMicOff": "الميكروفون لديك مغلق",
   "callTheirCameraOff": "كاميرا {name} مغلقة"
 }

@@ -205,6 +205,14 @@ class MainActivity : FlutterActivity() {
                     call.argument<String>("name"),
                     result,
                 )
+                "pickFolder" -> pickFolder(result)
+                "writeToFolder" -> BackupFolder.write(
+                    applicationContext,
+                    call.argument<String>("folder"),
+                    call.argument<String>("name"),
+                    call.argument<String>("path"),
+                    result,
+                )
                 "openInText" -> result.success(
                     handOffText(
                         call.argument<String>("text"),
@@ -433,6 +441,64 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    /** Who is waiting on the folder picker — see [pickFolder]. */
+    private var pendingFolder: MethodChannel.Result? = null
+
+    /**
+     * Let the user choose a folder once — on the phone, on an SD card, in
+     * Google Drive — that the automatic backup may write to from then on.
+     * The permission is taken as persistable, so it survives restarts and
+     * needs no storage permission at all.
+     *
+     * Answers `{id, name}` — the tree URI and the folder's display name — or
+     * null when cancelled.
+     */
+    private fun pickFolder(result: MethodChannel.Result) {
+        if (pendingFolder != null) {
+            result.error("busy", "a folder picker is already open", null)
+            return
+        }
+        try {
+            pendingFolder = result
+            @Suppress("DEPRECATION")
+            startActivityForResult(
+                Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+                    addFlags(
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
+                    )
+                },
+                REQUEST_BACKUP_FOLDER,
+            )
+        } catch (_: Exception) {
+            pendingFolder = null
+            result.success(null)
+        }
+    }
+
+    private fun finishPickFolder(resultCode: Int, data: Intent?) {
+        val pending = pendingFolder ?: return
+        pendingFolder = null
+        val tree = data?.data
+        if (resultCode != Activity.RESULT_OK || tree == null) {
+            pending.success(null)
+            return
+        }
+        pending.success(
+            try {
+                contentResolver.takePersistableUriPermission(
+                    tree,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+                mapOf("id" to tree.toString(), "name" to BackupFolder.label(this, tree))
+            } catch (_: Exception) {
+                null
+            },
+        )
+    }
+
     private fun finishSave(resultCode: Int, data: Intent?) {
         val pending = pendingSave ?: return
         pendingSave = null
@@ -638,6 +704,10 @@ class MainActivity : FlutterActivity() {
             finishSave(resultCode, data)
             return
         }
+        if (requestCode == REQUEST_BACKUP_FOLDER) {
+            finishPickFolder(resultCode, data)
+            return
+        }
         if (requestCode != REQUEST_ENABLE_BLUETOOTH) return
 
         val pending = pendingBluetoothResult ?: return
@@ -685,6 +755,7 @@ class MainActivity : FlutterActivity() {
         private var pendingLauncherIcon: String? = null
         const val REQUEST_ENABLE_BLUETOOTH = 4242
         const val REQUEST_SAVE_AS = 4243
+        const val REQUEST_BACKUP_FOLDER = 4244
 
         /**
          * A "save as" waiting on the system's create-document screen.

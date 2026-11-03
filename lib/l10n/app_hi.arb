@@ -1550,6 +1550,16 @@
   "customizeArchiveRowHint": "इसे चैट सूची के ऊपर दिखाएँ। आर्काइव की गई चैट को मैसेज मिलते रहते हैं।",
   "mapLayerStandard": "स्टैंडर्ड",
   "mapLayerStandardHint": "हल्का सड़क मैप — सबसे स्थिर विकल्प",
+  "backupAutoTitle": "ऑटो बैकअप",
+  "backupAutoHint": "दिन में एक बार, चुने गए फ़ोल्डर की एक ही फ़ाइल में; हर कॉपी पिछली कॉपी की जगह लेती है।",
+  "backupAutoFolder": "फ़ोल्डर: {name}",
+  "backupAutoLast": "आख़िरी कॉपी: {time}",
+  "backupAutoNever": "अभी कोई कॉपी नहीं",
+  "backupAutoRunning": "कॉपी बन रही है…",
+  "backupAutoFolderLost": "फ़ोल्डर तक नहीं पहुँचा जा सका। इसे फिर से चुनें।",
+  "backupAutoFailed": "आख़िरी कॉपी नहीं बन पाई। बाद में फिर कोशिश होगी।",
+  "backupAutoNow": "अभी बैकअप लें",
+  "backupAutoChangeFolder": "फ़ोल्डर बदलें",
   "callYourMicOff": "आपका माइक बंद है",
   "callTheirCameraOff": "{name} का कैमरा बंद है"
 }

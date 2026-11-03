@@ -1550,6 +1550,16 @@
   "customizeArchiveRowHint": "Zobrazit nad seznamem chatů. Archivované chaty přijímají zprávy tak jako tak.",
   "mapLayerStandard": "Standardní",
   "mapLayerStandardHint": "Světlá mapa ulic — nejstabilnější volba",
+  "backupAutoTitle": "Automatická záloha",
+  "backupAutoHint": "Jednou denně do jednoho souboru ve zvolené složce; každá kopie nahradí předchozí.",
+  "backupAutoFolder": "Složka: {name}",
+  "backupAutoLast": "Poslední kopie: {time}",
+  "backupAutoNever": "Zatím žádná kopie",
+  "backupAutoRunning": "Vytváří se kopie…",
+  "backupAutoFolderLost": "Složka není dostupná. Vyberte ji znovu.",
+  "backupAutoFailed": "Poslední kopie se nezdařila. Zkusíme to později.",
+  "backupAutoNow": "Zálohovat teď",
+  "backupAutoChangeFolder": "Změnit složku",
   "callYourMicOff": "Váš mikrofon je vypnutý",
   "callTheirCameraOff": "Kamera uživatele {name} je vypnutá"
 }

@@ -19,6 +19,8 @@ import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/glass_toast.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../../core/utils/time_format.dart';
+import '../data/auto_backup_controller.dart';
 import '../data/backup_service.dart';
 
 class BackupScreen extends ConsumerStatefulWidget {
@@ -295,6 +297,8 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
             danger: true,
             onTap: _busy ? null : _restore,
           ),
+          const SizedBox(height: 10),
+          const _AutoBackupCard(),
           if (_busy) ...[
             const SizedBox(height: 20),
             Center(
@@ -386,6 +390,125 @@ class _BackupActionCard extends StatelessWidget {
           ],
         ),
       );
+}
+
+/// The automatic copy: a switch, the folder it goes to, when it last did.
+///
+/// Turning it on asks for the folder first and the passphrase second — the
+/// order the two sheets make sense in — and makes the first copy at once, so
+/// the folder is shown to work before anybody relies on it.
+class _AutoBackupCard extends ConsumerWidget {
+  const _AutoBackupCard();
+
+  Future<void> _turnOn(BuildContext context, WidgetRef ref) async {
+    final folder = await BackupFolderAccess.pick();
+    if (folder == null || !context.mounted) return;
+    final password = await showDialog<String>(
+      context: context,
+      builder: (_) => const _BackupPasswordDialog(confirm: true),
+    );
+    if (password == null) return;
+    await ref
+        .read(autoBackupControllerProvider.notifier)
+        .enable(folder: folder, password: password);
+  }
+
+  Future<void> _changeFolder(WidgetRef ref) async {
+    final folder = await BackupFolderAccess.pick();
+    if (folder == null) return;
+    await ref.read(autoBackupControllerProvider.notifier).changeFolder(folder);
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    final auto = ref.watch(autoBackupControllerProvider);
+    final notifier = ref.read(autoBackupControllerProvider.notifier);
+    final dim = TextStyle(
+      color: AppColors.textOnGlassDim,
+      fontSize: 11.5,
+      height: 1.3,
+    );
+    final last = auto.lastAt;
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.update_rounded,
+                color: AppColors.brandPrimary,
+                size: 28,
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      t.backupAutoTitle,
+                      style: TextStyle(
+                        color: AppColors.textOnGlass,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(t.backupAutoHint, style: dim),
+                  ],
+                ),
+              ),
+              Switch(
+                value: auto.enabled,
+                activeThumbColor: AppColors.brandPrimary,
+                onChanged: (on) => on
+                    ? unawaited(_turnOn(context, ref))
+                    : unawaited(notifier.disable()),
+              ),
+            ],
+          ),
+          if (auto.enabled) ...[
+            const SizedBox(height: 10),
+            if (auto.folder case final folder?)
+              Text(t.backupAutoFolder(folder.name), style: dim),
+            const SizedBox(height: 2),
+            Text(
+              auto.running
+                  ? t.backupAutoRunning
+                  : last == null
+                      ? t.backupAutoNever
+                      : t.backupAutoLast(formatMessageDetailsTime(context, last)),
+              style: dim,
+            ),
+            if (auto.problem case final problem?) ...[
+              const SizedBox(height: 6),
+              Text(
+                problem == AutoBackupProblem.folder
+                    ? t.backupAutoFolderLost
+                    : t.backupAutoFailed,
+                style: dim.copyWith(color: AppColors.warning),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                TextButton(
+                  onPressed: auto.running ? null : () => unawaited(notifier.run()),
+                  child: Text(t.backupAutoNow),
+                ),
+                TextButton(
+                  onPressed: auto.running ? null : () => unawaited(_changeFolder(ref)),
+                  child: Text(t.backupAutoChangeFolder),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 class _BackupPasswordDialog extends StatefulWidget {

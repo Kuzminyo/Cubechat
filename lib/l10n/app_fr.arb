@@ -1550,6 +1550,16 @@
   "customizeArchiveRowHint": "L’afficher au-dessus de la liste des discussions. Les discussions archivées reçoivent les messages dans tous les cas.",
   "mapLayerStandard": "Standard",
   "mapLayerStandardHint": "Plan de rues clair — l’option la plus stable",
+  "backupAutoTitle": "Sauvegarde automatique",
+  "backupAutoHint": "Une fois par jour dans un seul fichier du dossier choisi ; chaque copie remplace la précédente.",
+  "backupAutoFolder": "Dossier : {name}",
+  "backupAutoLast": "Dernière copie : {time}",
+  "backupAutoNever": "Aucune copie pour l’instant",
+  "backupAutoRunning": "Copie en cours…",
+  "backupAutoFolderLost": "Dossier inaccessible. Choisissez-le à nouveau.",
+  "backupAutoFailed": "La dernière copie a échoué. Nouvel essai plus tard.",
+  "backupAutoNow": "Sauvegarder maintenant",
+  "backupAutoChangeFolder": "Changer de dossier",
   "callYourMicOff": "Votre micro est coupé",
   "callTheirCameraOff": "La caméra de {name} est coupée"
 }

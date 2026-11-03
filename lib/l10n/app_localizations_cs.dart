@@ -4473,6 +4473,42 @@ class AppLocalizationsCs extends AppLocalizations {
   String get mapLayerStandardHint => 'Světlá mapa ulic — nejstabilnější volba';
 
   @override
+  String get backupAutoTitle => 'Automatická záloha';
+
+  @override
+  String get backupAutoHint =>
+      'Jednou denně do jednoho souboru ve zvolené složce; každá kopie nahradí předchozí.';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'Složka: $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return 'Poslední kopie: $time';
+  }
+
+  @override
+  String get backupAutoNever => 'Zatím žádná kopie';
+
+  @override
+  String get backupAutoRunning => 'Vytváří se kopie…';
+
+  @override
+  String get backupAutoFolderLost => 'Složka není dostupná. Vyberte ji znovu.';
+
+  @override
+  String get backupAutoFailed =>
+      'Poslední kopie se nezdařila. Zkusíme to později.';
+
+  @override
+  String get backupAutoNow => 'Zálohovat teď';
+
+  @override
+  String get backupAutoChangeFolder => 'Změnit složku';
+
+  @override
   String get callYourMicOff => 'Váš mikrofon je vypnutý';
 
   @override

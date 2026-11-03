@@ -1550,6 +1550,16 @@
   "customizeArchiveRowHint": "Чаттар тізімінің үстінде көрсету. Мұрағаттағы чаттар бәрібір хабар алады.",
   "mapLayerStandard": "Қалыпты",
   "mapLayerStandardHint": "Ашық түсті көше картасы — ең тұрақты нұсқа",
+  "backupAutoTitle": "Автоматты көшірме",
+  "backupAutoHint": "Күніне бір рет таңдалған қалтадағы бір файлға; әр көшірме алдыңғысын ауыстырады.",
+  "backupAutoFolder": "Қалта: {name}",
+  "backupAutoLast": "Соңғы көшірме: {time}",
+  "backupAutoNever": "Әзірге көшірме жоқ",
+  "backupAutoRunning": "Көшірме жасалуда…",
+  "backupAutoFolderLost": "Қалтаға қол жеткізу мүмкін емес. Оны қайта таңдаңыз.",
+  "backupAutoFailed": "Соңғы көшірме сәтсіз аяқталды. Кейінірек қайталанады.",
+  "backupAutoNow": "Қазір көшіру",
+  "backupAutoChangeFolder": "Қалтаны өзгерту",
   "callYourMicOff": "Микрофоныңыз өшірулі",
   "callTheirCameraOff": "{name}: камера өшірулі"
 }

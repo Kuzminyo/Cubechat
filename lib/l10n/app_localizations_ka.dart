@@ -4460,6 +4460,42 @@ class AppLocalizationsKa extends AppLocalizations {
       'ღია ფერის ქუჩების რუკა — ყველაზე სტაბილური ვარიანტი';
 
   @override
+  String get backupAutoTitle => 'ავტომატური ასლი';
+
+  @override
+  String get backupAutoHint =>
+      'დღეში ერთხელ, არჩეულ საქაღალდეში ერთ ფაილად; ყოველი ასლი წინას ცვლის.';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'საქაღალდე: $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return 'ბოლო ასლი: $time';
+  }
+
+  @override
+  String get backupAutoNever => 'ასლი ჯერ არ არის';
+
+  @override
+  String get backupAutoRunning => 'ასლი იქმნება…';
+
+  @override
+  String get backupAutoFolderLost => 'საქაღალდე მიუწვდომელია. აირჩიეთ ხელახლა.';
+
+  @override
+  String get backupAutoFailed =>
+      'ბოლო ასლი ვერ შეიქმნა. მოგვიანებით ვცდით ხელახლა.';
+
+  @override
+  String get backupAutoNow => 'ასლის შექმნა ახლა';
+
+  @override
+  String get backupAutoChangeFolder => 'საქაღალდის შეცვლა';
+
+  @override
   String get callYourMicOff => 'თქვენი მიკროფონი გამორთულია';
 
   @override

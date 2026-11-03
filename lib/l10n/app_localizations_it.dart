@@ -4485,6 +4485,43 @@ class AppLocalizationsIt extends AppLocalizations {
       'Mappa stradale chiara — l’opzione più stabile';
 
   @override
+  String get backupAutoTitle => 'Backup automatico';
+
+  @override
+  String get backupAutoHint =>
+      'Una volta al giorno in un unico file nella cartella scelta; ogni copia sostituisce la precedente.';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'Cartella: $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return 'Ultima copia: $time';
+  }
+
+  @override
+  String get backupAutoNever => 'Nessuna copia ancora';
+
+  @override
+  String get backupAutoRunning => 'Copia in corso…';
+
+  @override
+  String get backupAutoFolderLost =>
+      'Cartella non raggiungibile. Sceglila di nuovo.';
+
+  @override
+  String get backupAutoFailed =>
+      'L’ultima copia non è riuscita. Si riproverà più tardi.';
+
+  @override
+  String get backupAutoNow => 'Fai il backup ora';
+
+  @override
+  String get backupAutoChangeFolder => 'Cambia cartella';
+
+  @override
   String get callYourMicOff => 'Il tuo microfono è spento';
 
   @override

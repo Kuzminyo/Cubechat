@@ -1550,6 +1550,16 @@
   "customizeArchiveRowHint": "Mostrala sopra l’elenco delle chat. Le chat archiviate ricevono comunque i messaggi.",
   "mapLayerStandard": "Standard",
   "mapLayerStandardHint": "Mappa stradale chiara — l’opzione più stabile",
+  "backupAutoTitle": "Backup automatico",
+  "backupAutoHint": "Una volta al giorno in un unico file nella cartella scelta; ogni copia sostituisce la precedente.",
+  "backupAutoFolder": "Cartella: {name}",
+  "backupAutoLast": "Ultima copia: {time}",
+  "backupAutoNever": "Nessuna copia ancora",
+  "backupAutoRunning": "Copia in corso…",
+  "backupAutoFolderLost": "Cartella non raggiungibile. Sceglila di nuovo.",
+  "backupAutoFailed": "L’ultima copia non è riuscita. Si riproverà più tardi.",
+  "backupAutoNow": "Fai il backup ora",
+  "backupAutoChangeFolder": "Cambia cartella",
   "callYourMicOff": "Il tuo microfono è spento",
   "callTheirCameraOff": "La fotocamera di {name} è spenta"
 }

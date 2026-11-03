@@ -4512,6 +4512,41 @@ class AppLocalizationsRu extends AppLocalizations {
       'Светлая карта улиц — самый стабильный вариант';
 
   @override
+  String get backupAutoTitle => 'Автоматическая копия';
+
+  @override
+  String get backupAutoHint =>
+      'Раз в сутки в один файл в выбранной папке; каждая копия заменяет предыдущую.';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'Папка: $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return 'Последняя копия: $time';
+  }
+
+  @override
+  String get backupAutoNever => 'Копии ещё нет';
+
+  @override
+  String get backupAutoRunning => 'Создаём копию…';
+
+  @override
+  String get backupAutoFolderLost => 'Папка недоступна. Выберите её снова.';
+
+  @override
+  String get backupAutoFailed => 'Последняя копия не удалась. Попробуем позже.';
+
+  @override
+  String get backupAutoNow => 'Сделать копию сейчас';
+
+  @override
+  String get backupAutoChangeFolder => 'Сменить папку';
+
+  @override
   String get callYourMicOff => 'Ваш микрофон выключен';
 
   @override

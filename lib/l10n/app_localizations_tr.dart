@@ -4458,6 +4458,42 @@ class AppLocalizationsTr extends AppLocalizations {
   String get mapLayerStandardHint => 'Açık sokak haritası — en kararlı seçenek';
 
   @override
+  String get backupAutoTitle => 'Otomatik yedek';
+
+  @override
+  String get backupAutoHint =>
+      'Günde bir kez, seçtiğiniz klasördeki tek bir dosyaya; her kopya öncekinin yerini alır.';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'Klasör: $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return 'Son kopya: $time';
+  }
+
+  @override
+  String get backupAutoNever => 'Henüz kopya yok';
+
+  @override
+  String get backupAutoRunning => 'Kopya oluşturuluyor…';
+
+  @override
+  String get backupAutoFolderLost => 'Klasöre erişilemiyor. Yeniden seçin.';
+
+  @override
+  String get backupAutoFailed =>
+      'Son kopya başarısız oldu. Daha sonra yeniden denenecek.';
+
+  @override
+  String get backupAutoNow => 'Şimdi yedekle';
+
+  @override
+  String get backupAutoChangeFolder => 'Klasörü değiştir';
+
+  @override
   String get callYourMicOff => 'Mikrofonunuz kapalı';
 
   @override

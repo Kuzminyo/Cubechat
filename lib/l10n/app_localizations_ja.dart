@@ -4328,6 +4328,41 @@ class AppLocalizationsJa extends AppLocalizations {
   String get mapLayerStandardHint => '明るい道路地図 — 最も安定した選択肢';
 
   @override
+  String get backupAutoTitle => '自動バックアップ';
+
+  @override
+  String get backupAutoHint =>
+      '1日1回、選んだフォルダ内の1つのファイルに保存します。新しいコピーが前のものを置き換えます。';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'フォルダ：$name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return '前回のコピー：$time';
+  }
+
+  @override
+  String get backupAutoNever => 'まだコピーはありません';
+
+  @override
+  String get backupAutoRunning => 'コピーを作成中…';
+
+  @override
+  String get backupAutoFolderLost => 'フォルダにアクセスできません。もう一度選んでください。';
+
+  @override
+  String get backupAutoFailed => '前回のコピーに失敗しました。後でもう一度試します。';
+
+  @override
+  String get backupAutoNow => '今すぐバックアップ';
+
+  @override
+  String get backupAutoChangeFolder => 'フォルダを変更';
+
+  @override
   String get callYourMicOff => 'マイクがオフです';
 
   @override

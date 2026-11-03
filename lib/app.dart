@@ -7,6 +7,7 @@ import 'features/airdrop/data/airdrop_controller.dart';
 import 'features/airdrop/data/share_inbox.dart';
 import 'features/airdrop/presentation/airdrop_banner.dart';
 import 'features/airdrop/presentation/airdrop_navigation.dart';
+import 'features/backup/data/auto_backup_controller.dart';
 import 'features/backup/data/desktop_link_service.dart' show isTransferLink;
 import 'features/chats/models/chat.dart';
 import 'features/share/data/direct_share.dart';
@@ -880,6 +881,9 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // Listened, not watched: its state changes with every transfer, and the
     // whole app has no business rebuilding for that.
     ref.listen(airdropControllerProvider, (_, __) {});
+    // Built at startup so the daily copy is made whatever screen is open,
+    // not only once somebody visits Backup. Listened, for the same reason.
+    ref.listen(autoBackupControllerProvider, (_, __) {});
     // Keyed on the palette revision. AppColors' fields are mutated in place
     // (see ThemeController for why), so widgets already built are holding the
     // old colours — changing the key throws the tree away and builds it again.

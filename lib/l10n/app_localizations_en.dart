@@ -4446,6 +4446,43 @@ class AppLocalizationsEn extends AppLocalizations {
       'Light street map — the most stable default';
 
   @override
+  String get backupAutoTitle => 'Automatic backup';
+
+  @override
+  String get backupAutoHint =>
+      'Once a day into one file in a folder you choose; each copy replaces the last.';
+
+  @override
+  String backupAutoFolder(String name) {
+    return 'Folder: $name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return 'Last copy: $time';
+  }
+
+  @override
+  String get backupAutoNever => 'No copy yet';
+
+  @override
+  String get backupAutoRunning => 'Making a copy…';
+
+  @override
+  String get backupAutoFolderLost =>
+      'The folder can\'t be reached. Choose it again.';
+
+  @override
+  String get backupAutoFailed =>
+      'The last copy failed. It will try again later.';
+
+  @override
+  String get backupAutoNow => 'Back up now';
+
+  @override
+  String get backupAutoChangeFolder => 'Change folder';
+
+  @override
   String get callYourMicOff => 'Your microphone is off';
 
   @override

@@ -2112,6 +2112,30 @@
   "customizeArchiveRowHint": "Show it above the chat list. Archived conversations keep receiving either way.",
   "mapLayerStandard": "Standard",
   "mapLayerStandardHint": "Light street map — the most stable default",
+  "backupAutoTitle": "Automatic backup",
+  "backupAutoHint": "Once a day into one file in a folder you choose; each copy replaces the last.",
+  "backupAutoFolder": "Folder: {name}",
+  "@backupAutoFolder": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "backupAutoLast": "Last copy: {time}",
+  "@backupAutoLast": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "backupAutoNever": "No copy yet",
+  "backupAutoRunning": "Making a copy…",
+  "backupAutoFolderLost": "The folder can't be reached. Choose it again.",
+  "backupAutoFailed": "The last copy failed. It will try again later.",
+  "backupAutoNow": "Back up now",
+  "backupAutoChangeFolder": "Change folder",
   "callYourMicOff": "Your microphone is off",
   "callTheirCameraOff": "{name}'s camera is off",
   "@callTheirCameraOff": {

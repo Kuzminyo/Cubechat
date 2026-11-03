@@ -4275,6 +4275,40 @@ class AppLocalizationsZh extends AppLocalizations {
   String get mapLayerStandardHint => '浅色街道地图——最稳定的选择';
 
   @override
+  String get backupAutoTitle => '自动备份';
+
+  @override
+  String get backupAutoHint => '每天一次，备份到所选文件夹中的同一个文件；新副本会替换旧副本。';
+
+  @override
+  String backupAutoFolder(String name) {
+    return '文件夹：$name';
+  }
+
+  @override
+  String backupAutoLast(String time) {
+    return '上次备份：$time';
+  }
+
+  @override
+  String get backupAutoNever => '尚无备份';
+
+  @override
+  String get backupAutoRunning => '正在备份…';
+
+  @override
+  String get backupAutoFolderLost => '无法访问该文件夹，请重新选择。';
+
+  @override
+  String get backupAutoFailed => '上次备份失败，稍后会重试。';
+
+  @override
+  String get backupAutoNow => '立即备份';
+
+  @override
+  String get backupAutoChangeFolder => '更换文件夹';
+
+  @override
   String get callYourMicOff => '你的麦克风已关闭';
 
   @override
