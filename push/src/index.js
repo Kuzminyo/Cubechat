@@ -27,7 +27,7 @@ import WebSocket from 'ws';
 const FRAME_KIND = 1059;
 /// What `/health` reports, so a deployment can be identified rather than
 /// assumed. Bump it in the same commit as any change to this file.
-const VERSION = '2026-11-02-area-chat';
+const VERSION = '2026-11-03-languages';
 
 const RECIPIENT_TAG = 'p';
 
