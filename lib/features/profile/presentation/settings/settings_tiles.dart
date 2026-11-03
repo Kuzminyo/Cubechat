@@ -114,24 +114,19 @@ class SettingsSectionRow extends StatelessWidget {
           ),
           child: Row(
             children: [
-              // Glass in the theme's colour: a tint of the accent over the
-              // pane, an edge of the same, the icon in the accent itself —
-              // so a rose theme gets rose badges and the row stays one
-              // surface. Red for the wipe row only.
+              // A tint of the theme's colour with the icon in the colour
+              // itself — so a rose theme gets rose badges. Red for the wipe
+              // row only. Filled exactly as a contact's page fills its boxes:
+              // at the same 42 points this badge still read a size larger,
+              // because a 30%-to-12% gradient inside a 42%-alpha edge draws
+              // the whole box, where the contact's flat 14% leaves only the
+              // glyph to see (2026-11-03, after the sizes were matched).
               Container(
                 width: badge,
                 height: badge,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(14),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      accent.withValues(alpha: 0.30),
-                      accent.withValues(alpha: 0.12),
-                    ],
-                  ),
-                  border: Border.all(color: accent.withValues(alpha: 0.42)),
+                  color: accent.withValues(alpha: 0.14),
                 ),
                 child: Icon(section.icon, size: iconSize, color: accent),
               ),
