@@ -6,9 +6,24 @@ class CallNetworkQuality {
   int bitrate = 32000;
   int _healthy = 0;
 
+  /// Whether any feedback has arrived. Before it, [bars] says nothing.
+  bool _measured = false;
+
+  /// The signal bars on the call screen: 0 while nothing is known, then 4 on
+  /// a healthy link, 3 and 2 at the two reduced steps. Read off the same
+  /// ladder the codec follows, so the bars and what is actually sent agree.
+  int get bars => !_measured
+      ? 0
+      : switch (bitrate) {
+          32000 => 4,
+          24000 => 3,
+          _ => 2,
+        };
+
   void sample({double? loss, double? rtt}) {
     if (loss != null && (!loss.isFinite || loss < 0 || loss > 1)) loss = null;
     if (rtt != null && (!rtt.isFinite || rtt < 0)) rtt = null;
+    if (loss != null || rtt != null) _measured = true;
     final target = (loss != null && loss >= 0.08) || (rtt != null && rtt >= 0.6)
         ? 16000
         : (loss != null && loss >= 0.03) || (rtt != null && rtt >= 0.3)

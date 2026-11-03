@@ -220,6 +220,9 @@ class CallController extends ChangeNotifier {
   /// Their picture, while it is arriving.
   MediaStream? get remoteVideo => _media?.remoteVideo;
 
+  /// The signal bars beside the clock — see [CallMedia.linkBars].
+  int get linkBars => _media?.linkBars ?? 0;
+
   /// For mirroring the preview: a front camera is shown the way a mirror
   /// shows a face, a back one the way it is.
   bool get frontCamera => _media?.frontCamera ?? true;

@@ -19,6 +19,8 @@ import 'package:cubechat/features/call/domain/call_state_machine.dart';
 
 class FakeMedia implements CallMedia {
   final controller = StreamController<CallMediaEvent>.broadcast(sync: true);
+  @override
+  int get linkBars => 0;
   bool closed = false;
   bool earlyConnect = false;
 

@@ -117,6 +117,9 @@ abstract interface class CallMedia {
 
   Future<void> selectRoute(CallAudioRoute route);
   Future<void> close();
+
+  /// The signal bars: 0 while nothing has been measured, then 2 to 4.
+  int get linkBars;
 }
 
 class WebRtcCallMedia implements CallMedia {
@@ -158,6 +161,36 @@ class WebRtcCallMedia implements CallMedia {
   static const int videoMaxBitrate = 800000;
   static const int videoMaxFramerate = 30;
 
+  /// The ceiling when the call is direct — the mode a person turns on
+  /// knowingly, where no byte crosses our server. Nothing is billed there, so
+  /// the only limit worth setting is the one past which a phone screen shows
+  /// no difference; WebRTC's congestion control finds the link's own below it.
+  static const int videoDirectMaxBitrate = 2500000;
+
+  /// What the picture's sender is held to on each step of the link ladder
+  /// ([CallNetworkQuality.bitrate], driven by the same audio feedback).
+  ///
+  /// "Better picture on a good connection, lower on a bad one" was the ask.
+  /// WebRTC already backs off on its own when packets go missing, but late
+  /// and by dropping frames, and it shares the link with the voice: stepping
+  /// the picture down first — fewer pixels, fewer frames, a lower ceiling —
+  /// keeps the voice whole on a poor link. Recovery is as slow as the
+  /// audio's (eight healthy reports in a row), so it does not pump.
+  static ({int bitrate, int fps, double scale}) videoLimits(
+    int audioStep, {
+    required bool relayed,
+  }) {
+    final ceiling = relayed ? videoMaxBitrate : videoDirectMaxBitrate;
+    return switch (audioStep) {
+      32000 => (bitrate: ceiling, fps: videoMaxFramerate, scale: 1.0),
+      24000 => (bitrate: ceiling * 45 ~/ 100, fps: 24, scale: 1.5),
+      _ => (bitrate: ceiling * 20 ~/ 100, fps: 15, scale: 2.0),
+    };
+  }
+
+  /// Media must go through our TURN — the default. False only in direct mode.
+  bool _relayed = true;
+
   /// Placed as a video call — the audio mode, nothing else.
   bool _video = false;
 
@@ -178,8 +211,13 @@ class WebRtcCallMedia implements CallMedia {
   num? _framesSeen;
   int _stillPolls = 0;
   bool _remoteLive = false;
-  bool _videoCapped = false;
+  /// The ladder step ([CallNetworkQuality.bitrate]) the picture's sender was
+  /// last limited for; null until it has been.
+  int? _videoCappedFor;
   bool _videoErrorLogged = false;
+
+  @override
+  int get linkBars => _quality.bars;
 
   @override
   Stream<CallMediaEvent> get events => _events.stream;
@@ -229,6 +267,7 @@ class WebRtcCallMedia implements CallMedia {
   Future<String> _open(
       Map<String, dynamic> configuration, String? remote) async {
     _checkOpen();
+    _relayed = configuration['iceTransportPolicy'] == 'relay';
     final watch = Stopwatch()..start();
     // Gathered once, said out loud rather than left to the platform default.
     // Nothing trickles candidates here — the whole SDP goes in one frame — so
@@ -717,7 +756,7 @@ class WebRtcCallMedia implements CallMedia {
         _log('their picture ${live ? 'started' : 'stopped'}');
         _emit(CallMediaEvent.video);
       }
-      if (!_videoCapped) await _capVideo(peer);
+      if (_videoCappedFor != _quality.bitrate) await _capVideo(peer);
       _videoErrorLogged = false;
     } catch (e) {
       if (!_closed && !_videoErrorLogged) {
@@ -727,12 +766,15 @@ class WebRtcCallMedia implements CallMedia {
     }
   }
 
-  /// [videoMaxBitrate] onto the picture's sender, once its encodings exist —
-  /// they do not before negotiation, so this is retried from the once-a-second
-  /// check until it takes.
+  /// [videoLimits] for the link as it is now onto the picture's sender, once
+  /// its encodings exist — they do not before negotiation, so this is retried
+  /// from the once-a-second check until it takes, and again whenever the
+  /// link moves a step.
   Future<void> _capVideo(RTCPeerConnection peer) async {
     final wanted = _videoTransceiver?.sender.senderId;
     if (wanted == null) return;
+    final step = _quality.bitrate;
+    final limits = videoLimits(step, relayed: _relayed);
     final senders = await peer.getSenders().timeout(const Duration(seconds: 2));
     if (_closed) return;
     for (final sender in senders) {
@@ -741,15 +783,16 @@ class WebRtcCallMedia implements CallMedia {
       final encodings = parameters.encodings;
       if (encodings == null || encodings.isEmpty) return;
       for (final encoding in encodings) {
-        encoding.maxBitrate = videoMaxBitrate;
-        encoding.maxFramerate = videoMaxFramerate;
+        encoding.maxBitrate = limits.bitrate;
+        encoding.maxFramerate = limits.fps;
+        encoding.scaleResolutionDownBy = limits.scale;
       }
       if (await sender
           .setParameters(parameters)
           .timeout(const Duration(seconds: 2))) {
-        _videoCapped = true;
-        _log('picture capped at $videoMaxBitrate bps, '
-            '$videoMaxFramerate fps');
+        _videoCappedFor = step;
+        _log('picture capped at ${limits.bitrate} bps, ${limits.fps} fps, '
+            '1/${limits.scale} size (${_relayed ? 'relayed' : 'direct'})');
       }
       return;
     }
