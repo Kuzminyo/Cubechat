@@ -117,8 +117,11 @@
          call. A normal permission, granted at install. See NearEar. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Capitalised, as the iPhone's CFBundleDisplayName already was: the
+         launcher showed "cubechat" under the icon. Every theme icon's
+         activity-alias takes this label too. -->
     <application
-        android:label="cubechat"
+        android:label="Cubechat"
         android:name=".MainApplication"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
