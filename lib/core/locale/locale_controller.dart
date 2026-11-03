@@ -14,8 +14,33 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// something re-registered.
 const localePrefsKey = 'app.locale';
 
-/// The languages this app is actually written in.
-const _supported = <String>{'en', 'uk'};
+/// The languages this app is written in, each under its own name — the list
+/// the language picker shows. A name is never translated: someone who cannot
+/// read the current interface has to be able to find their own language in it.
+///
+/// Ukrainian and English first, as the two the app was written in; the rest
+/// were added together on 2026-11-03.
+const appLanguages = <String, String>{
+  'uk': 'Українська',
+  'en': 'English',
+  'ru': 'Русский',
+  'pl': 'Polski',
+  'de': 'Deutsch',
+  'es': 'Español',
+  'fr': 'Français',
+  'it': 'Italiano',
+  'pt': 'Português',
+  'tr': 'Türkçe',
+  'cs': 'Čeština',
+  'ro': 'Română',
+  'kk': 'Қазақша',
+  'ka': 'ქართული',
+  'zh': '中文',
+  'ja': '日本語',
+  'ko': '한국어',
+  'ar': 'العربية',
+  'hi': 'हिन्दी',
+};
 
 /// What language to open in when nobody has ever chosen one.
 ///
@@ -30,11 +55,11 @@ const _supported = <String>{'en', 'uk'};
 /// server, so the doorbell that wakes a Ukrainian phone at night said "New
 /// message" in English — reported as notifications arriving that mean nothing.
 ///
-/// Russian and Belarusian resolve to Ukrainian rather than to English, and
-/// that is a deliberate second-best. There is no `ru` translation and this is
-/// not the place to promise one; the question is only which of the two
-/// languages that *do* exist a Russian speaker can read, and it is not
-/// English. A phone set to anything else still gets English.
+/// Belarusian resolves to Russian rather than to English: there is no `be`
+/// translation, and of the ones that exist it is the one a Belarusian phone
+/// can read. (Before `ru` existed, Russian and Belarusian both went to
+/// Ukrainian on the same reasoning.) A phone set to anything not in
+/// [appLanguages] still gets English.
 Locale deviceLocale() =>
     localeForLanguage(PlatformDispatcher.instance.locale.languageCode);
 
@@ -43,8 +68,8 @@ Locale deviceLocale() =>
 @visibleForTesting
 Locale localeForLanguage(String languageCode) {
   final code = languageCode.toLowerCase();
-  if (_supported.contains(code)) return Locale(code);
-  if (code == 'ru' || code == 'be') return const Locale('uk');
+  if (appLanguages.containsKey(code)) return Locale(code);
+  if (code == 'be') return const Locale('ru');
   return const Locale('en');
 }
 
@@ -58,7 +83,7 @@ class LocaleController extends Notifier<Locale> {
   Future<void> _restore() async {
     final prefs = await SharedPreferences.getInstance();
     final code = prefs.getString(localePrefsKey);
-    if (code != null && code.isNotEmpty) {
+    if (code != null && appLanguages.containsKey(code)) {
       state = Locale(code);
     }
   }

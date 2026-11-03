@@ -202,11 +202,7 @@ extension on ChatWallpaperScreen {
     if (wallpaper.imagePath != null) {
       showGlassToast(
         context,
-        _wallpaperText(
-          context,
-          uk: 'Фото-шпалери поки можна ставити тільки локально',
-          en: 'Photo wallpapers are local-only for now',
-        ),
+        AppLocalizations.of(context).wallpaperPhotoLocalOnly,
         tone: ToastTone.neutral,
       );
       return;
@@ -218,11 +214,7 @@ extension on ChatWallpaperScreen {
       if (context.mounted && !delivered) {
         showGlassToast(
           context,
-          _wallpaperText(
-            context,
-            uk: 'Збережено тут. Зараз немає маршруту до співрозмовника',
-            en: 'Saved here. There is no route to the peer right now',
-          ),
+          AppLocalizations.of(context).wallpaperSavedNoRoute,
           tone: ToastTone.neutral,
         );
       }
@@ -238,22 +230,10 @@ extension on ChatWallpaperScreen {
     bool allowShared = true,
   }) async {
     final isChannel = chatId.startsWith('#');
-    final title = _wallpaperText(
-      context,
-      uk: 'Хто буде бачити ці шпалери?',
-      en: 'Who should see this wallpaper?',
-    );
+    final title = AppLocalizations.of(context).wallpaperScopeTitle;
     final sharedLabel = isChannel
-        ? _wallpaperText(
-            context,
-            uk: 'Весь канал',
-            en: 'Whole channel',
-          )
-        : _wallpaperText(
-            context,
-            uk: 'Я і співрозмовник',
-            en: 'Me and the other person',
-          );
+        ? AppLocalizations.of(context).wallpaperScopeChannel
+        : AppLocalizations.of(context).wallpaperScopeBoth;
     final picked = await showGlassSheet<_WallpaperApplyScope>(
       context: context,
       builder: (sheetContext) => SafeArea(
@@ -277,11 +257,7 @@ extension on ChatWallpaperScreen {
                 leading: Icon(Icons.smartphone_rounded,
                     color: AppColors.brandPrimary),
                 title: Text(
-                  _wallpaperText(
-                    context,
-                    uk: 'Тільки у мене',
-                    en: 'Only on my phone',
-                  ),
+                  AppLocalizations.of(context).wallpaperScopeLocal,
                   style: TextStyle(color: AppColors.textOnGlass),
                 ),
                 onTap: () =>
@@ -305,16 +281,8 @@ extension on ChatWallpaperScreen {
                 ),
                 subtitle: Text(
                   allowShared
-                      ? _wallpaperText(
-                          context,
-                          uk: 'Надсилається зашифрованим службовим пакетом',
-                          en: 'Sent as an encrypted control frame',
-                        )
-                      : _wallpaperText(
-                          context,
-                          uk: 'Фото поки лишається тільки на цьому телефоні',
-                          en: 'Photos stay on this phone for now',
-                        ),
+                      ? AppLocalizations.of(context).wallpaperScopeSharedHint
+                      : AppLocalizations.of(context).wallpaperScopePhotoHint,
                   style: TextStyle(color: AppColors.textOnGlassFaint),
                 ),
                 onTap: allowShared
@@ -331,12 +299,6 @@ extension on ChatWallpaperScreen {
   }
 }
 
-String _wallpaperText(
-  BuildContext context, {
-  required String uk,
-  required String en,
-}) =>
-    Localizations.localeOf(context).languageCode == 'uk' ? uk : en;
 
 class _WallpaperOption extends StatelessWidget {
   const _WallpaperOption({

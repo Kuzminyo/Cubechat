@@ -1800,6 +1800,10 @@ class _TransportRow extends StatelessWidget {
 // somewhere with room for it.
 
 /// Public because it moves to Appearance, which is customize_screen.dart.
+///
+/// The current language and a chevron; the list opens in a sheet. It was two
+/// pills side by side while there were two languages, and nineteen do not fit
+/// a row.
 class LanguageRow extends ConsumerWidget {
   const LanguageRow({super.key, required this.locale});
 
@@ -1807,33 +1811,101 @@ class LanguageRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final t = AppLocalizations.of(context);
     return _frame(
       false,
+      onTap: () => showGlassSheet<void>(
+        context: context,
+        builder: (_) => _LanguageSheet(current: locale.languageCode),
+      ),
       child: Row(
         children: [
+          Icon(
+            Icons.translate_rounded,
+            size: 20,
+            color: AppColors.textOnGlassDim,
+          ),
+          const SizedBox(width: 12),
           Expanded(
-            child: _LangPill(
-              label: t.profileLanguageEn,
-              code: 'en',
-              current: locale.languageCode,
-              onTap: () => ref
-                  .read(localeControllerProvider.notifier)
-                  .set(const Locale('en')),
+            child: Text(
+              appLanguages[locale.languageCode] ?? locale.languageCode,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: AppColors.textOnGlass,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: _LangPill(
-              label: t.profileLanguageUk,
-              code: 'uk',
-              current: locale.languageCode,
-              onTap: () => ref
-                  .read(localeControllerProvider.notifier)
-                  .set(const Locale('uk')),
-            ),
-          ),
+          Icon(Icons.chevron_right_rounded, color: AppColors.textOnGlassFaint),
         ],
+      ),
+    );
+  }
+}
+
+/// Every language, each in its own name, the current one ticked.
+class _LanguageSheet extends ConsumerWidget {
+  const _LanguageSheet({required this.current});
+
+  final String current;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final t = AppLocalizations.of(context);
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.75,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Text(
+                t.profileLanguage,
+                style: AppTypography.heading(size: AppMenu.title),
+              ),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.only(bottom: 12),
+                children: [
+                  for (final entry in appLanguages.entries)
+                    ListTile(
+                      title: Text(
+                        entry.value,
+                        style: TextStyle(
+                          color: AppColors.textOnGlass,
+                          fontWeight: entry.key == current
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        ),
+                      ),
+                      trailing: entry.key == current
+                          ? Icon(
+                              Icons.check_rounded,
+                              color: AppColors.brandPrimary,
+                            )
+                          : null,
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        unawaited(
+                          ref
+                              .read(localeControllerProvider.notifier)
+                              .set(Locale(entry.key)),
+                        );
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2239,49 +2311,6 @@ class _FingerprintSheet extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _LangPill extends StatelessWidget {
-  const _LangPill({
-    required this.label,
-    required this.code,
-    required this.current,
-    required this.onTap,
-  });
-
-  final String label;
-  final String code;
-  final String current;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final active = code == current;
-    return GestureDetector(
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          gradient: active ? AppColors.brandGradient : null,
-          color: active ? null : AppColors.glass(0.08),
-          border: Border.all(
-            color: active ? AppColors.glass(0.3) : AppColors.glass(0.15),
-          ),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: AppColors.textOnGlass,
-            fontSize: 13,
-            fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-          ),
         ),
       ),
     );

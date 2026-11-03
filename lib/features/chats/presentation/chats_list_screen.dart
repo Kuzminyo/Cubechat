@@ -1540,11 +1540,7 @@ class _ArchiveEntry extends ConsumerWidget {
           ref.read(archiveVisibleProvider.notifier).set(false);
           showGlassToast(
             context,
-            _chatText(
-              context,
-              uk: 'Архів приховано. Повернути — у Кастомізації.',
-              en: 'Archive hidden. Bring it back in Customisation.',
-            ),
+            AppLocalizations.of(context).chatsArchiveHiddenToast,
             icon: Icons.visibility_off_rounded,
           );
         },
@@ -2118,7 +2114,7 @@ class ChatSelectionBar extends ConsumerWidget {
             allPinned ? Icons.push_pin_rounded : Icons.push_pin_rounded,
             color: AppColors.brandPrimary,
           ),
-          tooltip: _chatText(context, uk: 'Закріпити', en: 'Pin'),
+          tooltip: AppLocalizations.of(context).chatsBulkPin,
           onPressed: () async {
             final pins = ref.read(pinnedChatsControllerProvider.notifier);
             for (final chat in selected) {
@@ -2134,7 +2130,7 @@ class ChatSelectionBar extends ConsumerWidget {
                 : Icons.notifications_off_rounded,
             color: AppColors.textOnGlass,
           ),
-          tooltip: _chatText(context, uk: 'Без звуку', en: 'Mute'),
+          tooltip: AppLocalizations.of(context).chatsBulkMute,
           onPressed: () async {
             for (final chat in direct) {
               await peers.setMuted(chat.id, !allMuted);
@@ -2237,32 +2233,23 @@ class _SelectionOverflow extends ConsumerWidget {
               'archive',
               anyArchived ? Icons.unarchive_rounded : Icons.archive_rounded,
               anyArchived
-                  ? _chatText(context,
-                      uk: 'Повернути з архіву', en: 'Unarchive')
+                  ? AppLocalizations.of(context).chatsUnarchive
                   : t.chatsArchiveTitle,
             ),
             _chatMenuItem(
               'folder',
               Icons.folder_rounded,
-              _chatText(context, uk: 'Додати в папку', en: 'Add to folder'),
+              AppLocalizations.of(context).chatsAddToFolder,
             ),
             _chatMenuItem(
               'unread',
               Icons.mark_chat_unread_rounded,
-              _chatText(
-                context,
-                uk: 'Позначити як непрочитане',
-                en: 'Mark as unread',
-              ),
+              AppLocalizations.of(context).chatsMarkUnread,
             ),
             _chatMenuItem(
               'clear',
               Icons.cleaning_services_rounded,
-              _chatText(
-                context,
-                uk: 'Очистити історію чату',
-                en: 'Clear chat history',
-              ),
+              AppLocalizations.of(context).chatsClearHistory,
             ),
             // One person at a time: blocking is about somebody, and a channel
             // has nobody to block.
@@ -2921,13 +2908,6 @@ PopupMenuItem<String> _chatMenuItem(
   );
 }
 
-String _chatText(
-  BuildContext context, {
-  required String uk,
-  required String en,
-}) =>
-    Localizations.localeOf(context).languageCode == 'uk' ? uk : en;
-
 Future<void> _showAddToFolderDialog(
   BuildContext context,
   WidgetRef ref,
@@ -2945,11 +2925,7 @@ Future<void> _showAddToFolderDialog(
         side: BorderSide(color: AppColors.glass(0.15)),
       ),
       title: Text(
-        _chatText(
-          context,
-          uk: '\u0414\u043e\u0434\u0430\u0442\u0438 \u0432 \u043f\u0430\u043f\u043a\u0443',
-          en: 'Add to folder',
-        ),
+        AppLocalizations.of(context).chatsAddToFolder,
         style: TextStyle(
           color: AppColors.textOnGlass,
           fontSize: 16,
@@ -2966,11 +2942,7 @@ Future<void> _showAddToFolderDialog(
           onPressed: () => Navigator.of(ctx).pop(createToken),
           child: _MenuRow(
             icon: Icons.create_new_folder_rounded,
-            label: _chatText(
-              context,
-              uk: '\u041d\u043e\u0432\u0430 \u043f\u0430\u043f\u043a\u0430',
-              en: 'New folder',
-            ),
+            label: AppLocalizations.of(context).foldersNew,
           ),
         ),
         SimpleDialogOption(
@@ -3011,11 +2983,7 @@ Future<String?> _askFolderName(
       backgroundColor: AppColors.bgTop,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       title: Text(
-        _chatText(
-          context,
-          uk: '\u041d\u0430\u0437\u0432\u0430 \u043f\u0430\u043f\u043a\u0438',
-          en: 'Folder name',
-        ),
+        AppLocalizations.of(context).foldersName,
         style: TextStyle(color: AppColors.textOnGlass),
       ),
       content: TextField(
@@ -3023,11 +2991,7 @@ Future<String?> _askFolderName(
         autofocus: true,
         style: TextStyle(color: AppColors.textOnGlass),
         decoration: InputDecoration(
-          hintText: _chatText(
-            context,
-            uk: '\u0414\u0440\u0443\u0437\u0456',
-            en: 'Friends',
-          ),
+          hintText: AppLocalizations.of(context).foldersNameHint,
           hintStyle: TextStyle(color: AppColors.textOnGlassFaint),
         ),
       ),
@@ -3035,21 +2999,13 @@ Future<String?> _askFolderName(
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(),
           child: Text(
-            _chatText(
-              context,
-              uk: '\u0421\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438',
-              en: 'Cancel',
-            ),
+            AppLocalizations.of(context).cancel,
           ),
         ),
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
           child: Text(
-            _chatText(
-              context,
-              uk: '\u0417\u0431\u0435\u0440\u0435\u0433\u0442\u0438',
-              en: 'Save',
-            ),
+            AppLocalizations.of(context).foldersSave,
           ),
         ),
       ],
@@ -3072,11 +3028,7 @@ Future<void> _markChatUnread(
     if (showToast && context.mounted) {
       showGlassToast(
         context,
-        _chatText(
-          context,
-          uk: '\u041d\u0435\u043c\u0430\u0454 \u0432\u0445\u0456\u0434\u043d\u0438\u0445 \u043f\u043e\u0432\u0456\u0434\u043e\u043c\u043b\u0435\u043d\u044c',
-          en: 'No incoming messages',
-        ),
+        AppLocalizations.of(context).chatsNoIncoming,
         icon: Icons.mark_chat_unread_rounded,
         tone: ToastTone.neutral,
       );
@@ -3087,11 +3039,7 @@ Future<void> _markChatUnread(
   if (showToast && context.mounted) {
     showGlassToast(
       context,
-      _chatText(
-        context,
-        uk: '\u041f\u043e\u0437\u043d\u0430\u0447\u0435\u043d\u043e \u044f\u043a \u043d\u0435\u043f\u0440\u043e\u0447\u0438\u0442\u0430\u043d\u0435',
-        en: 'Marked as unread',
-      ),
+      AppLocalizations.of(context).chatsMarkedUnread,
       icon: Icons.mark_chat_unread_rounded,
       tone: ToastTone.success,
     );
@@ -3112,11 +3060,7 @@ Future<void> _confirmAndClearHistory(
         side: BorderSide(color: AppColors.glass(0.15)),
       ),
       title: Text(
-        _chatText(
-          context,
-          uk: '\u041e\u0447\u0438\u0441\u0442\u0438\u0442\u0438 \u0456\u0441\u0442\u043e\u0440\u0456\u044e \u0447\u0430\u0442\u0430?',
-          en: 'Clear chat history?',
-        ),
+        AppLocalizations.of(context).chatsClearHistoryTitle,
         style: TextStyle(
           color: AppColors.textOnGlass,
           fontSize: 16,
@@ -3124,11 +3068,7 @@ Future<void> _confirmAndClearHistory(
         ),
       ),
       content: Text(
-        _chatText(
-          context,
-          uk: '\u041f\u043e\u0432\u0456\u0434\u043e\u043c\u043b\u0435\u043d\u043d\u044f \u0431\u0443\u0434\u0435 \u0432\u0438\u0434\u0430\u043b\u0435\u043d\u043e \u0442\u0456\u043b\u044c\u043a\u0438 \u043d\u0430 \u0446\u044c\u043e\u043c\u0443 \u043f\u0440\u0438\u0441\u0442\u0440\u043e\u0457. \u0427\u0430\u0442, \u043a\u043e\u043d\u0442\u0430\u043a\u0442 \u0456 \u043e\u0431\u0440\u0430\u043d\u0456 \u0437\u0430\u043b\u0438\u0448\u0430\u0442\u044c\u0441\u044f.',
-          en: 'Messages will be removed only on this device. The chat, contact, and favorite state stay.',
-        ),
+        AppLocalizations.of(context).chatsClearHistoryBody,
         style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
       ),
       actions: [
@@ -3142,11 +3082,7 @@ Future<void> _confirmAndClearHistory(
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(true),
           child: Text(
-            _chatText(
-              context,
-              uk: '\u041e\u0447\u0438\u0441\u0442\u0438\u0442\u0438',
-              en: 'Clear',
-            ),
+            AppLocalizations.of(context).chatsClearHistoryAction,
             style: const TextStyle(color: AppColors.danger),
           ),
         ),
@@ -3161,11 +3097,7 @@ Future<void> _confirmAndClearHistory(
   if (!context.mounted) return;
   showGlassToast(
     context,
-    _chatText(
-      context,
-      uk: '\u0406\u0441\u0442\u043e\u0440\u0456\u044e \u043e\u0447\u0438\u0449\u0435\u043d\u043e',
-      en: 'History cleared',
-    ),
+    AppLocalizations.of(context).chatsHistoryCleared,
     icon: Icons.cleaning_services_rounded,
     tone: ToastTone.success,
   );

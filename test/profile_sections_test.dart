@@ -170,8 +170,7 @@ void main() {
     expect(find.text(t.sectionAppearance), findsOneWidget);
     expect(find.text(t.customizeBarTitle), findsOneWidget);
     expect(find.text(t.profileGlass), findsOneWidget);
-    expect(find.text(t.profileLanguageUk), findsOneWidget);
-    expect(find.text(t.profileLanguageEn), findsOneWidget);
+    expect(find.byType(LanguageRow), findsOneWidget);
     for (final gone in [
       t.customizeSwipeTitle,
       t.customizeMediaQualityTitle,

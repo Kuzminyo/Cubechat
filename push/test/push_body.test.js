@@ -10,6 +10,21 @@ test('a call is announced as a call, a message as a message', () => {
   assert.equal(pushBody('uk', { call: true }), 'Вхідний дзвінок');
 });
 
+// The tables are kept by hand beside the app's .arb files. A language the app
+// can be set to and the server does not know would wake that phone in English.
+test('every language the app is written in has both banners', async () => {
+  const { readdirSync } = await import('node:fs');
+  const dir = new URL('../../lib/l10n/', import.meta.url);
+  const codes = readdirSync(dir)
+    .map((name) => /^app_([a-z]+)\.arb$/.exec(name)?.[1])
+    .filter(Boolean);
+  assert.ok(codes.length > 2);
+  for (const code of codes.filter((c) => c !== 'en')) {
+    assert.notEqual(pushBody(code), pushBody('en'), code);
+    assert.notEqual(pushBody(code, { call: true }), pushBody('en', { call: true }), code);
+  }
+});
+
 test('an unknown or missing language falls back to English for both', () => {
   assert.equal(pushBody(undefined, { call: true }), 'Incoming call');
   assert.equal(pushBody('xx'), 'New message');

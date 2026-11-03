@@ -24,12 +24,8 @@ class _MapLayerSheet extends ConsumerWidget {
     (IconData, String, String) describe(MapLayer layer) => switch (layer) {
           MapLayer.standard => (
               Icons.map_rounded,
-              _mapText(context, uk: 'Звичайна', en: 'Standard'),
-              _mapText(
-                context,
-                uk: 'Світла карта вулиць — найстабільніший варіант',
-                en: 'Light street map — the most stable default',
-              ),
+              t.mapLayerStandard,
+              t.mapLayerStandardHint,
             ),
           MapLayer.dark => (
               Icons.dark_mode_rounded,
@@ -144,10 +140,4 @@ class _MapLayerSheet extends ConsumerWidget {
       ),
     );
   }
-}
-
-String _mapText(BuildContext context,
-    {required String uk, required String en}) {
-  final code = Localizations.localeOf(context).languageCode.toLowerCase();
-  return code == 'uk' ? uk : en;
 }

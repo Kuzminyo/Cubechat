@@ -5,8 +5,25 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart' as intl;
 
+import 'app_localizations_ar.dart';
+import 'app_localizations_cs.dart';
+import 'app_localizations_de.dart';
 import 'app_localizations_en.dart';
+import 'app_localizations_es.dart';
+import 'app_localizations_fr.dart';
+import 'app_localizations_hi.dart';
+import 'app_localizations_it.dart';
+import 'app_localizations_ja.dart';
+import 'app_localizations_ka.dart';
+import 'app_localizations_kk.dart';
+import 'app_localizations_ko.dart';
+import 'app_localizations_pl.dart';
+import 'app_localizations_pt.dart';
+import 'app_localizations_ro.dart';
+import 'app_localizations_ru.dart';
+import 'app_localizations_tr.dart';
 import 'app_localizations_uk.dart';
+import 'app_localizations_zh.dart';
 
 // ignore_for_file: type=lint
 
@@ -94,8 +111,25 @@ abstract class AppLocalizations {
 
   /// A list of this localizations delegate's supported locales.
   static const List<Locale> supportedLocales = <Locale>[
+    Locale('ar'),
+    Locale('cs'),
+    Locale('de'),
     Locale('en'),
-    Locale('uk')
+    Locale('es'),
+    Locale('fr'),
+    Locale('hi'),
+    Locale('it'),
+    Locale('ja'),
+    Locale('ka'),
+    Locale('kk'),
+    Locale('ko'),
+    Locale('pl'),
+    Locale('pt'),
+    Locale('ro'),
+    Locale('ru'),
+    Locale('tr'),
+    Locale('uk'),
+    Locale('zh')
   ];
 
   /// No description provided for @callVoice.
@@ -7495,6 +7529,228 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Off: no button on the map, and the area chat never asks for your location or connects.'**
   String get areaSettingOffHint;
+
+  /// No description provided for @wallpaperPhotoLocalOnly.
+  ///
+  /// In en, this message translates to:
+  /// **'Photo wallpapers are local-only for now'**
+  String get wallpaperPhotoLocalOnly;
+
+  /// No description provided for @wallpaperSavedNoRoute.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved here. There is no route to the peer right now'**
+  String get wallpaperSavedNoRoute;
+
+  /// No description provided for @wallpaperScopeTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Who should see this wallpaper?'**
+  String get wallpaperScopeTitle;
+
+  /// No description provided for @wallpaperScopeChannel.
+  ///
+  /// In en, this message translates to:
+  /// **'Whole channel'**
+  String get wallpaperScopeChannel;
+
+  /// No description provided for @wallpaperScopeBoth.
+  ///
+  /// In en, this message translates to:
+  /// **'Me and the other person'**
+  String get wallpaperScopeBoth;
+
+  /// No description provided for @wallpaperScopeLocal.
+  ///
+  /// In en, this message translates to:
+  /// **'Only on my phone'**
+  String get wallpaperScopeLocal;
+
+  /// No description provided for @wallpaperScopeSharedHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Sent as an encrypted control frame'**
+  String get wallpaperScopeSharedHint;
+
+  /// No description provided for @wallpaperScopePhotoHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Photos stay on this phone for now'**
+  String get wallpaperScopePhotoHint;
+
+  /// No description provided for @foldersCreate.
+  ///
+  /// In en, this message translates to:
+  /// **'Create folder'**
+  String get foldersCreate;
+
+  /// No description provided for @foldersYours.
+  ///
+  /// In en, this message translates to:
+  /// **'Your folders'**
+  String get foldersYours;
+
+  /// No description provided for @foldersSmartFilters.
+  ///
+  /// In en, this message translates to:
+  /// **'Smart filters'**
+  String get foldersSmartFilters;
+
+  /// No description provided for @foldersName.
+  ///
+  /// In en, this message translates to:
+  /// **'Folder name'**
+  String get foldersName;
+
+  /// No description provided for @foldersSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Save'**
+  String get foldersSave;
+
+  /// No description provided for @foldersDeleteTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete folder?'**
+  String get foldersDeleteTitle;
+
+  /// No description provided for @foldersDelete.
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get foldersDelete;
+
+  /// No description provided for @foldersCreateAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Create'**
+  String get foldersCreateAction;
+
+  /// No description provided for @chatsArchiveHiddenToast.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive hidden. Bring it back in Customisation.'**
+  String get chatsArchiveHiddenToast;
+
+  /// No description provided for @chatsBulkPin.
+  ///
+  /// In en, this message translates to:
+  /// **'Pin'**
+  String get chatsBulkPin;
+
+  /// No description provided for @chatsBulkMute.
+  ///
+  /// In en, this message translates to:
+  /// **'Mute'**
+  String get chatsBulkMute;
+
+  /// No description provided for @chatsUnarchive.
+  ///
+  /// In en, this message translates to:
+  /// **'Unarchive'**
+  String get chatsUnarchive;
+
+  /// No description provided for @chatsAddToFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Add to folder'**
+  String get chatsAddToFolder;
+
+  /// No description provided for @chatsMarkUnread.
+  ///
+  /// In en, this message translates to:
+  /// **'Mark as unread'**
+  String get chatsMarkUnread;
+
+  /// No description provided for @chatsClearHistory.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear chat history'**
+  String get chatsClearHistory;
+
+  /// No description provided for @foldersNew.
+  ///
+  /// In en, this message translates to:
+  /// **'New folder'**
+  String get foldersNew;
+
+  /// No description provided for @foldersNameHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Friends'**
+  String get foldersNameHint;
+
+  /// No description provided for @chatsNoIncoming.
+  ///
+  /// In en, this message translates to:
+  /// **'No incoming messages'**
+  String get chatsNoIncoming;
+
+  /// No description provided for @chatsMarkedUnread.
+  ///
+  /// In en, this message translates to:
+  /// **'Marked as unread'**
+  String get chatsMarkedUnread;
+
+  /// No description provided for @chatsClearHistoryTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear chat history?'**
+  String get chatsClearHistoryTitle;
+
+  /// No description provided for @chatsClearHistoryBody.
+  ///
+  /// In en, this message translates to:
+  /// **'Messages will be removed only on this device. The chat, contact, and favorite state stay.'**
+  String get chatsClearHistoryBody;
+
+  /// No description provided for @chatsClearHistoryAction.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get chatsClearHistoryAction;
+
+  /// No description provided for @chatsHistoryCleared.
+  ///
+  /// In en, this message translates to:
+  /// **'History cleared'**
+  String get chatsHistoryCleared;
+
+  /// No description provided for @savedTagMenuTag.
+  ///
+  /// In en, this message translates to:
+  /// **'Tag'**
+  String get savedTagMenuTag;
+
+  /// No description provided for @savedTagRemove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove tag'**
+  String get savedTagRemove;
+
+  /// No description provided for @customizeArchiveRowTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive row'**
+  String get customizeArchiveRowTitle;
+
+  /// No description provided for @customizeArchiveRowHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Show it above the chat list. Archived conversations keep receiving either way.'**
+  String get customizeArchiveRowHint;
+
+  /// No description provided for @mapLayerStandard.
+  ///
+  /// In en, this message translates to:
+  /// **'Standard'**
+  String get mapLayerStandard;
+
+  /// No description provided for @mapLayerStandardHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Light street map — the most stable default'**
+  String get mapLayerStandardHint;
 }
 
 class _AppLocalizationsDelegate
@@ -7507,8 +7763,27 @@ class _AppLocalizationsDelegate
   }
 
   @override
-  bool isSupported(Locale locale) =>
-      <String>['en', 'uk'].contains(locale.languageCode);
+  bool isSupported(Locale locale) => <String>[
+        'ar',
+        'cs',
+        'de',
+        'en',
+        'es',
+        'fr',
+        'hi',
+        'it',
+        'ja',
+        'ka',
+        'kk',
+        'ko',
+        'pl',
+        'pt',
+        'ro',
+        'ru',
+        'tr',
+        'uk',
+        'zh'
+      ].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
@@ -7517,10 +7792,44 @@ class _AppLocalizationsDelegate
 AppLocalizations lookupAppLocalizations(Locale locale) {
   // Lookup logic when only language code is specified.
   switch (locale.languageCode) {
+    case 'ar':
+      return AppLocalizationsAr();
+    case 'cs':
+      return AppLocalizationsCs();
+    case 'de':
+      return AppLocalizationsDe();
     case 'en':
       return AppLocalizationsEn();
+    case 'es':
+      return AppLocalizationsEs();
+    case 'fr':
+      return AppLocalizationsFr();
+    case 'hi':
+      return AppLocalizationsHi();
+    case 'it':
+      return AppLocalizationsIt();
+    case 'ja':
+      return AppLocalizationsJa();
+    case 'ka':
+      return AppLocalizationsKa();
+    case 'kk':
+      return AppLocalizationsKk();
+    case 'ko':
+      return AppLocalizationsKo();
+    case 'pl':
+      return AppLocalizationsPl();
+    case 'pt':
+      return AppLocalizationsPt();
+    case 'ro':
+      return AppLocalizationsRo();
+    case 'ru':
+      return AppLocalizationsRu();
+    case 'tr':
+      return AppLocalizationsTr();
     case 'uk':
       return AppLocalizationsUk();
+    case 'zh':
+      return AppLocalizationsZh();
   }
 
   throw FlutterError(

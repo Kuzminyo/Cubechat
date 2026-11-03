@@ -1154,7 +1154,7 @@ class _ArchiveRowCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final visible = ref.watch(archiveVisibleProvider);
-    final uk = Localizations.localeOf(context).languageCode == 'uk';
+    final t = AppLocalizations.of(context);
 
     return GlassCard(
       child: Row(
@@ -1170,7 +1170,7 @@ class _ArchiveRowCard extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  uk ? 'Рядок архіву' : 'Archive row',
+                  t.customizeArchiveRowTitle,
                   style: TextStyle(
                     color: AppColors.textOnGlass,
                     fontSize: 15,
@@ -1179,11 +1179,7 @@ class _ArchiveRowCard extends ConsumerWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  uk
-                      ? 'Показувати згори списку чатів. Приховані чати далі '
-                          'отримують повідомлення.'
-                      : 'Show it above the chat list. Archived conversations '
-                          'keep receiving either way.',
+                  t.customizeArchiveRowHint,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
                     fontSize: 12,

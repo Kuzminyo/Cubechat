@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:cubechat/core/locale/locale_controller.dart';
 import 'package:cubechat/core/transport/messaging_service.dart';
 import 'package:cubechat/core/transport/nostr/nostr_transport.dart';
+import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Two reports that turned out to be the same kind of fault: a line the app
@@ -19,23 +20,31 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('the language the phone is in', () {
     test('a supported language is taken as it is', () {
-      expect(localeForLanguage('uk'), const Locale('uk'));
-      expect(localeForLanguage('en'), const Locale('en'));
+      for (final code in appLanguages.keys) {
+        expect(localeForLanguage(code), Locale(code), reason: code);
+      }
+    });
+
+    test('every language offered has a translation behind it', () {
+      // A name in the picker with no app_<code>.arb would switch to a locale
+      // the delegate cannot load.
+      final translated =
+          AppLocalizations.supportedLocales.map((l) => l.languageCode).toSet();
+      expect(appLanguages.keys.toSet(), translated);
     });
 
     test('case does not decide it', () {
       expect(localeForLanguage('UK'), const Locale('uk'));
     });
 
-    test('Russian and Belarusian land on Ukrainian, not English', () {
-      // Deliberate second best. There is no `ru` translation; the question is
-      // only which of the two that exist a Russian speaker can read.
-      expect(localeForLanguage('ru'), const Locale('uk'));
-      expect(localeForLanguage('be'), const Locale('uk'));
+    test('Belarusian lands on Russian, not English', () {
+      // Deliberate second best. There is no `be` translation; the question is
+      // only which of those that exist a Belarusian phone can read.
+      expect(localeForLanguage('be'), const Locale('ru'));
     });
 
     test('anything else falls back to English', () {
-      expect(localeForLanguage('de'), const Locale('en'));
+      expect(localeForLanguage('nl'), const Locale('en'));
       expect(localeForLanguage(''), const Locale('en'));
     });
   });

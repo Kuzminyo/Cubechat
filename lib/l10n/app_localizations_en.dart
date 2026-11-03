@@ -4327,4 +4327,121 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get areaSettingOffHint =>
       'Off: no button on the map, and the area chat never asks for your location or connects.';
+
+  @override
+  String get wallpaperPhotoLocalOnly =>
+      'Photo wallpapers are local-only for now';
+
+  @override
+  String get wallpaperSavedNoRoute =>
+      'Saved here. There is no route to the peer right now';
+
+  @override
+  String get wallpaperScopeTitle => 'Who should see this wallpaper?';
+
+  @override
+  String get wallpaperScopeChannel => 'Whole channel';
+
+  @override
+  String get wallpaperScopeBoth => 'Me and the other person';
+
+  @override
+  String get wallpaperScopeLocal => 'Only on my phone';
+
+  @override
+  String get wallpaperScopeSharedHint => 'Sent as an encrypted control frame';
+
+  @override
+  String get wallpaperScopePhotoHint => 'Photos stay on this phone for now';
+
+  @override
+  String get foldersCreate => 'Create folder';
+
+  @override
+  String get foldersYours => 'Your folders';
+
+  @override
+  String get foldersSmartFilters => 'Smart filters';
+
+  @override
+  String get foldersName => 'Folder name';
+
+  @override
+  String get foldersSave => 'Save';
+
+  @override
+  String get foldersDeleteTitle => 'Delete folder?';
+
+  @override
+  String get foldersDelete => 'Delete';
+
+  @override
+  String get foldersCreateAction => 'Create';
+
+  @override
+  String get chatsArchiveHiddenToast =>
+      'Archive hidden. Bring it back in Customisation.';
+
+  @override
+  String get chatsBulkPin => 'Pin';
+
+  @override
+  String get chatsBulkMute => 'Mute';
+
+  @override
+  String get chatsUnarchive => 'Unarchive';
+
+  @override
+  String get chatsAddToFolder => 'Add to folder';
+
+  @override
+  String get chatsMarkUnread => 'Mark as unread';
+
+  @override
+  String get chatsClearHistory => 'Clear chat history';
+
+  @override
+  String get foldersNew => 'New folder';
+
+  @override
+  String get foldersNameHint => 'Friends';
+
+  @override
+  String get chatsNoIncoming => 'No incoming messages';
+
+  @override
+  String get chatsMarkedUnread => 'Marked as unread';
+
+  @override
+  String get chatsClearHistoryTitle => 'Clear chat history?';
+
+  @override
+  String get chatsClearHistoryBody =>
+      'Messages will be removed only on this device. The chat, contact, and favorite state stay.';
+
+  @override
+  String get chatsClearHistoryAction => 'Clear';
+
+  @override
+  String get chatsHistoryCleared => 'History cleared';
+
+  @override
+  String get savedTagMenuTag => 'Tag';
+
+  @override
+  String get savedTagRemove => 'Remove tag';
+
+  @override
+  String get customizeArchiveRowTitle => 'Archive row';
+
+  @override
+  String get customizeArchiveRowHint =>
+      'Show it above the chat list. Archived conversations keep receiving either way.';
+
+  @override
+  String get mapLayerStandard => 'Standard';
+
+  @override
+  String get mapLayerStandardHint =>
+      'Light street map — the most stable default';
 }

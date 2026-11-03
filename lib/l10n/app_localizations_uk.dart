@@ -4372,4 +4372,123 @@ class AppLocalizationsUk extends AppLocalizations {
   @override
   String get areaSettingOffHint =>
       'Вимкнено: кнопки на мапі немає, і чат району ніколи не питає місце й не підключається.';
+
+  @override
+  String get wallpaperPhotoLocalOnly =>
+      'Фото-шпалери поки можна ставити тільки локально';
+
+  @override
+  String get wallpaperSavedNoRoute =>
+      'Збережено тут. Зараз немає маршруту до співрозмовника';
+
+  @override
+  String get wallpaperScopeTitle => 'Хто буде бачити ці шпалери?';
+
+  @override
+  String get wallpaperScopeChannel => 'Весь канал';
+
+  @override
+  String get wallpaperScopeBoth => 'Я і співрозмовник';
+
+  @override
+  String get wallpaperScopeLocal => 'Тільки у мене';
+
+  @override
+  String get wallpaperScopeSharedHint =>
+      'Надсилається зашифрованим службовим пакетом';
+
+  @override
+  String get wallpaperScopePhotoHint =>
+      'Фото поки лишається тільки на цьому телефоні';
+
+  @override
+  String get foldersCreate => 'Створити папку';
+
+  @override
+  String get foldersYours => 'Ваші папки';
+
+  @override
+  String get foldersSmartFilters => 'Розумні фільтри';
+
+  @override
+  String get foldersName => 'Назва папки';
+
+  @override
+  String get foldersSave => 'Зберегти';
+
+  @override
+  String get foldersDeleteTitle => 'Видалити папку?';
+
+  @override
+  String get foldersDelete => 'Видалити';
+
+  @override
+  String get foldersCreateAction => 'Створити';
+
+  @override
+  String get chatsArchiveHiddenToast =>
+      'Архів приховано. Повернути — у Кастомізації.';
+
+  @override
+  String get chatsBulkPin => 'Закріпити';
+
+  @override
+  String get chatsBulkMute => 'Без звуку';
+
+  @override
+  String get chatsUnarchive => 'Повернути з архіву';
+
+  @override
+  String get chatsAddToFolder => 'Додати в папку';
+
+  @override
+  String get chatsMarkUnread => 'Позначити як непрочитане';
+
+  @override
+  String get chatsClearHistory => 'Очистити історію чату';
+
+  @override
+  String get foldersNew => 'Нова папка';
+
+  @override
+  String get foldersNameHint => 'Друзі';
+
+  @override
+  String get chatsNoIncoming => 'Немає вхідних повідомлень';
+
+  @override
+  String get chatsMarkedUnread => 'Позначено як непрочитане';
+
+  @override
+  String get chatsClearHistoryTitle => 'Очистити історію чату?';
+
+  @override
+  String get chatsClearHistoryBody =>
+      'Повідомлення буде видалено тільки на цьому пристрої. Чат, контакт і обрані залишаться.';
+
+  @override
+  String get chatsClearHistoryAction => 'Очистити';
+
+  @override
+  String get chatsHistoryCleared => 'Історію очищено';
+
+  @override
+  String get savedTagMenuTag => 'Тег';
+
+  @override
+  String get savedTagRemove => 'Прибрати тег';
+
+  @override
+  String get customizeArchiveRowTitle => 'Рядок архіву';
+
+  @override
+  String get customizeArchiveRowHint =>
+      'Показувати згори списку чатів. Приховані чати далі отримують повідомлення.';
+
+  @override
+  String get mapLayerStandard => 'Звичайна';
+
+  @override
+  String get mapLayerStandardHint =>
+      'Світла карта вулиць — найстабільніший варіант';
 }

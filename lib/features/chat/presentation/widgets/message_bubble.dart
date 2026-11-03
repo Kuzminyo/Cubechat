@@ -996,8 +996,8 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             id: 'tag',
             icon: Icons.sell_rounded,
             label: ref.read(savedTagsProvider)[widget.message.id] == null
-                ? _savedTagText(uk: 'Тег', en: 'Tag')
-                : _savedTagText(uk: 'Прибрати тег', en: 'Remove tag'),
+                ? AppLocalizations.of(context).savedTagMenuTag
+                : AppLocalizations.of(context).savedTagRemove,
           ),
         // A deadline on this one line, where auto-delete is a rule for the
         // whole conversation. Local, like auto-delete: their copy is theirs.
@@ -1347,8 +1347,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     await tags.setTag(widget.message.id, emoji);
   }
 
-  String _savedTagText({required String uk, required String en}) =>
-      Localizations.localeOf(context).languageCode == 'uk' ? uk : en;
 
   /// The message [wireId] quotes, resolved from this chat's list, or null if
   /// it's not in memory (e.g. cleared history or arrived out of order).

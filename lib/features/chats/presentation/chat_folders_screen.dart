@@ -54,9 +54,7 @@ class ChatFoldersScreen extends ConsumerWidget {
                   const SizedBox(width: 14),
                   Expanded(
                     child: Text(
-                      _folderText(context,
-                          uk: '\u0421\u0442\u0432\u043e\u0440\u0438\u0442\u0438 \u043f\u0430\u043f\u043a\u0443',
-                          en: 'Create folder'),
+                      AppLocalizations.of(context).foldersCreate,
                       style: TextStyle(
                         color: AppColors.textOnGlass,
                         fontSize: 15,
@@ -71,9 +69,7 @@ class ChatFoldersScreen extends ConsumerWidget {
             if (userFolders.isNotEmpty) ...[
               const SizedBox(height: 18),
               _SectionTitle(
-                text: _folderText(context,
-                    uk: '\u0412\u0430\u0448\u0456 \u043f\u0430\u043f\u043a\u0438',
-                    en: 'Your folders'),
+                text: AppLocalizations.of(context).foldersYours,
               ),
               for (final folder in userFolders) ...[
                 GlassCard(
@@ -128,9 +124,7 @@ class ChatFoldersScreen extends ConsumerWidget {
             ],
             const SizedBox(height: 18),
             _SectionTitle(
-              text: _folderText(context,
-                  uk: '\u0420\u043e\u0437\u0443\u043c\u043d\u0456 \u0444\u0456\u043b\u044c\u0442\u0440\u0438',
-                  en: 'Smart filters'),
+              text: AppLocalizations.of(context).foldersSmartFilters,
             ),
             for (final folder in ChatFolder.values) ...[
               GlassCard(
@@ -229,9 +223,7 @@ Future<void> _editFolder(
                 controller: renamed,
                 style: TextStyle(color: AppColors.textOnGlass),
                 decoration: InputDecoration(
-                  labelText: _folderText(ctx,
-                      uk: '\u041d\u0430\u0437\u0432\u0430 \u043f\u0430\u043f\u043a\u0438',
-                      en: 'Folder name'),
+                  labelText: AppLocalizations.of(ctx).foldersName,
                   labelStyle: TextStyle(color: AppColors.textOnGlassDim),
                 ),
               ),
@@ -271,9 +263,7 @@ Future<void> _editFolder(
                   foregroundColor: Colors.black,
                 ),
                 onPressed: () => Navigator.of(ctx).pop(selected),
-                child: Text(_folderText(ctx,
-                    uk: '\u0417\u0431\u0435\u0440\u0435\u0433\u0442\u0438',
-                    en: 'Save')),
+                child: Text(AppLocalizations.of(ctx).foldersSave),
               ),
             ],
           ),
@@ -300,9 +290,7 @@ Future<void> _deleteFolder(
     builder: (ctx) => AlertDialog(
       backgroundColor: AppColors.bgTop,
       title: Text(
-        _folderText(ctx,
-            uk: '\u0412\u0438\u0434\u0430\u043b\u0438\u0442\u0438 \u043f\u0430\u043f\u043a\u0443?',
-            en: 'Delete folder?'),
+        AppLocalizations.of(ctx).foldersDeleteTitle,
         style: TextStyle(color: AppColors.textOnGlass),
       ),
       content: Text(
@@ -312,16 +300,12 @@ Future<void> _deleteFolder(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(false),
-          child: Text(_folderText(ctx,
-              uk: '\u0421\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438',
-              en: 'Cancel')),
+          child: Text(AppLocalizations.of(ctx).cancel),
         ),
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(true),
           child: Text(
-            _folderText(ctx,
-                uk: '\u0412\u0438\u0434\u0430\u043b\u0438\u0442\u0438',
-                en: 'Delete'),
+            AppLocalizations.of(ctx).foldersDelete,
             style: TextStyle(color: AppColors.danger),
           ),
         ),
@@ -342,9 +326,7 @@ Future<String?> _askFolderName(BuildContext context) async {
     builder: (ctx) => AlertDialog(
       backgroundColor: AppColors.bgTop,
       title: Text(
-        _folderText(ctx,
-            uk: '\u041d\u0430\u0437\u0432\u0430 \u043f\u0430\u043f\u043a\u0438',
-            en: 'Folder name'),
+        AppLocalizations.of(ctx).foldersName,
         style: TextStyle(color: AppColors.textOnGlass),
       ),
       content: TextField(
@@ -355,15 +337,11 @@ Future<String?> _askFolderName(BuildContext context) async {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(),
-          child: Text(_folderText(ctx,
-              uk: '\u0421\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438',
-              en: 'Cancel')),
+          child: Text(AppLocalizations.of(ctx).cancel),
         ),
         TextButton(
           onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
-          child: Text(_folderText(ctx,
-              uk: '\u0421\u0442\u0432\u043e\u0440\u0438\u0442\u0438',
-              en: 'Create')),
+          child: Text(AppLocalizations.of(ctx).foldersCreateAction),
         ),
       ],
     ),
@@ -372,10 +350,3 @@ Future<String?> _askFolderName(BuildContext context) async {
   if (result == null || result.trim().isEmpty) return null;
   return result.trim();
 }
-
-String _folderText(
-  BuildContext context, {
-  required String uk,
-  required String en,
-}) =>
-    Localizations.localeOf(context).languageCode == 'uk' ? uk : en;

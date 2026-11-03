@@ -295,10 +295,29 @@ function deviceTokenOf(content, platform) {
 /// The server cannot decrypt anything, so this is the whole of the text — the
 /// message itself is fetched from the relay and opened on the phone. Keep these
 /// in step with the app's supported locales: an unknown code falls back to the
-/// same default the app builds with rather than showing nothing.
+/// same default the app builds with rather than showing nothing. The words are
+/// the app's own (`notifPreviewNewMessage` in each `app_<code>.arb`), so the
+/// banner and the notification the app draws itself say the same thing.
 const ALERT_BODY = {
   en: 'New message',
   uk: 'Нове повідомлення',
+  ru: 'Новое сообщение',
+  pl: 'Nowa wiadomość',
+  de: 'Neue Nachricht',
+  es: 'Nuevo mensaje',
+  fr: 'Nouveau message',
+  it: 'Nuovo messaggio',
+  pt: 'Nova mensagem',
+  tr: 'Yeni mesaj',
+  cs: 'Nová zpráva',
+  ro: 'Mesaj nou',
+  kk: 'Жаңа хабарлама',
+  ka: 'ახალი შეტყობინება',
+  zh: '新消息',
+  ja: '新しいメッセージ',
+  ko: '새 메시지',
+  ar: 'رسالة جديدة',
+  hi: 'नया मैसेज',
 };
 
 /// The same, for an event the sender marked as a call invite (`CALL_TAG`).
@@ -309,6 +328,23 @@ const ALERT_BODY = {
 const CALL_BODY = {
   en: 'Incoming call',
   uk: 'Вхідний дзвінок',
+  ru: 'Входящий звонок',
+  pl: 'Połączenie przychodzące',
+  de: 'Eingehender Anruf',
+  es: 'Llamada entrante',
+  fr: 'Appel entrant',
+  it: 'Chiamata in arrivo',
+  pt: 'Chamada recebida',
+  tr: 'Gelen arama',
+  cs: 'Příchozí hovor',
+  ro: 'Apel primit',
+  kk: 'Кіріс қоңырау',
+  ka: 'შემომავალი ზარი',
+  zh: '呼入通话',
+  ja: '着信',
+  ko: '수신 통화',
+  ar: 'مكالمة واردة',
+  hi: 'आने वाली कॉल',
 };
 
 const DEFAULT_LANG = 'en';
