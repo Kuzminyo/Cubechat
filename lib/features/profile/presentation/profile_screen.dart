@@ -50,7 +50,11 @@ import '../../backup/presentation/desktop_link_screen.dart'
     show ConnectComputerRow, ImportFromPhoneRow;
 import '../../backup/presentation/phone_transfer_card.dart';
 import '../../cube_id/data/cube_id_controller.dart';
+import '../../cube_id/presentation/cube_id_screen.dart';
 import '../../cube_id/presentation/stranger_reach_selector.dart';
+import '../../desktop/desktop_split_view.dart' show openSettingsSection;
+import '../../moderation/presentation/about_screen.dart';
+import 'customize_screen.dart';
 import '../../moderation/data/filter_settings.dart';
 import '../data/privacy_settings_controller.dart';
 import '../data/relay_settings_controller.dart';
@@ -73,6 +77,21 @@ part 'settings/connection_section.dart';
 part 'settings/data_section.dart';
 part 'settings/notifications_section.dart';
 part 'settings/privacy_section.dart';
+
+/// The screen behind each section row of the profile, by the route a phone
+/// pushes — for a computer window, which shows it beside the list instead
+/// (`desktop_split_view.dart`). Null for a route that is not a section.
+Widget? settingsSectionScreen(String route) => switch (route) {
+      '/cube-id' => const CubeIdScreen(),
+      '/settings/privacy' => const PrivacySectionScreen(),
+      '/settings/notifications' => const NotificationsSectionScreen(),
+      '/settings/connection' => const ConnectionSectionScreen(),
+      '/settings/chats' => const ChatsSectionScreen(),
+      '/customize' => const CustomizeScreen(),
+      '/settings/data' => const DataSectionScreen(),
+      '/settings/about' => const AboutScreen(),
+      _ => null,
+    };
 
 // The version was a `const '0.1.0'` here, written on the first day and never
 // touched — so this screen, the one place a tester checks what they are
@@ -196,7 +215,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
           section: section,
           title: title,
           value: value,
-          onTap: () => context.push(route),
+          // Beside the list on a computer window, as Telegram's settings are;
+          // a page of its own on a phone.
+          onTap: () {
+            if (!openSettingsSection(context, ref, route)) context.push(route);
+          },
         );
 
     // A short list of sections, each opening its own screen the way Customize
@@ -275,7 +298,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
               // A root route like every other section. Pushed on the tab's
               // own navigator it sat inside the tab pager, and the swipe back
               // was taken as "next tab" — it went to the Map, not the profile.
-              onTap: () => context.push('/settings/about'),
+              onTap: () {
+                if (!openSettingsSection(context, ref, '/settings/about')) {
+                  context.push('/settings/about');
+                }
+              },
             ),
           ],
         ),

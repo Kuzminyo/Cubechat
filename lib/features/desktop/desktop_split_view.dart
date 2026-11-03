@@ -14,6 +14,7 @@ import '../chats/models/chat.dart';
 import '../chats/presentation/chats_list_screen.dart';
 import '../peers/presentation/widgets/peer_avatar.dart';
 import '../profile/data/nav_bar_controller.dart' show NavDestination;
+import '../profile/presentation/profile_screen.dart' show settingsSectionScreen;
 import 'desktop_rail.dart';
 
 /// The conversation open in the right-hand pane of a computer window.
@@ -28,6 +29,22 @@ class DesktopOpenChat {
 
 final desktopOpenChatProvider =
     StateProvider<DesktopOpenChat?>((_) => null);
+
+/// The profile section open in the right-hand pane while the Profile tab is
+/// on show, by its route — Telegram Desktop's settings. Privacy until another
+/// is picked: the pane is never the chats' "pick somebody" on this tab.
+final desktopSettingsSectionProvider =
+    StateProvider<String>((_) => '/settings/privacy');
+
+/// Open the profile section at [route] in the right-hand pane, on a computer
+/// window. False on a phone, where the caller pushes the route as before.
+bool openSettingsSection(BuildContext context, WidgetRef ref, String route) {
+  if (!desktopSplits(context, ref) || settingsSectionScreen(route) == null) {
+    return false;
+  }
+  ref.read(desktopSettingsSectionProvider.notifier).state = route;
+  return true;
+}
 
 /// How wide the person dragged the chat list. Kept within what the window
 /// allows when it is laid out, so a window made narrower later still fits.
@@ -175,6 +192,9 @@ class DesktopSplitView extends ConsumerWidget {
     // The Map is a page to look across, not a list to pick from: it takes
     // everything beside the rail, and there is no chat pane to open into.
     final fullBleed = currentBranch == NavDestination.map.branch;
+    // On Profile the right-hand pane holds the section picked in the list.
+    final onProfile = currentBranch == NavDestination.profile.branch;
+    final section = ref.watch(desktopSettingsSectionProvider);
     final listW = fullBleed
         ? media.size.width - DesktopRail.width
         : fits
@@ -224,7 +244,12 @@ class DesktopSplitView extends ConsumerWidget {
                       data: media.copyWith(
                         size: Size(detailWidth, media.size.height),
                       ),
-                      child: open == null
+                      child: onProfile
+                          ? _SettingsPane(
+                              key: ValueKey(section),
+                              route: section,
+                            )
+                          : open == null
                           ? const _EmptyPane()
                           : KeyedSubtree(
                               // A different chat is a different screen, not
@@ -314,7 +339,16 @@ class _MiddleColumn extends StatelessWidget {
               alignment: Alignment.topLeft,
               minWidth: listWidth,
               maxWidth: listWidth,
-              child: IgnorePointer(ignoring: faces, child: list),
+              // Faded right out under the faces, not merely covered: covered
+              // at 95% its title and the edges of its rows still showed
+              // through the column ("надпись виднеется", 2026-11-01). At zero
+              // it is not painted at all, and it stays mounted.
+              child: AnimatedOpacity(
+                duration: duration,
+                curve: curve,
+                opacity: faces ? 0 : 1,
+                child: IgnorePointer(ignoring: faces, child: list),
+              ),
             ),
             Positioned.fill(
               child: IgnorePointer(
@@ -402,6 +436,25 @@ class _DividerGripState extends ConsumerState<_DividerGrip> {
   }
 }
 
+/// A profile section in the right-hand pane, under a navigator of its own: a
+/// screen inside it that pops pops itself, not the window's shell, and the
+/// section's back arrow is not drawn where there is nothing to go back to.
+class _SettingsPane extends StatelessWidget {
+  const _SettingsPane({super.key, required this.route});
+
+  final String route;
+
+  @override
+  Widget build(BuildContext context) => AuroraBackground(
+        child: Navigator(
+          onGenerateRoute: (_) => PageRouteBuilder<void>(
+            pageBuilder: (_, __, ___) =>
+                settingsSectionScreen(route) ?? const SizedBox.shrink(),
+          ),
+        ),
+      );
+}
+
 /// Nothing open yet: the backdrop, and one line saying what to do.
 class _EmptyPane extends StatelessWidget {
   const _EmptyPane();
@@ -441,10 +494,11 @@ class _ChatFaces extends ConsumerWidget {
     final chats = ref.watch(visibleChatsProvider);
     final open = ref.watch(desktopOpenChatProvider);
     return ColoredBox(
-      // Nearly solid: at 0.55 the list under the faces read through them —
-      // its title and search field cut off at the column's edge, seen in a
-      // screenshot on 2026-10-11. The fade still crosses one into the other.
-      color: AppColors.bgDeep.withValues(alpha: 0.95),
+      // Solid. At 0.55, then 0.95, the list under the faces read through them
+      // — its title, the edges of its rows, faint copies of the avatars
+      // (2026-10-11, again 2026-11-01). The list now fades out beneath, so the
+      // cross-fade still crosses one into the other.
+      color: AppColors.bgDeep,
       child: Column(
         children: [
           const SizedBox(height: 10),

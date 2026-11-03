@@ -210,7 +210,12 @@ class SettingsSectionScaffold extends StatelessWidget {
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        leading: BackButton(color: AppColors.textOnGlass),
+        // Only where there is somewhere to go back to: beside the profile on
+        // a computer window the section is the pane's whole navigator.
+        automaticallyImplyLeading: false,
+        leading: Navigator.canPop(context)
+            ? BackButton(color: AppColors.textOnGlass)
+            : null,
         title: Text(
           title,
           style: AppTypography.heading(size: 18, color: AppColors.textOnGlass),
