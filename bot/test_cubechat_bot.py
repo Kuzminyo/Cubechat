@@ -181,6 +181,45 @@ class ReportTextTests(unittest.TestCase):
         self.assertLessEqual(len(text), 1000)
         self.assertIn("Не збігається з relay", text)
 
+    def _direct(self, evidence, claimed="Ні"):
+        return make_report(
+            context="direct", message={"text": claimed, "kind": "text"}, evidence=evidence,
+        )
+
+    def test_signed_direct_report_names_the_signer_and_where_the_ban_goes(self):
+        text = report_text(self._direct({
+            "status": "verified", "fingerprint": "ea4a6c63e29c520a", "text": "Ні",
+        }))
+        self.assertIn("✅ Підпис автора перевірено", text)
+        # All 16 hex, so `/unban` can take it back.
+        self.assertIn("ea4a6c63e29c520a", text)
+        self.assertIn("Бан ляже на ключ підпису ea4a6c63e29c520a, не на ціль", text)
+        self.assertIn("Повідомлення: Ні", text)
+        self.assertNotIn("не перевірено", text)
+
+    def test_misquoted_direct_report_shows_what_was_signed(self):
+        text = report_text(self._direct({
+            "status": "mismatch", "mismatches": ["text"],
+            "fingerprint": "ea4a6c63e29c520a", "text": "Ні",
+        }, claimed="погрози"))
+        self.assertIn("підписав інше, ніж цитує скаржник", text)
+        self.assertIn("Насправді підписано: Ні", text)
+        self.assertIn("Скаржник пише: погрози", text)
+
+    def test_forged_proof_says_so_and_that_the_ban_falls_on_the_target(self):
+        text = report_text(self._direct({"status": "invalid"}))
+        self.assertIn("Підпис підроблений", text)
+        self.assertIn("не перевірено): Ні", text)
+        self.assertIn("Краще відхилити", text)
+
+    def test_ban_note_survives_the_cut_on_a_long_signed_text(self):
+        text = report_text(self._direct({
+            "status": "mismatch", "mismatches": ["text"],
+            "fingerprint": "ea4a6c63e29c520a", "text": "y" * 900,
+        }, claimed="x" * 900))
+        self.assertLessEqual(len(text), 1000)
+        self.assertIn("Бан ляже на ключ підпису", text)
+
 
 class RedactUrlTests(unittest.TestCase):
     def test_strips_bot_token_from_url(self):

@@ -324,7 +324,13 @@ final allChatsProvider = Provider<List<Chat>>((ref) {
   final summaries = ref.read(messagesControllerProvider.notifier).summaries;
 
   final entries = known.values
-      .where((peer) => !bans.isBannedPeer(peer.pubkeyHex, peer.nostrPubkey))
+      .where(
+        (peer) => !bans.isBannedPeer(
+          peer.pubkeyHex,
+          peer.nostrPubkey,
+          signPublicKey: peer.signPublicKey,
+        ),
+      )
       .map((peer) {
     final msgs = messagesByChat[peer.pubkeyHex];
     final summary = msgs == null ? summaries[peer.pubkeyHex] : null;

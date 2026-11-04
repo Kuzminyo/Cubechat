@@ -34,9 +34,20 @@ class ModerationReport {
     this.messageText,
     this.messageKind,
     this.messageSentAt,
+    this.messageProof,
     this.eventId,
     this.geohash,
   });
+
+  /// The author's signature over the reported text ([Message.signedProof]),
+  /// for a [ReportContext.direct] report on a text they sent. With it the
+  /// server can prove who wrote the words instead of taking the reporter's
+  /// quote, and a ban lands on the key that signed them. base64url.
+  final String? messageProof;
+
+  /// A proof is at most 12 KB (`_maxAuthorProofBytes` in messaging_service),
+  /// 16 KB once base64'd; the server refuses longer.
+  static const int messageProofMaxChars = 16384;
 
   /// An area chat report's event id (64 hex) — what a moderator deletes on
   /// the relay. Required by the server for [ReportContext.area], refused
@@ -93,8 +104,14 @@ class ModerationReport {
   /// round trip through [fromJson] must not read back as "the field was
   /// present but empty".
   Map<String, Object?> toJson() {
-    final hasMessage =
-        messageText != null || messageKind != null || messageSentAt != null;
+    final proof = messageProof != null &&
+            messageProof!.length <= messageProofMaxChars
+        ? messageProof
+        : null;
+    final hasMessage = messageText != null ||
+        messageKind != null ||
+        messageSentAt != null ||
+        proof != null;
     return {
       'reason': reason.name,
       'context': context.name,
@@ -110,6 +127,7 @@ class ModerationReport {
             'text': _truncate(messageText!, messageTextMaxChars),
           if (messageKind != null) 'kind': messageKind!.name,
           if (messageSentAt != null) 'sentAt': messageSentAt,
+          if (proof != null) 'proof': proof,
         },
     };
   }
@@ -127,6 +145,7 @@ class ModerationReport {
       String? messageText;
       ReportedKind? messageKind;
       int? messageSentAt;
+      String? messageProof;
       final message = json['message'];
       if (message is Map) {
         final text = message['text'];
@@ -135,6 +154,8 @@ class ModerationReport {
         if (kind is String) messageKind = ReportedKind.values.asNameMap()[kind];
         final sentAt = message['sentAt'];
         if (sentAt is int) messageSentAt = sentAt;
+        final proof = message['proof'];
+        if (proof is String) messageProof = proof;
       }
 
       final note = json['note'];
@@ -154,6 +175,7 @@ class ModerationReport {
         messageText: messageText,
         messageKind: messageKind,
         messageSentAt: messageSentAt,
+        messageProof: messageProof,
         eventId: eventId is String ? eventId : null,
         geohash: geohash is String ? geohash : null,
       );

@@ -92,6 +92,15 @@ void _expectServerAcceptable(Map<String, Object?> json) {
       expect(sentAt, isA<int>());
       expect(sentAt! as int, greaterThanOrEqualTo(0));
     }
+    // A signed author proof: base64url, at most 16384 characters, and only
+    // on a direct report — the one place the server checks one.
+    if (message.containsKey('proof')) {
+      final proof = message['proof'];
+      expect(proof, isA<String>());
+      expect(RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(proof! as String), isTrue);
+      expect((proof as String).length, lessThanOrEqualTo(16384));
+      expect(json['context'], 'direct');
+    }
   }
   // Exactly the keys `parseReportPayload` destructures — an extra key would
   // still be accepted server-side (it's ignored), but a typo'd key name here
@@ -197,6 +206,33 @@ void main() {
       expect(json['geohash'], 'u8vx');
       _expectServerAcceptable(json);
       expect(ModerationReport.fromJson(json)!.toJson(), json);
+    });
+
+    test('a direct report carries the author proof, and round-trips', () {
+      final report = ModerationReport(
+        reason: ReportReason.abuse,
+        context: ReportContext.direct,
+        target: 'a' * 64,
+        messageText: 'hello',
+        messageKind: ReportedKind.text,
+        messageProof: 'AbC-_9' * 30,
+      );
+      final json = report.toJson();
+      expect((json['message']! as Map)['proof'], 'AbC-_9' * 30);
+      _expectServerAcceptable(json);
+      expect(ModerationReport.fromJson(json)!.toJson(), json);
+    });
+
+    test('a proof over the cap is left out rather than refused', () {
+      final json = ModerationReport(
+        reason: ReportReason.abuse,
+        context: ReportContext.direct,
+        target: 'a' * 64,
+        messageText: 'hello',
+        messageProof: 'A' * (ModerationReport.messageProofMaxChars + 1),
+      ).toJson();
+      expect((json['message']! as Map).containsKey('proof'), isFalse);
+      _expectServerAcceptable(json);
     });
 
     test('fromJson is the inverse of toJson', () {

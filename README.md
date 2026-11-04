@@ -253,6 +253,15 @@ walkie-talkie `0x05` — see the wire protocol below) → inner `SignedPayload`
 (Ed25519) → typed inner payload. So relays route without decrypting, the
 recipient decrypts, and the signature proves who sent it.
 
+**Not deniable.** That proof is transferable: a recipient holds a signature
+anybody can check. The app keeps it beside every signed text it receives and
+puts it in a report, so moderation can tell the author's words from a quote
+the reporter made up (`SignedPayload.detachedProof`, `verifyAuthorProof` in
+`push/src/index.js`). It proves which Ed25519 key wrote the words — not whose
+contact that key is, which only the reporter's roster says — so a ban on such
+a report goes on the signing key's fingerprint, never on the identity it was
+filed under.
+
 **Replay & dedup.** Signed timestamps + a 1-hour replay window; a dedup cache
 keyed on `(originPubkeyHash, msgId)` drops loops and reflections across the mesh.
 

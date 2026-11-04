@@ -286,16 +286,18 @@ def _message_lines(report: dict) -> list[str]:
     """The reported message, and how far it can be believed.
 
     A report's `message.text` is what the reporter's phone sent: the report is
-    signed by the reporter, so a modified app could quote anything. Only an
-    area report can be checked — push/ fetches the event from our own relay
-    when the report arrives (`evidence`, see areaEvidence) — and only there
-    does the bot show the author's own words. Everywhere else the quote is
-    labelled as the reporter's. The verdict comes before the text so the
-    1000-char cut can never take it off.
+    signed by the reporter, so a modified app could quote anything. Two kinds
+    can be checked, and push/ stores the result as `evidence`: an area report
+    against our own relay (areaEvidence), and a direct report against the
+    author's own signature (directEvidence). Only those show the author's
+    words; everywhere else the quote is labelled as the reporter's. The
+    verdict comes before the text so the 1000-char cut can never take it off.
     """
     message = report.get("message")
     claimed = message.get("text") if isinstance(message, dict) else None
     evidence = report.get("evidence")
+    if report.get("context") == "direct" and isinstance(evidence, dict):
+        return _direct_lines(evidence, claimed)
     if report.get("context") != "area" or not isinstance(evidence, dict):
         if not claimed:
             return []
@@ -325,6 +327,45 @@ def _message_lines(report: dict) -> list[str]:
     if claimed:
         lines.append(f"Повідомлення (зі слів скаржника, не перевірено): {claimed}")
     return lines
+
+
+def _direct_lines(evidence: dict, claimed) -> list[str]:
+    """A direct report checked against the author's signature.
+
+    The signature proves which key wrote the words, not that the key is the
+    `Ціль` above — that link is the reporter's contact list. So a ban on a
+    signed report goes on the signing key alone (`ban` in push/src/index.js),
+    and the message says so before the button is pressed.
+    """
+    status = evidence.get("status")
+    if status == "invalid":
+        lines = ["⚠️ Підпис підроблений або зіпсований — скаргу хтось змайстрував"]
+        if claimed:
+            lines.append(f"Повідомлення (зі слів скаржника, не перевірено): {claimed}")
+        lines.append("Бан ляже на ціль, як без підпису. Краще відхилити.")
+        return lines
+    # All 16 hex, not cut to 8 like the keys above: it is what a ban adds and
+    # what `/unban` takes back. Still only a quarter of the key.
+    signer = evidence.get("fingerprint") or "—"
+    signed_text = evidence.get("text")
+    ban_note = (
+        f"Бан ляже на ключ підпису {signer}, не на ціль: "
+        "що це той самий співрозмовник — лише зі слів скаржника."
+    )
+    # Verdict and ban note first, the texts last: the 1000-char cut takes the
+    # end, and it must never take what the button is about to do.
+    if status == "verified":
+        return [
+            f"✅ Підпис автора перевірено: це написав ключ підпису {signer}",
+            ban_note,
+            f"Повідомлення: {signed_text}",
+        ]
+    return [
+        f"⚠️ Ключ підпису {signer} підписав інше, ніж цитує скаржник",
+        ban_note,
+        f"Насправді підписано: {signed_text}",
+        f"Скаржник пише: {claimed}",
+    ]
 
 
 class BotState:

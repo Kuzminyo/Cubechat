@@ -29,12 +29,28 @@ class BanList {
   final Set<String> fingerprints;
 
   bool isBannedIdentity(String hex) => identities.contains(hex.toLowerCase());
-  bool isBannedPeer(String identityHex, List<int>? nostrPubkey) =>
+  /// [signPublicKey] is the peer's Ed25519 key, when known. A report that
+  /// carried the author's signature is banned by that key's fingerprint and
+  /// not by identity (`ban` in push/src/index.js: the identity it names is
+  /// only the reporter's word), so without it such a ban would reach
+  /// channels and the walkie-talkie and miss one-to-one chats.
+  bool isBannedPeer(
+    String identityHex,
+    List<int>? nostrPubkey, {
+    List<int>? signPublicKey,
+  }) =>
       isBannedIdentity(identityHex) ||
-      (nostrPubkey != null &&
-          isBannedNpub(nostrPubkey
-              .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
-              .join()));
+      (nostrPubkey != null && isBannedNpub(_hex(nostrPubkey))) ||
+      (signPublicKey != null && isBannedSigner(signPublicKey));
+
+  /// The Ed25519 key's fingerprint — its first 16 hex, the form channels and
+  /// the radio already name an author by — is on the list.
+  bool isBannedSigner(List<int> signPublicKey) =>
+      signPublicKey.length >= 8 &&
+      isBannedFingerprint(_hex(signPublicKey.sublist(0, 8)));
+
+  static String _hex(List<int> bytes) =>
+      bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
   bool isBannedNpub(String hex) => npubs.contains(hex.toLowerCase());
   bool isBannedFingerprint(String hex) =>
       fingerprints.contains(hex.toLowerCase());

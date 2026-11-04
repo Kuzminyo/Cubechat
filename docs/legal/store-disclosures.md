@@ -9,7 +9,9 @@ Cubechat has no account and ordinary conversations are end-to-end encrypted.
 Optional push registration stores a public key and device token. An explicit
 abuse report sends the reporter's public identifier, target, reason, optional
 note, and selected message text (up to 4000 characters), type and time to
-push.cubechat.tech. Reports are signed and stored for moderation. The server
+push.cubechat.tech; a report on a one-to-one text also carries the author's
+own signature over it, which the server checks and keeps only the result of
+(signed text, time, signing key). Reports are signed and stored for moderation. The server
 currently has no automatic report deletion schedule. The app also downloads
 the public, signed ban list from `push.cubechat.tech/banned` at start and
 every six hours while open; that request carries no identifier, so it collects
@@ -91,7 +93,9 @@ A private Telegram bot forwards the report reason, note, up to 1000
 characters of an excerpt, and shortened reporter and target identifiers to
 the developer's Telegram account — for an area report, the text our own area
 relay holds for the reported event, read when the report arrives, in place of
-or beside the reporter's quote. Declare this transfer as sharing; do not
+or beside the reporter's quote; for a one-to-one report with the author's
+signature, the signed text and the signing key's 16-hex fingerprint. Declare
+this transfer as sharing; do not
 treat Telegram as if it were our own server. Push delivery through FCM is
 separate from that report flow.
 

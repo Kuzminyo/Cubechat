@@ -106,6 +106,19 @@ class _ReportSheetState extends ConsumerState<_ReportSheet> {
     return m.text;
   }
 
+  /// The author's signature over [m], when the report can carry it: a
+  /// one-to-one text from somebody else, received signed. Not for a
+  /// `cubechat:` URI — the server would read the signed text itself, and a
+  /// shared location's is the coordinates [_text] keeps out of the bot.
+  String? _proof(Message? m) {
+    if (m == null || m.isMine || m.signedProof == null) return null;
+    if (widget.reportContext != ReportContext.direct) return null;
+    if (m.kind != MessageKind.text || m.text.startsWith('cubechat:')) {
+      return null;
+    }
+    return m.signedProof;
+  }
+
   /// "Send" promises three things, and the two local ones do not wait on the
   /// network's verdict (review of the Codex handoff, 2026-09-25): the person
   /// asked for this author to be gone from their screen, and a server that
@@ -128,6 +141,7 @@ class _ReportSheetState extends ConsumerState<_ReportSheet> {
       messageText: _text(m, t),
       messageKind: _kind(m),
       messageSentAt: m?.sentAt.millisecondsSinceEpoch,
+      messageProof: _proof(m),
     );
     // null: refused for good (400/401) or not even queued.
     bool? sent;

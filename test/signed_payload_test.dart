@@ -202,4 +202,107 @@ void main() {
       );
     });
   });
+
+  group('SignedPayload.detachedProof', () {
+    final ctx = SignedPayload.contextBytes(
+      originPubkeyHash: Uint8List.fromList(List.filled(8, 1)),
+      destPubkeyHash: Uint8List.fromList(List.filled(8, 2)),
+      msgId: Uint8List.fromList(List.generate(16, (i) => i)),
+    );
+    final inner = Uint8List.fromList([0x10, 0, 2, 72, 105, 9, 9]);
+
+    test('a full wrap becomes a proof anyone can check', () async {
+      final sender = await _newKey();
+      final wire = await SignedPayload.wrap(
+        inner: inner,
+        context: ctx,
+        signKeyPair: sender.kp,
+        senderEdPub: sender.pub,
+        timestampMs: 1893456000000,
+      );
+      final proof = SignedPayload.detachedProof(
+        wire: wire,
+        context: ctx,
+        senderEdPub: sender.pub,
+      )!;
+      expect(proof.length, 32 + 32 + 64 + 8 + inner.length);
+      final checked = await SignedPayload.verifyDetachedProof(proof);
+      expect(checked.senderEdPub, sender.pub);
+      expect(checked.inner, inner);
+      expect(checked.timestampMs, 1893456000000);
+    });
+
+    test('a compact wrap gives the same shape, with the key put back',
+        () async {
+      final sender = await _newKey();
+      final wire = await SignedPayload.wrapCompact(
+        inner: inner,
+        context: ctx,
+        signKeyPair: sender.kp,
+        senderEdPub: sender.pub,
+      );
+      final proof = SignedPayload.detachedProof(
+        wire: wire,
+        context: ctx,
+        senderEdPub: sender.pub,
+      )!;
+      final checked = await SignedPayload.verifyDetachedProof(proof);
+      expect(checked.senderEdPub, sender.pub);
+      expect(checked.inner, inner);
+    });
+
+    test('changing the text, the key or the context breaks the proof',
+        () async {
+      final sender = await _newKey();
+      final other = await _newKey();
+      final wire = await SignedPayload.wrap(
+        inner: inner,
+        context: ctx,
+        signKeyPair: sender.kp,
+        senderEdPub: sender.pub,
+      );
+      final proof = SignedPayload.detachedProof(
+        wire: wire,
+        context: ctx,
+        senderEdPub: sender.pub,
+      )!;
+      for (final at in [0, 40, proof.length - 1]) {
+        final bad = Uint8List.fromList(proof)..[at] ^= 1;
+        await expectLater(
+          SignedPayload.verifyDetachedProof(bad),
+          throwsA(isA<SignatureVerificationException>()),
+        );
+      }
+      // Somebody else's key spliced in is somebody else's claim.
+      final swapped = Uint8List.fromList(proof)..setRange(32, 64, other.pub);
+      await expectLater(
+        SignedPayload.verifyDetachedProof(swapped),
+        throwsA(isA<SignatureVerificationException>()),
+      );
+      await expectLater(
+        SignedPayload.verifyDetachedProof(Uint8List(100)),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('anything that is not a signed payload gives no proof', () async {
+      final sender = await _newKey();
+      expect(
+        SignedPayload.detachedProof(
+          wire: inner,
+          context: ctx,
+          senderEdPub: sender.pub,
+        ),
+        isNull,
+      );
+      expect(
+        SignedPayload.detachedProof(
+          wire: Uint8List.fromList([SignedPayload.markerByte, 1, 2]),
+          context: ctx,
+          senderEdPub: sender.pub,
+        ),
+        isNull,
+      );
+    });
+  });
 }

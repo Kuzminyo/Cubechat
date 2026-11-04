@@ -610,8 +610,16 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     String targetWireId,
     String text, {
     String? authorId,
+    String? signedProof,
   }) =>
-      _applyEdit(peerId, targetWireId, text, mine: false, authorId: authorId);
+      _applyEdit(
+        peerId,
+        targetWireId,
+        text,
+        mine: false,
+        authorId: authorId,
+        signedProof: signedProof,
+      );
 
   bool _applyEdit(
     String peerId,
@@ -619,6 +627,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     String text, {
     required bool mine,
     required String? authorId,
+    String? signedProof,
   }) {
     final current = state[peerId];
     if (current == null || text.isEmpty) return false;
@@ -632,7 +641,15 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
     if (m.text == text) return false;
 
     final list = [...current]..[idx] =
-        m.copyWith(text: text, editedAt: DateTime.now());
+        // The edit's own signature replaces the original's, so a report on
+        // an edited message proves the words on screen. An unsigned edit
+        // keeps the old one — which still proves only what it signed, and the
+        // server says so when the quote differs.
+        m.copyWith(
+          text: text,
+          editedAt: DateTime.now(),
+          signedProof: signedProof,
+        );
     state = {...state, peerId: list};
     _persist(peerId, list);
     return true;
@@ -1173,6 +1190,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
         if (m.viewOnceConsumedAt != null)
           'viewOnceAtIso': m.viewOnceConsumedAt!.toIso8601String(),
         if (m.albumId != null) 'albumId': m.albumId,
+        if (m.signedProof != null) 'proof': m.signedProof,
       };
 
   static Message _decode(Map<String, dynamic> m) {
@@ -1273,6 +1291,7 @@ class MessagesController extends Notifier<Map<String, List<Message>>> {
           ? null
           : DateTime.tryParse(m['viewOnceAtIso'] as String),
       albumId: m['albumId'] as String?,
+      signedProof: m['proof'] as String?,
     );
   }
 }

@@ -14,7 +14,7 @@ import { readFileSync } from 'node:fs';
 import { connect as http2Connect } from 'node:http2';
 import {
   createSign, createHmac, randomUUID, randomBytes, timingSafeEqual,
-  createPrivateKey, sign as cryptoSign,
+  createPrivateKey, createPublicKey, sign as cryptoSign, verify as cryptoVerify,
 } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { schnorr } from '@noble/curves/secp256k1';
@@ -27,7 +27,7 @@ import WebSocket from 'ws';
 const FRAME_KIND = 1059;
 /// What `/health` reports, so a deployment can be identified rather than
 /// assumed. Bump it in the same commit as any change to this file.
-const VERSION = '2026-11-04-area-evidence';
+const VERSION = '2026-11-04-author-proof';
 
 const RECIPIENT_TAG = 'p';
 
@@ -1291,7 +1291,9 @@ export const server = createServer(async (request, response) => {
   if (request.method === 'POST' && request.url === '/report') {
     let event;
     try {
-      event = JSON.parse(await readBody(request));
+      // Larger than the other routes: a direct report can carry the author's
+      // signed text (16 KB base64'd) beside a 4000-character quote.
+      event = JSON.parse(await readBody(request, REPORT_MAX_BODY));
     } catch {
       return json(response, 400, { ok: false, reason: 'body' });
     }
@@ -1560,16 +1562,22 @@ export function parseReportPayload(content) {
   let parsedMessage;
   if (message !== undefined) {
     if (!message || typeof message !== 'object' || Array.isArray(message)) return null;
-    const { text, kind, sentAt } = message;
+    const { text, kind, sentAt, proof } = message;
     if (text !== undefined && (typeof text !== 'string' || text.length > 4000)) return null;
     if (kind !== undefined && !REPORT_MESSAGE_KINDS.has(kind)) return null;
     // A safe, non-negative integer: `Number.isSafeInteger` already refuses
     // NaN, Infinity and fractions, so only the sign needs its own check.
     if (sentAt !== undefined && (!Number.isSafeInteger(sentAt) || sentAt < 0)) return null;
+    // The author's signature over the text (`verifyAuthorProof`). Only a
+    // direct report has one: a channel author is already named by their
+    // signing key, and an area message is checked against the relay.
+    if (proof !== undefined && (context !== 'direct' || typeof proof !== 'string' ||
+        proof.length > AUTHOR_PROOF_MAX_CHARS || !/^[A-Za-z0-9_-]+$/.test(proof))) return null;
     parsedMessage = {
       ...(text !== undefined ? { text } : {}),
       ...(kind !== undefined ? { kind } : {}),
       ...(sentAt !== undefined ? { sentAt } : {}),
+      ...(proof !== undefined ? { proof } : {}),
     };
   }
 
@@ -1583,6 +1591,143 @@ export function parseReportPayload(content) {
     ...(eventId !== undefined ? { eventId: eventId.toLowerCase() } : {}),
     ...(geohash !== undefined ? { geohash } : {}),
     ...(parsedMessage !== undefined ? { message: parsedMessage } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Checking a direct report against the author's signature (2026-11-04)
+// ---------------------------------------------------------------------------
+
+// Every one-to-one message is signed with the sender's Ed25519 key
+// (lib/core/crypto/signed_payload.dart), and the app keeps that signature
+// beside a received text. A direct report carries it as `message.proof`, so
+// the quote no longer rests on the reporter's word: the server checks the
+// signature and reads the text out of the signed bytes itself.
+//
+// What it proves is *which key wrote the words* — not that the key belongs to
+// the `target` the report names. That link is in the reporter's own contact
+// list and nowhere else: a modified app can sign anything with a key of its
+// own and file it under somebody else. So a ban on a proven report goes on
+// the signing key (its 16-hex fingerprint, the form `/banned` already has),
+// never on `target` — see `ban` in createBans.
+//
+// Layout (`SignedPayload.detachedProof`): context 32 (origin hash 8, dest
+// hash 8, msgId 16) ‖ Ed25519 pub 32 ‖ signature 64 ‖ timestamp ms 8 BE ‖
+// inner. The signature is over context ‖ pub ‖ timestamp ‖ inner — the same
+// material for the full and the compact wire form.
+const AUTHOR_PROOF_MAX_CHARS = 16384;
+const REPORT_MAX_BODY = 40 * 1024;
+const AUTHOR_PROOF_HEADER = 32 + 32 + 64 + 8;
+// DER prefix that turns a raw 32-byte Ed25519 key into SubjectPublicKeyInfo.
+const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+// InnerPayloadType values (lib/core/transport/inner_payload.dart) a person
+// reads as words.
+const INNER_TEXT = 0x10;
+const INNER_EDIT = 0x80;
+const INNER_TEXT_REPLY = 0xa0;
+
+/// `unpadTextPayload`: `[len:2 BE][utf8:len][pad]`, or the whole body from a
+/// sender old enough to send no length.
+function unpadText(body) {
+  if (body.length < 2) return body;
+  const declared = (body[0] << 8) | body[1];
+  if (declared > body.length - 2) return body;
+  return body.subarray(2, 2 + declared);
+}
+
+/// The text inside a signed inner payload, with what kind of message it was;
+/// `null` for any payload that is not words.
+function textOfInner(inner) {
+  if (inner.length < 1) return null;
+  const body = inner.subarray(1);
+  let bytes;
+  let kind;
+  if (inner[0] === INNER_TEXT) {
+    bytes = unpadText(body);
+    kind = 'text';
+  } else if (inner[0] === INNER_TEXT_REPLY && body.length >= 16) {
+    bytes = unpadText(body.subarray(16));
+    kind = 'reply';
+  } else if (inner[0] === INNER_EDIT && body.length > 16) {
+    // `MessageEdit`: the target msgId and the new text, unpadded.
+    bytes = body.subarray(16);
+    kind = 'edit';
+  } else {
+    return null;
+  }
+  // `utf8.decode(allowMalformed: true)` on the phone; the replacement
+  // character is the same, so a quote of a malformed text still matches.
+  return { kind, text: new TextDecoder('utf-8').decode(bytes) };
+}
+
+/// A checked author proof: who signed it, when, and the words — or `null`
+/// for anything that is not one or does not verify.
+export function verifyAuthorProof(proofB64) {
+  let proof;
+  try {
+    proof = Buffer.from(proofB64, 'base64url');
+  } catch {
+    return null;
+  }
+  if (proof.length < AUTHOR_PROOF_HEADER + 1) return null;
+  const context = proof.subarray(0, 32);
+  const signer = proof.subarray(32, 64);
+  const signature = proof.subarray(64, 128);
+  const timestamp = proof.subarray(128, 136);
+  const inner = proof.subarray(136);
+  const material = Buffer.concat([context, signer, timestamp, inner]);
+  let ok;
+  try {
+    const key = createPublicKey({
+      key: Buffer.concat([ED25519_SPKI_PREFIX, signer]),
+      format: 'der',
+      type: 'spki',
+    });
+    ok = cryptoVerify(null, material, key, signature);
+  } catch {
+    return null;
+  }
+  if (!ok) return null;
+  const words = textOfInner(inner);
+  if (!words) return null;
+  const signedAt = Number(timestamp.readBigUInt64BE(0));
+  if (!Number.isSafeInteger(signedAt)) return null;
+  return {
+    signer: signer.toString('hex'),
+    signedAt,
+    msgId: context.subarray(16, 32).toString('hex'),
+    kind: words.kind,
+    text: words.text,
+  };
+}
+
+/// What a direct report's proof says, stored on it as `evidence`:
+///
+/// - `verified` — the signature holds and the signed text is the quote.
+/// - `mismatch` (`mismatches: ['text']`) — the signature holds but says
+///   something else; the signed words are kept, and they are what counts.
+/// - `invalid` — a proof that does not verify, or holds no text. Worse than
+///   none: somebody made it.
+///
+/// `signer` is the Ed25519 key that wrote the words and `fingerprint` its
+/// first 16 hex, which is what a ban adds to `/banned`. `null` when the
+/// report carries no proof.
+export function directEvidence(payload, nowSeconds) {
+  const proof = payload.message?.proof;
+  if (proof === undefined) return null;
+  const checked = verifyAuthorProof(proof);
+  if (!checked) return { status: 'invalid', checkedAt: nowSeconds };
+  const claimed = payload.message?.text;
+  const differs = claimed !== undefined && claimed !== checked.text;
+  return {
+    status: differs ? 'mismatch' : 'verified',
+    checkedAt: nowSeconds,
+    signer: checked.signer,
+    fingerprint: checked.signer.slice(0, 16),
+    signedAt: checked.signedAt,
+    kind: checked.kind,
+    text: checked.text.slice(0, 4000),
+    ...(differs ? { mismatches: ['text'] } : {}),
   };
 }
 
@@ -2061,8 +2206,8 @@ export async function handleReport(event, {
   }
   // Open reports are never purged (only decided ones are, after 90 days), so
   // without a ceiling the file grows for as long as nobody decides. 4.5 KB at
-  // most each (an area report's relay copy adds at most 500 chars more); the
-  // ceiling is ~25 MB.
+  // most each, plus the checked text in `evidence` (500 chars for an area
+  // report, up to 4000 for a direct one); the ceiling is ~25-45 MB.
   if (typeof store.open === 'function' && (await store.open()).length >= maxOpen) {
     log('report', `queue full (${maxOpen} open) — refusing`);
     return { status: 503, body: { ok: false, reason: 'full' } };
@@ -2070,7 +2215,18 @@ export async function handleReport(event, {
 
   // After every limit, so a refused report never costs the relay a query.
   let evidence;
-  if (payload.context === 'area' && fetchArea) {
+  if (payload.context === 'direct') {
+    evidence = directEvidence(payload, nowSeconds) ?? undefined;
+    if (evidence && evidence.status !== 'verified') {
+      log('report', `direct report proof: ${evidence.status}`);
+    }
+    // Checked, so not kept: what it proved is in `evidence`, and the raw
+    // bytes would be one more copy of the conversation on the server.
+    if (payload.message?.proof !== undefined) {
+      const { proof: _checked, ...message } = payload.message;
+      payload.message = message;
+    }
+  } else if (payload.context === 'area' && fetchArea) {
     let fetched;
     try {
       fetched = await fetchArea(payload.eventId);
@@ -2286,12 +2442,22 @@ export function createBans({
         // lower-case, and `isBannedNpub`/the app's own comparisons assume
         // the same. A report signed by a client that happened to send mixed
         // case would otherwise sit in the set forever, matching nothing.
-        if (report.context === 'channel') {
+        const proven = report.context === 'direct' &&
+          (report.evidence?.status === 'verified' || report.evidence?.status === 'mismatch') &&
+          typeof report.evidence.fingerprint === 'string';
+        if (proven) {
+          // The key that signed the words, and only that. `target` and
+          // `targetNpub` are the reporter's say-so about whose key it is, and
+          // a modified app can sign with its own key and name anybody — so
+          // on a proven report they are left alone, and nobody can be banned
+          // for a message somebody else signed (directEvidence).
+          fingerprints.add(report.evidence.fingerprint.toLowerCase());
+        } else if (report.context === 'channel') {
           if (typeof report.target === 'string') fingerprints.add(report.target.toLowerCase());
         } else if (typeof report.target === 'string') {
           identities.add(report.target.toLowerCase());
         }
-        if (typeof report.targetNpub === 'string') npubs.add(report.targetNpub.toLowerCase());
+        if (!proven && typeof report.targetNpub === 'string') npubs.add(report.targetNpub.toLowerCase());
         updatedAt = nextUpdatedAt();
         rebuild();
         await persist();

@@ -241,6 +241,95 @@ class SignedPayload {
     return (inner: inner, timestampMs: timestampMs);
   }
 
+  /// Length of [contextBytes] for a [TransportEnvelope]: origin hash (8),
+  /// destination hash (8), msgId (16).
+  static const int contextLen = 32;
+
+  /// A proof of authorship that can leave the phone: everything a third party
+  /// needs to check that the holder of [senderEdPub] signed this [inner].
+  ///
+  /// ```
+  ///   [context     : 32 bytes — origin hash ‖ dest hash ‖ msgId]
+  ///   [sender_ed_pub : 32 bytes]
+  ///   [signature   : 64 bytes]
+  ///   [timestampMs : 8 bytes BE]
+  ///   [inner       : N bytes]
+  /// ```
+  ///
+  /// Which is the signed material with the signature spliced in after the
+  /// key, so it is the same for both markers: the compact variant signs the
+  /// key too, it just does not carry it. Never sent between phones — it is
+  /// kept beside a received message and goes to the push server in a report
+  /// (`verifyAuthorProof` in `push/src/index.js`), which proves the quote was
+  /// written by that key and not by the reporter.
+  ///
+  /// [wire] must already have passed [verify] or [verifyCompact] under
+  /// [context] and [senderEdPub]; this only rearranges the bytes. `null` when
+  /// [wire] is not a signed payload or [context] is not an envelope's.
+  static Uint8List? detachedProof({
+    required Uint8List wire,
+    required Uint8List context,
+    required Uint8List senderEdPub,
+  }) {
+    if (context.length != contextLen || senderEdPub.length != pubLen) {
+      return null;
+    }
+    final int sigAt;
+    if (wire.length >= headerLen && wire[0] == markerByte) {
+      sigAt = 1 + pubLen;
+    } else if (wire.length >= compactHeaderLen &&
+        wire[0] == markerCompactByte) {
+      sigAt = 1;
+    } else {
+      return null;
+    }
+    final rest = wire.length - sigAt; // signature ‖ timestamp ‖ inner
+    final out = Uint8List(contextLen + pubLen + rest);
+    var o = 0;
+    out.setRange(o, o += contextLen, context);
+    out.setRange(o, o += pubLen, senderEdPub);
+    out.setRange(o, out.length, wire, sigAt);
+    return out;
+  }
+
+  /// Checks a [detachedProof] — the Dart twin of the server's check, for
+  /// tests and for the phone to refuse to send a proof that would fail.
+  /// Throws [FormatException] on a short proof and
+  /// [SignatureVerificationException] on a bad signature.
+  static Future<({Uint8List senderEdPub, int timestampMs, Uint8List inner})>
+      verifyDetachedProof(Uint8List proof) async {
+    const fixed = contextLen + pubLen + sigLen + tsLen;
+    if (proof.length < fixed) {
+      throw const FormatException('author proof shorter than its header');
+    }
+    var c = contextLen;
+    final senderEdPub = Uint8List.fromList(proof.sublist(c, c += pubLen));
+    final sigBytes = proof.sublist(c, c += sigLen);
+    final tsBytes = proof.sublist(c, c += tsLen);
+    final inner = Uint8List.fromList(proof.sublist(c));
+    final material = Uint8List(contextLen + pubLen + tsLen + inner.length);
+    var m = 0;
+    material.setRange(m, m += contextLen, proof);
+    material.setRange(m, m += pubLen, senderEdPub);
+    material.setRange(m, m += tsLen, tsBytes);
+    material.setRange(m, material.length, inner);
+    final ok = await _ed25519.verify(
+      material,
+      signature: Signature(
+        sigBytes,
+        publicKey: SimplePublicKey(senderEdPub, type: KeyPairType.ed25519),
+      ),
+    );
+    if (!ok) {
+      throw const SignatureVerificationException('author proof invalid');
+    }
+    return (
+      senderEdPub: senderEdPub,
+      timestampMs: _decodeTs(tsBytes),
+      inner: inner,
+    );
+  }
+
   static Uint8List _encodeTs(int ms) {
     final out = Uint8List(tsLen);
     var v = ms;

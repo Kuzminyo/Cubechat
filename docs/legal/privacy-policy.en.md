@@ -423,7 +423,14 @@ the reported person's public identity key (and their Nostr public key, when
 your phone knows it) or channel-author fingerprint, and, if you reported a
 specific message, its type, time and selected text or caption (up to 4,000
 characters; a shared location or contact card goes as its one-line label, not
-its contents). A channel report also names the channel. Nothing is
+its contents). A channel report also names the channel. A report on a text
+someone sent you one-to-one also carries **their signature over it** — the
+message's routing ids, their public signing key, the time and the text as they
+signed it, which your phone already keeps beside every signed text it
+receives. The server checks it, keeps the result (the signed text, the time and
+the signing key) and discards the rest, so the moderator sees what the author
+actually wrote rather than only your quote; a ban on such a report goes on that
+signing key. Nothing is
 sent for an ordinary message you do not report. If you are offline, the report
 waits in encrypted storage on your phone for up to seven days and is signed
 again when delivery resumes.

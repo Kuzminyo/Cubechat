@@ -88,6 +88,15 @@ a restart neither re-sends a report nor replays an old button press.
   is shown; ⚠️ "Не збігається" shows both texts side by side; ⚠️ "немає" or
   "не відповів" means it could not be checked. An `author` mismatch means a
   ban would hit a key that did not write the message — dismiss it instead.
+- **Direct reports with the author's signature** (`directEvidence`). ✅
+  "Підпис автора перевірено" names the 16-hex fingerprint of the key that
+  signed the words; ⚠️ "підписав інше" shows the signed text beside the
+  quote; ⚠️ "Підпис підроблений" means the proof did not verify — dismiss.
+  The signature proves which key wrote the words, not that it is the target
+  the reporter named, so `Забанити` on a signed report bans **that
+  fingerprint only** and leaves the target and its npub alone; `/unban
+  <fingerprint>` lifts it. Apps from this change on apply it to one-to-one
+  chats too; older ones apply fingerprints only in channels and the radio.
 - **Buttons**, from the owner's chat only: `Забанити` calls the admin API's
   ban route and appends "✅ Забанено" to the message; `Відхилити` dismisses
   and appends "✖️ Відхилено". If the report was already decided (409), the

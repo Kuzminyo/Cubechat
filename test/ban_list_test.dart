@@ -227,4 +227,34 @@ void main() {
       expect(calls, before);
     });
   });
+
+  group('a ban by signing key', () {
+    // What `ban` in push/src/index.js adds for a report whose author proof
+    // verified: the signer's first 16 hex, never the identity it was filed
+    // under.
+    final signer = List<int>.generate(32, (i) => 0xa0 + (i % 16));
+    const fingerprint = 'a0a1a2a3a4a5a6a7';
+    final list = BanList(fingerprints: const {fingerprint});
+
+    test('reaches a one-to-one peer through their Ed25519 key', () {
+      expect(list.isBannedSigner(signer), isTrue);
+      expect(
+        list.isBannedPeer('11' * 32, null, signPublicKey: signer),
+        isTrue,
+      );
+    });
+
+    test('and nobody else: no key, another key, or only the identity', () {
+      expect(list.isBannedPeer('11' * 32, null), isFalse);
+      expect(
+        list.isBannedPeer(
+          '11' * 32,
+          null,
+          signPublicKey: List<int>.filled(32, 0xa0),
+        ),
+        isFalse,
+      );
+      expect(list.isBannedSigner(const [1, 2]), isFalse);
+    });
+  });
 }

@@ -373,6 +373,9 @@ class ChatScreen extends ConsumerWidget {
     final bannedPeer = ref.watch(banListProvider).isBannedPeer(
           canonicalId,
           ref.read(knownPeersControllerProvider)[canonicalId]?.nostrPubkey,
+          signPublicKey: ref
+              .read(knownPeersControllerProvider)[canonicalId]
+              ?.signPublicKey,
         );
     final messages = bannedPeer
         ? const <Message>[]

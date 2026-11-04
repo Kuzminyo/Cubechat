@@ -107,7 +107,18 @@ class Message {
     this.viewOnce = false,
     this.viewOnceConsumedAt,
     this.albumId,
+    this.signedProof,
   });
+
+  /// The sender's signature over this text, kept so it can go into a report.
+  ///
+  /// `SignedPayload.detachedProof`, base64url without padding — for a text,
+  /// a reply or the latest edit received from somebody else, when it came
+  /// signed. A report carrying it proves the quote was written by the key
+  /// that signed it rather than by the reporter, and the ban then lands on
+  /// that key (`verifyAuthorProof` in push/src/index.js). Never sent anywhere
+  /// else, and dropped by nothing: it is as private as the text beside it.
+  final String? signedProof;
 
   /// The set of photos this one was sent with, for the ones we sent ourselves.
   ///
@@ -483,6 +494,7 @@ class Message {
     Map<String, int>? pollVotes,
     DateTime? viewOnceConsumedAt,
     String? albumId,
+    String? signedProof,
     /// Every other nullable here is "leave it alone when null", which gives no
     /// way to *un*set a path. Consuming a view-once photo needs exactly that.
     bool clearImagePath = false,
@@ -526,6 +538,7 @@ class Message {
       viewOnce: viewOnce,
       viewOnceConsumedAt: viewOnceConsumedAt ?? this.viewOnceConsumedAt,
       albumId: albumId ?? this.albumId,
+      signedProof: signedProof ?? this.signedProof,
     );
   }
 }

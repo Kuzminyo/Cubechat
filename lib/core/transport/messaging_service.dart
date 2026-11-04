@@ -565,6 +565,12 @@ class MessagingService {
   /// which costs the grouping on a batch old enough to have been abandoned.
   static const int _maxPendingAlbums = 256;
 
+  /// The largest author proof kept beside a received text — ~6000 Cyrillic
+  /// characters. The push server reads at most 40 KB of a report
+  /// (`REPORT_MAX_BODY` in push/src/index.js); a proof this size plus a
+  /// 4000-character quote still fits once base64'd.
+  static const int _maxAuthorProofBytes = 12 * 1024;
+
   /// The shape of a voice note whose audio has not finished arriving.
   ///
   /// Same two-sided arrangement as [_pendingAlbums] and for the same reason:
@@ -5415,6 +5421,7 @@ class MessagingService {
     required String peerId,
     required Uint8List? senderPub,
     required Uint8List body,
+    String? signedProof,
   }) {
     final MessageEdit edit;
     try {
@@ -5426,9 +5433,19 @@ class MessagingService {
     final target = TransportEnvelope.hashHex(edit.targetMsgId);
     final messages = _ref.read(messagesControllerProvider.notifier);
     final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
-    messages.editFromPeer(canonical, target, edit.text);
+    messages.editFromPeer(
+      canonical,
+      target,
+      edit.text,
+      signedProof: signedProof,
+    );
     if (canonical != peerId) {
-      messages.editFromPeer(peerId, target, edit.text);
+      messages.editFromPeer(
+        peerId,
+        target,
+        edit.text,
+        signedProof: signedProof,
+      );
     }
   }
 
@@ -8612,8 +8629,17 @@ class MessagingService {
                     _hexOf(senderPub),
                     _ref.read(knownPeersControllerProvider)[_hexOf(senderPub)]
                         ?.nostrPubkey,
+                    signPublicKey: verifiedSenderEdPub,
                   ))) {
         DebugLog.instance.log('MESH', 'drop inbound from blocked peer');
+        return;
+      }
+      // Banned by the key that signs, whoever the frame says it is from: a
+      // ban on a proven report names only that key, and a sender we cannot
+      // place (no `senderPub`) is still signing with it.
+      if (verifiedSenderEdPub != null &&
+          _ref.read(banListProvider).isBannedSigner(verifiedSenderEdPub)) {
+        DebugLog.instance.log('MESH', 'drop inbound from banned signer');
         return;
       }
 
@@ -8693,6 +8719,23 @@ class MessagingService {
       // matters.
       final stamp = _stampFrom(signedAt ?? sentAt);
 
+      // The sender's signature, kept beside a text they wrote so a report on
+      // it can prove who wrote it (see [Message.signedProof]). Only for the
+      // three kinds a person reads as words, only when signed, and computed
+      // only for those — it is a copy of bytes already in hand, not a check.
+      String? authorProof() {
+        if (verifiedSenderEdPub == null) return null;
+        final proof = SignedPayload.detachedProof(
+          wire: sealedPlain,
+          context: ctx,
+          senderEdPub: verifiedSenderEdPub,
+        );
+        // A text is at most a few KB; anything bigger is not worth a report's
+        // weight and is left without one.
+        if (proof == null || proof.length > _maxAuthorProofBytes) return null;
+        return base64Url.encode(proof).replaceAll('=', '');
+      }
+
       switch (unpacked.type) {
         case InnerPayloadType.text:
           final plaintext = utf8.decode(
@@ -8745,6 +8788,7 @@ class MessagingService {
             wireId: TransportEnvelope.hashHex(env.msgId),
             route: incomingRoute,
             routeHops: incomingHops,
+            signedProof: authorProof(),
           );
           _appendToAllSessionsForSamePeer(senderPub,
               fallbackPeerId: peerId, message: message);
@@ -8766,6 +8810,7 @@ class MessagingService {
             replyToWireId: TransportEnvelope.hashHex(reply.targetMsgId),
             route: incomingRoute,
             routeHops: incomingHops,
+            signedProof: authorProof(),
           );
           _appendToAllSessionsForSamePeer(senderPub,
               fallbackPeerId: peerId, message: message);
@@ -8844,6 +8889,7 @@ class MessagingService {
             peerId: peerId,
             senderPub: senderPub,
             body: unpacked.body,
+            signedProof: authorProof(),
           );
 
         case InnerPayloadType.delete:
