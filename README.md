@@ -1,27 +1,28 @@
 # cubechat
 
-**Encrypted, anonymous, serverless messaging over a Bluetooth Low Energy mesh.**
-No accounts, no phone numbers, no internet required. Inspired by
-[bitchat](https://github.com/permissionlesstech/bitchat); built in Flutter with
-a glassmorphism UI.
+**Encrypted, anonymous messaging over a Bluetooth Low Energy mesh, with the
+internet as a fallback rather than a requirement.** No accounts, no phone
+numbers. Inspired by [bitchat](https://github.com/permissionlesstech/bitchat);
+built in Flutter with a glassmorphism UI.
 
 Two phones in Bluetooth range talk directly. Phones out of range are reached
-over multi-hop relay through the phones in between. Everything is end-to-end
-encrypted; the only identity is a cryptographic key you generate on first
-launch.
+over multi-hop relay through the phones in between, and when the mesh cannot
+reach someone at all, the same sealed frame goes out over Nostr relays.
+Everything private is end-to-end encrypted; the only identity is a
+cryptographic key you generate on first launch.
+
+Two phones in Bluetooth range need no server at all. The features that do use
+one — push wake-ups, calls, the media lane, @names, the public area chat — are
+listed under [What touches a server](#what-touches-a-server), with what each
+server can and cannot see.
 
 ---
 
 ## Status
 
-Feature-complete against the roadmap: the BLE mesh, the Noise-encrypted
-transport, persistent storage, group channels, media, the full messaging
-feature set, and the optional Nostr internet fallback are all implemented and
-covered by **449 passing tests** (`flutter test`, including known-answer
-vectors for the crypto).
-
-Runs on **Android** and **iOS** (real Bluetooth). Web/desktop build and run for
-UI work but have no BLE.
+Runs on **Android** and **iOS** with real Bluetooth. The **Windows** and
+**macOS** apps are linked devices: signed in from your phone, they work over
+the relays and have no BLE. Web builds for UI work only.
 
 - [x] M0 — Flutter scaffold, glass design system, EN/UK i18n, mock chat UI
 - [x] M0.5 — Smooth animation pass (aurora drift, hero avatars, bubble entrance, sliding nav)
@@ -29,6 +30,8 @@ UI work but have no BLE.
 - [x] M1.5 — Native peripheral mode (Swift + Kotlin via MethodChannel)
 - [x] M2 — Noise Protocol XX handshake + ChaCha20-Poly1305 transport
 - [x] M3 — Multi-hop mesh relay + message dedup + store-and-forward outbox
+      *(LZ4 compression intentionally dropped — it defeats the length-hiding
+      padding and is a CRIME/BREACH-class leak with encryption)*
 - [x] M4 — Local message store (Hive), key storage (flutter_secure_storage)
 - [x] M5 — Emergency wipe, IRC-style commands, image + voice transfer (signed manifests)
 - [x] M5.5 — Group channels, receipts/reactions, message edit/delete, reply/quote, block/mute peers
@@ -37,10 +40,12 @@ UI work but have no BLE.
 - [x] M7 — Rotating peer IDs + sealed announcements (Profile → Discoverable nearby)
 - [x] M7.5 — Noise IK: a stranger who dials you no longer learns your static key
 
-> The `[x]` marks above reflect what's implemented and covered by the 449-test
-> suite (`flutter test`). LZ4 payload compression (originally scoped under M3)
-> is intentionally dropped — it defeats the length-hiding padding.
->
+Shipped since, outside the milestone numbering: voice and video calls, the
+walkie-talkie, the map and public area chat, AirDrop to people nearby, linked
+desktop devices, encrypted backup and transfer, Cube ID @names, and reporting
+and moderation. The test suite (`flutter test`) includes known-answer vectors
+for the crypto.
+
 > The one thing the test suite can't prove is real radio behaviour: two-phone
 > BLE range/reconnect and a live public relay both need hardware.
 
@@ -56,25 +61,60 @@ UI work but have no BLE.
   the quote rides in the envelope
 - **Edit** your own messages (inline, Telegram-style) and **delete** them —
   *for me* (local) or *for everyone* (retracted over the wire)
-- **Voice messages** — hold to talk and release to send, or slide up to lock
-  hands-free; a locked recording gets a **trim editor** first (drag either end
+- **Voice messages** — hold the mic to talk and release to send, **slide up to
+  lock** it hands-free, **slide left to discard**; live waveform while
+  recording. A locked recording gets a **trim editor** first (drag either end
   of the waveform, preview the selection, then send). The cut is a native
   re-mux, so it is lossless and best-effort: if a device can't do it, the
   untrimmed recording is sent rather than nothing
-- **Images** and voice (chunked, with a signed manifest and SHA-256
-  reassembly check; live waveform while recording). Hold the mic to talk,
-  **slide up to lock** it hands-free, **slide left to discard**
+- **Images, files and stickers** — chunked, with a signed manifest and SHA-256
+  reassembly check; a batch of photos arrives as one album. View-once media,
+  pinned messages, and forwarding
 - **In-app gallery** — a custom multi-select photo picker (send several at once)
   and a Telegram-style swipeable full-screen viewer with pinch-zoom, save and
   share
 - **Group channels** — shared-key rooms broadcast across the mesh *and* over the
   relays, so a room works between people who are nowhere near each other
-  (`/join #room`)
-- **Channel invites** — hand a peer the channel key over their 1:1 encrypted link
-- **Favorites**, real unread tracking (badge + highlighted tile that clears when
-  you open the chat), search, and rich **MessagingStyle notifications** with the
-  sender's avatar and an inline **Reply** box (suppressed for the chat you're
-  actively reading)
+  (`/join #room`), with admins, polls and history for late joiners
+- **Channel invites** — hand a peer the channel key over their 1:1 encrypted
+  link, or as a QR code
+- **Favorites**, folders, archive, real unread tracking (badge + highlighted
+  tile that clears when you open the chat), search, and rich **MessagingStyle
+  notifications** with the sender's avatar and an inline **Reply** box
+  (suppressed for the chat you're actively reading)
+
+**Calls and the walkie-talkie**
+- **Voice and video calls** — set up inside the encrypted envelope
+  (`callSignal`), media encrypted end to end (DTLS-SRTP) and carried through our
+  TURN relay, which forwards it but cannot hear or see it. CallKit on iOS, a
+  full-screen incoming call on Android. Phone-to-phone calls without the relay
+  are opt-in, because they show each side the other's IP address
+- **Walkie-talkie** — hold to talk to a radio group or a contact; speech goes
+  out in 300 ms pieces over Bluetooth, is played as it arrives and is never
+  stored. With relays on it also travels through our relay as ephemeral
+  events, which the relay forwards and does not keep
+
+**Places**
+- **Friends map** — off until you turn it on; your position goes end-to-end
+  encrypted to the contacts on your map only, and a pin expires after six
+  minutes without an update. A location can also be sent into any chat
+- **Area chat** — public chats of your district, city and region, and notes on
+  the map. Public and unencrypted on purpose; see
+  [Area chat](#area-chat--public-and-built-so-it-does-not-leak-place) for how
+  it avoids giving away where you stand
+
+**Nearby and your own devices**
+- **AirDrop** — send files and contact cards to someone nearby, over
+  Bluetooth or the local Wi-Fi with a key made for that one transfer; hold two
+  phones together to connect them
+- **Linked devices** — sign a Windows or Mac app in from your phone; messages,
+  edits, read state and profile stay in step through the relays, encrypted to
+  your own key. A device can be signed out (and wiped) from the phone
+- **Encrypted backup** — by hand or daily to a folder you choose, under a
+  passphrase only you hold; phone-to-phone and phone-to-computer transfer go
+  over the local Wi-Fi through a one-time QR code
+- **Cube ID** — an optional short `@name` so people can find you without a QR
+  code; not an account, and "Nobody" hides your card from lookups
 
 **Trust & privacy**
 - **Out-of-band verification**: compare two fingerprints in person to confirm no
@@ -85,10 +125,14 @@ UI work but have no BLE.
   as `Anonymous <tag>` where the tag is derived from their public key
 - **Block / mute** a peer — blocked peers' messages are dropped on arrival,
   muted peers arrive silently
-- **Emergency wipe**: triple-tap the logo to erase every key, peer, and message
+- **Emergency wipe**: triple-tap the CubeChat title on the Chats tab (or type
+  `/wipe yes`) to erase every key, peer, and message
 - **Notification preview**: name and text, name only, or nothing — a banner is
   drawn on the lock screen and read by apps with notification access, which the
   app lock does not cover
+- **Reports and moderation** — report a message or a person; bans are published
+  as a signed list every app checks, and the offensive-content filter runs on
+  the phone only
 
 **Transport**
 - BLE **central + peripheral** — every phone both scans and advertises
@@ -106,6 +150,82 @@ UI work but have no BLE.
 **Commands** (IRC-style, typed into any chat)
 `/nick <name>` · `/who` · `/join #x [pw]` · `/leave` · `/channels` · `/clear` ·
 `/wipe yes` · `/help`
+
+---
+
+## What touches a server
+
+Between two phones in Bluetooth range, nothing does. Everything else is in the
+table; [`docs/legal/privacy-policy.en.md`](docs/legal/privacy-policy.en.md) is
+the full version, each claim checked against the code, and it changes with any
+change to what leaves the phone.
+
+| Server | Run by | Used for | What it sees |
+|---|---|---|---|
+| Public Nostr relays (list editable in the app) | third parties | internet fallback for messages the mesh could not deliver | ciphertext; which two Nostr keys, when, how large |
+| `relay.cubechat.tech` ([`relay/`](relay/README.md), strfry) | us | the meeting point every build listens on; the media lane (`/media`); the walkie-talkie over the internet; the public area chat (`/area`) | the same as a public relay — area chat in the clear, by design; IP addresses in memory only |
+| `push.cubechat.tech` ([`push/`](push/README.md)) | us | APNs/FCM wake-ups with a fixed banner; short-lived TURN logins and the call relay; reports; the signed ban list | npub → device token, and that an npub got mail; call IPs and durations, never audio or video; report contents |
+| `id.cubechat.tech` | us | Cube ID @names, and an optional recovery e-mail (sent through Resend) | the name and the public contact card it points at |
+| APNs / FCM | Apple / Google | delivering the wake-up | the device token, and that a push was sent |
+| Map tiles (OpenStreetMap, Esri, OpenTopoMap, Google) | third parties | the Map tab, only while it is open | your IP and which tiles you asked for |
+
+Push and the internet fallback are on by default and each is one switch away;
+Emergency Wipe turns the fallback off.
+
+---
+
+## Build & run
+
+Requires **Flutter SDK ≥ 3.27**. Platform folders (`android/`, `ios/`,
+`macos/`, `windows/`, `web/`) are checked in.
+
+```bash
+flutter pub get      # also runs gen-l10n (generate: true in pubspec)
+flutter test         # the whole suite, incl. crypto known-answer vectors
+flutter run          # pick a target below
+```
+
+| Target | Command | BLE | Notes |
+|---|---|---|---|
+| **Android device** | `flutter run -d <id>` | ✅ central + peripheral | full mesh — two phones see each other |
+| **iOS device** | `flutter run -d <id>` | ✅ central + peripheral | needs a Mac to build |
+| **Web (Chrome)** | `flutter run -d chrome` | ❌ | UI only; Peers shows "Bluetooth LE not available" |
+| **Windows desktop** | `flutter run -d windows` | ❌ | linked device over the relays; needs Visual Studio 2022 + "Desktop development with C++" |
+| **macOS desktop** | `flutter run -d macos` | ❌ | linked device over the relays |
+
+Release APKs are built by a script rather than by `flutter build apk` alone:
+the script cross-checks the version and proves the build stamp reached the
+artifact.
+
+```bash
+tool/build_apk.sh             # macOS / Linux: universal APK (--arm64, --bundle for an AAB)
+flutter build web --release   # → build/web/ (any static host)
+```
+
+> **On Windows** use `powershell -ExecutionPolicy Bypass -File
+> tool/build_apk.ps1` — plain `flutter build apk` is broken there (the plugin
+> list is written with double-escaped paths). Building for Android on Windows
+> also needs symlink support: enable Developer Mode
+> (`start ms-settings:developers`).
+
+### iOS builds
+
+iPhones get builds through TestFlight: run `.github/workflows/ios-testflight.yml`
+by hand (`gh workflow run ios-testflight.yml -f notes="…"`). The unsigned-IPA
+job that ran on every push was removed on 2026-10-31 — the repository is
+private, a macOS runner minute counts ten times against the free allowance, and
+that job alone was most of every push's minutes.
+
+### Branding
+
+The in-app logo is drawn programmatically by `CubeLogoPainter` so it scales at
+any size. Launcher/splash PNGs are generated once:
+
+```bash
+flutter run -t tool/export_logo.dart -d macos     # rasterizes the painter (any desktop target)
+dart run flutter_launcher_icons
+dart run flutter_native_splash:create
+```
 
 ---
 
@@ -252,14 +372,20 @@ signed, so a relay carries ciphertext it cannot read. Lives in
   relay, merges inbound events into one stream, de-duplicates by event id across
   relays, and reconnects with exponential backoff (replaying `since` so nothing
   is missed or re-downloaded).
-- **Signed announcement carries the address** — the peer announcement (v0x04)
-  signs each peer's `npub` alongside the signed prekey, so a relay can't swap in
-  its own Nostr address.
-- **`MessagingService` bridge** — a text or control frame the mesh couldn't
-  deliver is published to the recipient's `npub`; if no relay accepts it, it
-  still falls through to store-and-forward. Inbound relay frames re-enter the
-  *same* dispatch as a BLE notification, so they get the same dedup, replay
-  window, and signature checks.
+- **Signed announcement carries the address** — the peer announcement (since
+  v0x04; v0x05 adds the avatar hash) signs each peer's `npub` alongside the
+  signed prekey, so a relay can't swap in its own Nostr address.
+- **`MessagingService` bridge** — a frame the mesh couldn't deliver is
+  published to the recipient's `npub`; if no relay accepts it, it still falls
+  through to store-and-forward. Inbound relay frames re-enter the *same*
+  dispatch as a BLE notification, so they get the same dedup, replay window,
+  and signature checks.
+- **Lanes** — conversation, media and map traffic go to separate relay lists
+  (`relay_settings_controller.dart`), so a burst of photo chunks cannot get a
+  typed sentence throttled behind it. Conversation also always goes to our
+  meeting-point relay, so two people who edited their lists apart still hear
+  each other; the media lane starts with our own `/media` inbox, whose
+  retention outlives a transfer.
 
 **On by default since build 986, and the cost is unchanged.** A relay never sees
 plaintext, but it does learn which two Nostr keys exchanged a message and when —
@@ -285,8 +411,10 @@ private relay pool: plain Nostr events (kinds 1060 message, 1062 note, 21060
 presence) on our own `wss://relay.cubechat.tech/area` only, over a socket of
 its own (`area_relay_link.dart`) that is open only while an area screen is.
 
-The threat model is bitchat's geohash channels and the findings of
-`docs/security-review-jul-27.md` against them:
+The threat model is bitchat's geohash channels and the findings of a
+2026-07-27 security review of bitchat-android against them (H5–H8, M9–M12
+below; the table is in the spec's "Уроки bitchat" section — the review itself
+is not in this repository):
 
 - **What the relay indexes is never finer than a city.** The `g` tag and every
   subscription filter are 3–4 characters; a district (5) appears only inside
@@ -354,10 +482,10 @@ next to a Nostr pubkey, permanently, for any passive scraper — the one thing
 every other frame on this path is careful not to leak. So it goes out as
 `[0x01][SealedBox to their X25519 key]` (we have that key — it's what a card is
 for), and the tag can't be mistaken for a plaintext announcement, which always
-opens with version `0x04`. It also carries `ttl: 1`: a point-to-point
-introduction, not a broadcast, so the receiver decrementing it to zero stops it
-being flooded across their local Bluetooth neighbourhood, where nobody could
-open it anyway.
+opens with its version byte (`0x04` or `0x05`). It also carries `ttl: 1`: a
+point-to-point introduction, not a broadcast, so the receiver decrementing it to
+zero stops it being flooded across their local Bluetooth neighbourhood, where
+nobody could open it anyway.
 
 > **A card proves consistency, not provenance.** The signature says the bundle
 > is internally coherent and unmodified; it says nothing about *who handed it to
@@ -377,17 +505,30 @@ Every BLE write/notification carries one **frame**: `[type:1][payload:N]`.
 
 ```
 Frame
- ├─ noiseHandshake1/2/3   raw Noise XX messages
- ├─ peerAnnouncement       signed (pubkey, nickname, signed prekey) broadcast
- ├─ fragment               [fragId:4][index:1][count:1][slice] — link-layer split
- ├─ reset                  drop-your-session
- └─ transport              TransportEnvelope:
-        [originHash:8][destHash:8][msgId:16][ttl:1][body]
-        body = [cipherTag:1][ciphertext]
-               ciphertext → SignedPayload → InnerPayload:
-                 text · imageChunk · audioChunk · mediaManifest ·
-                 receipt · reaction · channelInvite · edit · delete
+ ├─ noiseHandshake1/2/3   0x01–0x03  raw Noise XX messages
+ ├─ noiseIk1/2            0x04–0x05  raw Noise IK messages
+ ├─ transport             0x10       TransportEnvelope:
+ │      [originHash:8][destHash:8][msgId:16][ttl:1][body]
+ │      body = [cipherTag:1][ciphertext]
+ │             cipherTag: 0x01 SealedBox · 0x02 X3DH · 0x03 channel ·
+ │                        0x04 X3DH media · 0x05 walkie-talkie
+ │             ciphertext → SignedPayload → InnerPayload (~40 types):
+ │               messages   text · textReply · edit · delete · pin · forwardedFrom
+ │               media      imageChunk · audioChunk · fileChunk · mediaManifest ·
+ │                          mediaRequest · albumHint · voiceLevels · radioChunk
+ │               state      receipt · reaction · typing · presence · avatar …
+ │               channels   channelInvite · channelPoll · channelAdmin · …
+ │               other      callSignal · nearbyOffer/Answer/Bump · ownDevice ·
+ │                          keyRotation
+ ├─ peerAnnouncement      0x20       signed (x25519, ed25519, signed prekey,
+ │                                   npub, nickname, avatar hash) broadcast
+ ├─ proBadge              0x21       reserved, unused in this build
+ ├─ fragment              0x40       [fragId:4][index:1][count:1][slice]
+ └─ reset                 0xFE       drop-your-session
 ```
+
+The full list of inner-payload tags, with what each one carries, is
+`InnerPayloadType` in `lib/core/transport/inner_payload.dart`.
 
 `destHash` all-zero = broadcast (announcements, channels). Each relay decrements
 `ttl`. Short text is padded to a 48-byte bucket to hide length from passive
@@ -495,22 +636,36 @@ GPU hot even while the app sat idle.
 lib/
 ├── main.dart · app.dart               # entry, MaterialApp.router, lifecycle
 ├── core/
-│   ├── crypto/       # Noise (XX), X3DH, SealedBox, SignedPayload, prekeys,
+│   ├── crypto/       # Noise (XX, IK), X3DH, SealedBox, SignedPayload, prekeys,
 │   │                 #   channel crypto, identity
 │   ├── transport/    # messaging service, envelope, frame, dedup, store-forward,
-│   │                 #   chat sessions, inner payloads, nostr/ (M6 signer, frame
-│   │                 #   codec, relay protocol + WebSocket relay pool)
+│   │                 #   chat sessions, inner payloads, peer ids, call signal,
+│   │                 #   radio chunks, nostr/ (signer, frame codec, relay
+│   │                 #   protocol + WebSocket relay pool)
 │   ├── ble/          # scanner, peripheral bridge, permissions, constants
+│   ├── audio/        # Opus voice codec + Ogg container, radio audio
 │   ├── storage/      # encrypted Hive boxes + AES cipher provider
 │   ├── identity/     # nickname, anon naming, emergency wipe
-│   ├── notifications/· locale/ · routing/ · theme/ · widgets/ · util(s)/
+│   ├── notifications/· locale/ · routing/ · theme/ · widgets/ · desktop/ · util(s)/
 ├── features/
-│   ├── chats/        # chat list, favorites, tiles, actions
-│   ├── chat/         # conversation screen, bubbles, input, voice, edit target
-│   ├── channels/     # channel model + controller
+│   ├── chats/        # chat list, folders, archive, requests, search
+│   ├── chat/         # conversation screen, bubbles, input, voice, commands
+│   ├── channels/     # group channels: model, admin, polls, history
+│   ├── contacts/     # contact list
 │   ├── peers/        # Nearby discovery, peripheral controller, verification
-│   └── profile/      # settings, identity, diagnostics, relay settings
-└── l10n/             # ARB files (en, uk)
+│   ├── call/         # voice calls (WebRTC over our TURN, CallKit)
+│   ├── radio/        # walkie-talkie
+│   ├── map/ · area/  # map, shared locations, public area chats and notes
+│   ├── airdrop/      # send to people nearby (bump, Wi-Fi lane)
+│   ├── files/ · stickers/ · share/ · qr/
+│   ├── cube_id/      # @names registered with the Cube ID server
+│   ├── devices/      # linking your own second device
+│   ├── backup/       # backup files, phone-to-phone and desktop transfer
+│   ├── moderation/   # reports, ban list, terms, filters
+│   ├── onboarding/
+│   ├── desktop/      # desktop rail and split view
+│   └── profile/      # settings, identity, customize, diagnostics, relays
+└── l10n/             # ARB files (19 locales)
 ```
 
 ### Peripheral mode
@@ -519,13 +674,18 @@ lib/
 `MethodChannel` bridge to native code:
 
 - **Android** — `CubechatBlePeripheralPlugin.kt` uses `BluetoothLeAdvertiser` +
-  `BluetoothGattServer` (service UUID in the primary packet, name in scan
-  response). Registered in `MainActivity.kt`.
+  `BluetoothGattServer` (service UUID in the primary packet, the rotating peer
+  id as service data in the scan response, never the device name). Registered
+  in `MainApplication.kt`.
 - **iOS** — `CubechatBlePeripheralPlugin.swift` does the same with
-  `CBPeripheralManager`, registered in `AppDelegate.swift`.
+  `CBPeripheralManager` (the rotating peer id goes in the local name),
+  registered in `AppDelegate.swift`.
 
-It starts automatically when the Peers screen opens (permissions/adapter
-permitting) and surfaces as a "Broadcasting · N centrals connected" chip.
+Discovery — scanner and peripheral together — starts at app launch on a phone
+(permissions/adapter permitting), not when the Peers screen opens: a phone that
+launched into Chats and stayed there used to hold no links at all. The scan
+cadence stays idle until someone is watching the Nearby list or a delivery is
+owed.
 
 ### Background delivery on aggressive OEMs (Xiaomi/MIUI, etc.)
 
@@ -540,58 +700,10 @@ after the peer reopens it.
 
 ---
 
-## Build & run
-
-Requires **Flutter SDK ≥ 3.27**. Platform folders (`android/`, `ios/`,
-`windows/`, `web/`) are checked in.
-
-```bash
-flutter pub get      # also runs gen-l10n (generate: true in pubspec)
-flutter test         # 449 tests, incl. crypto known-answer vectors
-flutter run          # pick a target below
-```
-
-| Target | Command | BLE | Notes |
-|---|---|---|---|
-| **Android device** | `flutter run -d <id>` | ✅ central + peripheral | full mesh — two phones see each other |
-| **iOS device** | `flutter run -d <id>` | ✅ central + peripheral | needs a Mac to build |
-| **Web (Chrome)** | `flutter run -d chrome` | ❌ | UI only; Peers shows "Bluetooth LE not available" |
-| **Windows desktop** | `flutter run -d windows` | ❌ | needs Visual Studio 2022 + "Desktop development with C++" |
-
-```bash
-flutter build apk --release   # → build/app/outputs/flutter-apk/app-release.apk
-flutter build web --release   # → build/web/ (any static host)
-```
-
-> If `flutter` isn't on your PATH, call it by full path
-> (e.g. `& "C:\Users\you\flutter\bin\flutter.bat" run`) or add `…\flutter\bin`
-> to PATH. Building for Android on Windows needs symlink support — enable
-> Developer Mode (`start ms-settings:developers`).
-
-### iOS builds
-
-iPhones get builds through TestFlight: run `.github/workflows/ios-testflight.yml`
-by hand (`gh workflow run ios-testflight.yml -f notes="…"`). The unsigned-IPA
-job that ran on every push was removed on 2026-10-31 — the repository is
-private, a macOS runner minute counts ten times against the free allowance, and
-that job alone was most of every push's minutes.
-
-### Branding
-
-The in-app logo is drawn programmatically by `CubeLogoPainter` so it scales at
-any size. Launcher/splash PNGs are generated once:
-
-```bash
-flutter run -t tool/export_logo.dart -d windows   # rasterizes the painter
-dart run flutter_launcher_icons
-dart run flutter_native_splash:create
-```
-
----
-
 ## Testing
 
-`flutter test` — **449 tests** across 40 files. Highlights:
+`flutter test` runs the whole suite (`test/`, several hundred files).
+Highlights:
 
 - `noise_ik_test`, `noise_ik_session_test` — the IK pattern: two-message
   round trip, mutual authentication, that neither static key appears on the
@@ -623,29 +735,6 @@ dart run flutter_native_splash:create
 - `dedup_cache_test`, `store_forward_cache_test`, `hive_cipher_test` — mesh +
   storage (incl. the storage-key single-flight race)
 - widget tests for the chat/nav UI
-
----
-
-## Roadmap
-
-- [x] **M0** — Flutter scaffold, glass design system, EN/UK i18n
-- [x] **M0.5** — Animation pass (aurora, hero avatars, bubble entrance, nav)
-- [x] **M1** — BLE central scanning, permissions, peer discovery
-- [x] **M1.5** — Native peripheral mode (Swift + Kotlin via MethodChannel)
-- [x] **M2** — Noise XX handshake + ChaCha20-Poly1305 transport
-- [x] **M3** — Multi-hop mesh relay + message dedup + store-and-forward
-      *(LZ4 compression intentionally dropped — it defeats the length-hiding
-      padding and is a CRIME/BREACH-class leak with encryption)*
-- [x] **M4** — Encrypted Hive store + Keystore/Keychain key storage
-- [x] **M5** — Emergency wipe, IRC commands, image + voice transfer
-- [x] **M5.5** — Channels, receipts, reactions, edit/delete, reply/quote,
-      block/mute, favorites, floating Telegram-style UI, anonymous naming
-- [x] **M6** — Nostr internet fallback: secp256k1 signer, event framing, relay
-      protocol, WebSocket relay pool, `MessagingService` bridge, and the relay
-      settings screen — on by default since 986, switchable off per device
-- [x] **M6.5** — Contact cards: share the signed announcement as text, import a
-      peer you've never met on the mesh, and introduce yourself over the relay
-      so the reply path exists — a chat that never touches Bluetooth
 
 ---
 
