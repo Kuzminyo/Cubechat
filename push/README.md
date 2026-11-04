@@ -34,8 +34,11 @@ columns wide: `npub → token`.
 That a given npub received something, and when. Nostr events carry the sender's
 pubkey, so it also learns who wrote to whom. The relay already sees all of that
 — this is a *second* observer of the same metadata, and that is the real cost of
-having notifications at all. It is the reason this is opt-in on the phone rather
-than on by default.
+having notifications at all. It was the reason this shipped opt-in on the phone.
+Since September 2026 it is on by default, for the same reason the relay fallback
+is: a messenger whose notifications only work while it is already open was
+reported as broken, not as private. The switch is still one tap away, and
+turning it off deletes the phone's entry here.
 
 ## What it cannot do
 

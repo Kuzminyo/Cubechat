@@ -152,7 +152,9 @@ class CommandProcessor {
     // Require '/wipe yes' to guard against typos.
     if (args.toLowerCase() != 'yes') {
       return CommandResult.fail(
-          'Type "/wipe yes" to confirm Emergency Wipe (or use triple-tap on the cube)');
+        'Type "/wipe yes" to confirm Emergency Wipe '
+        '(or triple-tap the CubeChat title on the Chats tab)',
+      );
     }
     await emergencyWipe(_ref);
     return CommandResult.ok('Everything wiped');

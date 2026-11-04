@@ -1516,8 +1516,8 @@ class MessagingService {
   /// is the one thing every other frame on this path is careful not to leak, so
   /// the introduction is wrapped in a [SealedBox] to the recipient's X25519 key
   /// (which we have — it's what a contact card is for) and tagged
-  /// [_announcementSealed]. Plaintext announcements always start with the
-  /// version byte 0x04, so the tag can never be mistaken for one.
+  /// [_announcementSealed]. Plaintext announcements always start with their
+  /// version byte (0x04 or 0x05), so the tag can never be mistaken for one.
   ///
   /// Sent with `ttl: 1` — unlike a mesh announcement this is a point-to-point
   /// introduction, and the receiver decrementing 1 to 0 stops it from being

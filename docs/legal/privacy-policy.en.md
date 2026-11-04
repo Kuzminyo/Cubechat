@@ -1,6 +1,6 @@
 # Cubechat Privacy Policy
 
-**Last updated: 3 November 2026**
+**Last updated: 4 November 2026**
 
 Cubechat is a peer-to-peer messenger. Messages travel directly between phones
 over Bluetooth Low Energy, and optionally through public relays that carry them
@@ -103,13 +103,21 @@ Bluetooth range simply does not arrive until you are near each other again. You
 can turn it off at any time in Profile → Internet fallback, and **Emergency
 Wipe** switches it off too.
 
-The relays are operated by unrelated third parties, not by us. The default list
-is editable in the app.
+The relays on the editable list are operated by unrelated third parties, not
+by us.
 
-**One relay is ours and carries no private messages:**
-`relay.cubechat.tech/area`, the public **area chat** (section 6a). It is built
-into the app, cannot be changed, and is used only while an area chat screen is
-open. Nothing private is ever sent to it.
+**One relay is ours, and it carries the same sealed frames:**
+`relay.cubechat.tech`. Every copy of the app also sends its messages there, so
+that two people whose relay lists have nothing in common still reach each
+other, and photos, voice messages and files go first to its `/media` inbox,
+which keeps them long enough for a transfer to finish. It sees exactly what a
+public relay sees — which two Nostr public keys exchanged a frame, when, and
+how large it was — and cannot read any of it. Its address is built into the
+app; switching Internet fallback off stops everything that would go to it.
+
+The public **area chat** (section 6a) uses `relay.cubechat.tech/area`, a
+separate part of the same relay that carries nothing private, and only while
+an area chat screen is open.
 
 ### 4.3 Group rooms
 
@@ -140,8 +148,9 @@ already know it.
 ## 5. The push notification service
 
 To wake a phone whose app is fully closed, Cubechat runs one small service at
-`push.cubechat.tech`. This is the only server we operate; the same machine also
-relays voice and video calls, described in section 5.1.
+`push.cubechat.tech`. It runs on our one machine, which also relays voice and
+video calls (section 5.1) and serves our Nostr relay (section 4.2) and the
+@name service (section 7b).
 
 **It is on by default, and you can switch it off.** It never sees message
 content.
