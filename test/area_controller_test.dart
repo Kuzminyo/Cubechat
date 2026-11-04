@@ -280,7 +280,13 @@ void main() {
     final c = await start();
     final stranger = await areaTestSigner(6);
     final real = await areaSignedMessage(stranger, now: DateTime.now());
-    deliver!(real.copyWith(sig: real.sig!.replaceRange(0, 2, '00')));
+    // Flip the first hex digit rather than overwrite it with a fixed value:
+    // writing '00' left the signature untouched whenever it already began
+    // with 00 — one run in 256 — and the "forgery" was the real event, which
+    // rightly got in. That failed CI on 1569151d (2026-11-04).
+    final sig = real.sig!;
+    final forged = sig.replaceRange(0, 1, sig[0] == '0' ? '1' : '0');
+    deliver!(real.copyWith(sig: forged));
     await settle();
     await Future<void>.delayed(const Duration(milliseconds: 100));
     expect(c.room(const AreaRoomId.own(AreaLevel.city)).posts, isEmpty);
