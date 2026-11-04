@@ -27,7 +27,7 @@ import WebSocket from 'ws';
 const FRAME_KIND = 1059;
 /// What `/health` reports, so a deployment can be identified rather than
 /// assumed. Bump it in the same commit as any change to this file.
-const VERSION = '2026-11-03-languages';
+const VERSION = '2026-11-04-area-evidence';
 
 const RECIPIENT_TAG = 'p';
 
@@ -1298,6 +1298,7 @@ export const server = createServer(async (request, response) => {
     const result = await handleReport(event, {
       limiter: reportLimiter, store: reportStore, notify: logReport,
       ip: clientIpOf(request), ipLimiter: reportIpLimiter, areaIpLimiter: areaReportIpLimiter,
+      fetchAreaEvent,
     });
     response.setHeader('cache-control', 'no-store');
     return json(response, result.status, result.body);
@@ -1582,6 +1583,148 @@ export function parseReportPayload(content) {
     ...(eventId !== undefined ? { eventId: eventId.toLowerCase() } : {}),
     ...(geohash !== undefined ? { geohash } : {}),
     ...(parsedMessage !== undefined ? { message: parsedMessage } : {}),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Checking an area report against the relay (2026-11-04)
+// ---------------------------------------------------------------------------
+
+// A report's `message.text` is whatever the reporter's phone put there: the
+// report is signed by the reporter, not by the person reported, so a modified
+// client could name anybody's key and quote anything. For the area chat that
+// is checkable, because the message is a signed event on our own relay: fetch
+// it by the reported id while it still exists (24 h for a message, 7 days for
+// a note) and keep the relay's copy beside the claim. The bot then shows what
+// the author actually published rather than what the reporter says they did.
+//
+// Fetched when the report arrives, not when the moderator reads it: by then
+// the event may have expired, and a report checked against nothing is the
+// thing this is here to stop.
+const AREA_RELAY_URL = process.env.AREA_RELAY_URL || 'ws://127.0.0.1:8083';
+// The relay is on the same droplet and answers in milliseconds. The app waits
+// 20 s for `/report`; this keeps a dead relay from costing it more than 3.
+const AREA_FETCH_TIMEOUT_MS = 3000;
+// Message and note — `KINDS` in relay/area-policy.mjs. Presence and deletions
+// have no text and are never reportable.
+const AREA_REPORTABLE_KINDS = [1060, 1062];
+
+/// The reported event from the area relay: `{event}`, `{missing: true}` when
+/// the relay holds no such event (expired, deleted by a ban, or never there),
+/// or `{unavailable: true}` when it could not be asked. Never rejects.
+export function fetchAreaEvent(eventId, { url = AREA_RELAY_URL, timeoutMs = AREA_FETCH_TIMEOUT_MS } = {}) {
+  return new Promise((resolve) => {
+    const subscription = `report-${randomBytes(4).toString('hex')}`;
+    let socket = null;
+    let done = false;
+    let timer = null;
+    const finish = (result) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      try {
+        socket?.terminate();
+      } catch {
+        // Already closed.
+      }
+      resolve(result);
+    };
+    timer = setTimeout(() => finish({ unavailable: true }), timeoutMs);
+    try {
+      socket = new WebSocket(url);
+    } catch {
+      finish({ unavailable: true });
+      return;
+    }
+    socket.on('open', () => {
+      socket.send(JSON.stringify(['REQ', subscription, { ids: [eventId], kinds: AREA_REPORTABLE_KINDS, limit: 1 }]));
+    });
+    socket.on('message', (data) => {
+      let frame;
+      try {
+        frame = JSON.parse(data.toString());
+      } catch {
+        return;
+      }
+      if (!Array.isArray(frame) || frame[1] !== subscription) return;
+      if (frame[0] === 'EVENT' && frame[2]?.id === eventId) finish({ event: frame[2] });
+      else if (frame[0] === 'EOSE') finish({ missing: true });
+      else if (frame[0] === 'CLOSED') finish({ unavailable: true });
+    });
+    socket.on('error', () => finish({ unavailable: true }));
+    socket.on('close', () => finish({ unavailable: true }));
+  });
+}
+
+/// `cleanAreaText` in lib/features/area/domain/area_event.dart: control
+/// characters (bar newline and tab) and lone surrogates out, trimmed. The
+/// phone shows — and so reports — the cleaned text, so the relay's copy is
+/// cleaned the same way before the two are compared.
+export function cleanAreaText(input) {
+  let out = '';
+  for (let i = 0; i < input.length; i++) {
+    const c = input.charCodeAt(i);
+    if (c >= 0xd800 && c <= 0xdbff) {
+      const next = input.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        out += input[i] + input[i + 1];
+        i++;
+      }
+      continue;
+    }
+    if (c >= 0xdc00 && c <= 0xdfff) continue;
+    if (c < 0x20 && c !== 0x0a && c !== 0x09) continue;
+    if (c === 0x7f) continue;
+    out += input[i];
+  }
+  return out.trim();
+}
+
+/// What the relay's answer says about an area report, stored on it as
+/// `evidence`:
+///
+/// - `verified` — the event exists, is signed by the reported key, sits in
+///   the reported place, and says what the reporter quoted.
+/// - `mismatch` — the event exists but `mismatches` lists what differs:
+///   `author` (somebody else wrote it — a ban would hit the wrong key),
+///   `place`, or `text`.
+/// - `missing` — the relay has no such event, or answered with something that
+///   is not it. Expired, already removed, or made up: the quote is unproven.
+/// - `unavailable` — the relay could not be asked.
+///
+/// `text` is the relay's copy (cleaned, capped like a reported one) whenever
+/// there was a genuine event to take it from.
+export function areaEvidence(payload, fetched, nowSeconds) {
+  const checkedAt = nowSeconds;
+  if (!fetched || fetched.unavailable) return { status: 'unavailable', checkedAt };
+  const event = fetched.event;
+  if (!event || !verifyEvent(event) || event.id !== payload.eventId ||
+      !AREA_REPORTABLE_KINDS.includes(event.kind)) {
+    return { status: 'missing', checkedAt };
+  }
+
+  let text = null;
+  try {
+    const content = JSON.parse(event.content);
+    if (content && typeof content.text === 'string') text = cleanAreaText(content.text).slice(0, 4000);
+  } catch {
+    // Not the app's content shape; `text` stays null and so cannot match.
+  }
+  const g = event.tags.find((tag) => Array.isArray(tag) && tag[0] === 'g')?.[1];
+
+  const mismatches = [];
+  if (event.pubkey !== payload.target.toLowerCase()) mismatches.push('author');
+  if (typeof g !== 'string' || g.toLowerCase() !== payload.geohash.toLowerCase()) mismatches.push('place');
+  const claimed = payload.message?.text;
+  if (claimed !== undefined && cleanAreaText(claimed) !== text) mismatches.push('text');
+
+  return {
+    status: mismatches.length ? 'mismatch' : 'verified',
+    checkedAt,
+    kind: event.kind,
+    createdAt: event.created_at,
+    ...(text !== null ? { text } : {}),
+    ...(mismatches.length ? { mismatches } : {}),
   };
 }
 
@@ -1880,6 +2023,9 @@ export async function handleReport(event, {
   areaIpLimiter = null,
   areaPowBits = AREA_REPORT_POW_BITS,
   maxOpen = MAX_OPEN_REPORTS,
+  // `fetchAreaEvent` in production (the HTTP route passes it); left out, an
+  // area report is stored without `evidence`, so tests never reach a relay.
+  fetchAreaEvent: fetchArea = null,
 } = {}) {
   if (!verifyEvent(event) || event.kind !== REPORT_KIND ||
       !event.tags.some((tag) => Array.isArray(tag) && tag[0] === 'action' && tag[1] === 'report')) {
@@ -1915,10 +2061,27 @@ export async function handleReport(event, {
   }
   // Open reports are never purged (only decided ones are, after 90 days), so
   // without a ceiling the file grows for as long as nobody decides. 4.5 KB at
-  // most each; the ceiling is ~25 MB.
+  // most each (an area report's relay copy adds at most 500 chars more); the
+  // ceiling is ~25 MB.
   if (typeof store.open === 'function' && (await store.open()).length >= maxOpen) {
     log('report', `queue full (${maxOpen} open) — refusing`);
     return { status: 503, body: { ok: false, reason: 'full' } };
+  }
+
+  // After every limit, so a refused report never costs the relay a query.
+  let evidence;
+  if (payload.context === 'area' && fetchArea) {
+    let fetched;
+    try {
+      fetched = await fetchArea(payload.eventId);
+    } catch {
+      fetched = { unavailable: true };
+    }
+    evidence = areaEvidence(payload, fetched, nowSeconds);
+    if (evidence.status !== 'verified') {
+      log('report', `area report on ${short(payload.eventId)}: ${evidence.status}` +
+        (evidence.mismatches ? ` (${evidence.mismatches.join(', ')})` : ''));
+    }
   }
 
   const report = {
@@ -1927,6 +2090,7 @@ export async function handleReport(event, {
     reporter: event.pubkey,
     status: 'open',
     ...payload,
+    ...(evidence ? { evidence } : {}),
   };
   const stored = await store.append(report);
   // The report is already durable at this point; a notifier that throws or

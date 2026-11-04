@@ -80,6 +80,14 @@ a restart neither re-sends a report nor replays an old button press.
   the full key), and up to a 1000-character excerpt — with "Забанити" and
   "Відхилити" buttons. `seq` only advances after Telegram confirms the send,
   so an outage re-sends later instead of losing a report.
+- **How far the excerpt can be believed.** A report is signed by the
+  reporter, so its quote is their word and the bot labels it "зі слів
+  скаржника, не перевірено". An area report is the exception: push/ fetches
+  the event from the area relay when the report arrives (`evidence`, see
+  `areaEvidence`). ✅ means author, place and text match and the relay's text
+  is shown; ⚠️ "Не збігається" shows both texts side by side; ⚠️ "немає" or
+  "не відповів" means it could not be checked. An `author` mismatch means a
+  ban would hit a key that did not write the message — dismiss it instead.
 - **Buttons**, from the owner's chat only: `Забанити` calls the admin API's
   ban route and appends "✅ Забанено" to the message; `Відхилити` dismisses
   and appends "✖️ Відхилено". If the report was already decided (409), the

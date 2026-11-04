@@ -47,6 +47,13 @@ CONTEXT_LABELS = {
 
 REPORT_EXCERPT_MAX_CHARS = 1000
 
+# `evidence.mismatches` on an area report — areaEvidence in push/src/index.js.
+MISMATCH_LABELS = {
+    "author": "автор",
+    "place": "місце",
+    "text": "текст",
+}
+
 # Telegram refuses a message over 4096 characters outright; both caps stay
 # safely under that so `/reports` never becomes the poison update that wedges
 # the bot on itself (review round 1).
@@ -270,11 +277,54 @@ def report_text(report: dict) -> str:
     note = report.get("note")
     if note:
         lines.append(f"Нотатка: {note}")
-    message = report.get("message")
-    if isinstance(message, dict) and message.get("text"):
-        lines.append(f"Повідомлення: {message['text']}")
+    lines.extend(_message_lines(report))
     text = "\n".join(lines)
     return text[:REPORT_EXCERPT_MAX_CHARS]
+
+
+def _message_lines(report: dict) -> list[str]:
+    """The reported message, and how far it can be believed.
+
+    A report's `message.text` is what the reporter's phone sent: the report is
+    signed by the reporter, so a modified app could quote anything. Only an
+    area report can be checked — push/ fetches the event from our own relay
+    when the report arrives (`evidence`, see areaEvidence) — and only there
+    does the bot show the author's own words. Everywhere else the quote is
+    labelled as the reporter's. The verdict comes before the text so the
+    1000-char cut can never take it off.
+    """
+    message = report.get("message")
+    claimed = message.get("text") if isinstance(message, dict) else None
+    evidence = report.get("evidence")
+    if report.get("context") != "area" or not isinstance(evidence, dict):
+        if not claimed:
+            return []
+        return [f"Повідомлення (зі слів скаржника, не перевірено): {claimed}"]
+
+    status = evidence.get("status")
+    relay_text = evidence.get("text")
+    if status == "verified":
+        return [
+            "✅ Перевірено на relay: автор, місце і текст збігаються",
+            f"Повідомлення: {relay_text}",
+        ]
+    if status == "mismatch":
+        what = ", ".join(MISMATCH_LABELS.get(m, str(m)) for m in evidence.get("mismatches") or [])
+        lines = [f"⚠️ Не збігається з relay: {what}"]
+        if "author" in (evidence.get("mismatches") or []):
+            lines.append("Подію написав інший ключ — бан зачепить не того, хто її написав.")
+        if claimed:
+            lines.append(f"Скаржник пише: {claimed}")
+        if relay_text:
+            lines.append(f"Насправді на relay: {relay_text}")
+        return lines
+    if status == "missing":
+        lines = ["⚠️ На relay такої події немає (прострочена, вже видалена або вигадана)"]
+    else:
+        lines = ["⚠️ Relay не відповів — не перевірено"]
+    if claimed:
+        lines.append(f"Повідомлення (зі слів скаржника, не перевірено): {claimed}")
+    return lines
 
 
 class BotState:

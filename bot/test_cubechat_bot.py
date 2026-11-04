@@ -142,6 +142,45 @@ class ReportTextTests(unittest.TestCase):
         self.assertIn("efefefef", text)
         self.assertNotIn("ef" * 32, text)
 
+    def test_unchecked_quote_is_labelled_as_the_reporters(self):
+        report = make_report(message={"text": "hello there", "kind": "text"})
+        self.assertIn("зі слів скаржника, не перевірено", report_text(report))
+
+    def _area(self, evidence, claimed="мова ворожнечі"):
+        return make_report(
+            context="area", geohash="u8vx", eventId="ef" * 32,
+            message={"text": claimed, "kind": "text"}, evidence=evidence,
+        )
+
+    def test_verified_area_report_shows_the_relay_text(self):
+        text = report_text(self._area({"status": "verified", "text": "з relay"}))
+        self.assertIn("✅", text)
+        self.assertIn("Повідомлення: з relay", text)
+        self.assertNotIn("не перевірено", text)
+
+    def test_mismatched_area_report_shows_both_and_warns_about_the_author(self):
+        text = report_text(self._area(
+            {"status": "mismatch", "mismatches": ["author", "text"], "text": "привіт усім"},
+        ))
+        self.assertIn("Не збігається з relay: автор, текст", text)
+        self.assertIn("бан зачепить не того", text)
+        self.assertIn("Скаржник пише: мова ворожнечі", text)
+        self.assertIn("Насправді на relay: привіт усім", text)
+
+    def test_missing_and_unavailable_say_the_quote_is_unchecked(self):
+        missing = report_text(self._area({"status": "missing"}))
+        self.assertIn("такої події немає", missing)
+        self.assertIn("не перевірено): мова ворожнечі", missing)
+        down = report_text(self._area({"status": "unavailable"}))
+        self.assertIn("Relay не відповів", down)
+
+    def test_verdict_survives_the_1000_char_cut(self):
+        text = report_text(self._area(
+            {"status": "mismatch", "mismatches": ["text"], "text": "y" * 600}, claimed="x" * 600,
+        ))
+        self.assertLessEqual(len(text), 1000)
+        self.assertIn("Не збігається з relay", text)
+
 
 class RedactUrlTests(unittest.TestCase):
     def test_strips_bot_token_from_url(self):

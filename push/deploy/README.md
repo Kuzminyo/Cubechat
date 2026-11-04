@@ -268,6 +268,13 @@ base64) and `APP_PUBLIC_KEY_HEX=…` (the matching public key, raw 32 bytes,
 hex — this is what goes into the app as `banListPublicKeyHex`, not onto this
 server). Only the first line belongs here.
 
+An area report is checked against the area relay when it arrives: the server
+opens `ws://127.0.0.1:8083` (the area strfry, relay/README.md) and asks for the
+reported event by id, giving up after 3 s. Set `AREA_RELAY_URL` only if that
+strfry moves. If it is down, reports are still accepted and the bot marks them
+"Relay не відповів"; `journalctl -u cubechat-push | grep 'area report'` shows
+every report that did not verify.
+
 `ADMIN_TOKEN` is a random 32-byte hex the bot authenticates `/admin/*` with —
 nothing but that same droplet can ever reach the route at all (see the
 comment above `handleAdmin` in `src/index.js`), so this is defence in depth,

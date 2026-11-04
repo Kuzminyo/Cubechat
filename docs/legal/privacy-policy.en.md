@@ -451,7 +451,11 @@ account key: each is signed with a key made for that one report, so the report
 service does not learn which account was reading which city. Such a report
 carries the reason and optional note, the author's temporary area key, the
 message's event id and text, and the city or region it was published under.
-Its address is limited to ten reports an hour. A decision to ban removes the
+Its address is limited to ten reports an hour. When the report arrives, the
+server reads that event from our own area relay and keeps its text, time and
+whether it matches the report beside it (never the author's chosen name), so
+the moderator sees what was actually published rather than only the quote; it
+is deleted with the report. A decision to ban removes the
 message from our area relay and refuses that temporary key; it is published,
 signed, at `push.cubechat.tech/banned/area` (event ids and temporary keys of
 the last 24 hours only), which the app fetches when the area chat opens and

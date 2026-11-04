@@ -89,7 +89,9 @@ Declare these types:
 
 A private Telegram bot forwards the report reason, note, up to 1000
 characters of an excerpt, and shortened reporter and target identifiers to
-the developer's Telegram account. Declare this transfer as sharing; do not
+the developer's Telegram account — for an area report, the text our own area
+relay holds for the reported event, read when the report arrives, in place of
+or beside the reporter's quote. Declare this transfer as sharing; do not
 treat Telegram as if it were our own server. Push delivery through FCM is
 separate from that report flow.
 
