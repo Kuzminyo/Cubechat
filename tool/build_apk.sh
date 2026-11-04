@@ -187,6 +187,12 @@ args+=(--release)
 if [ "$arm64_only" -eq 1 ]; then
   args+=(--target-platform android-arm64 --android-project-arg cubechat.arm64Only=true)
 fi
+# An AAB is for Google Play, which allows REQUEST_INSTALL_PACKAGES to app
+# stores only: the manifest drops it (build.gradle.kts) and the app hides the
+# self-update row that needs it (SelfUpdate.playStoreBuild).
+if [ "$bundle" -eq 1 ]; then
+  args+=(--android-project-arg cubechat.playStore=true --dart-define=CUBECHAT_PLAY=true)
+fi
 
 step "flutter ${args[*]}"
 started=$(date +%s)

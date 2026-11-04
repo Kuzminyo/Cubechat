@@ -29,6 +29,14 @@ enum SelfUpdateOutcome {
 class SelfUpdate {
   const SelfUpdate._();
 
+  /// A build for Google Play (`tool/build_apk.sh --bundle`). Play allows
+  /// `REQUEST_INSTALL_PACKAGES` to app stores only, so that build drops the
+  /// permission and the row that needs it: Play updates the app itself.
+  static const bool playStoreBuild = bool.fromEnvironment('CUBECHAT_PLAY');
+
+  /// Whether "Install an update from a file" is offered on this build.
+  static bool get offered => !playStoreBuild;
+
   static const _channel = MethodChannel('cubechat/self_update');
 
   /// The installer's message for the last failure, if any.

@@ -157,6 +157,14 @@ android {
             }
         }
     }
+
+    // A build for Google Play (tool/build_apk.sh --bundle) merges one more
+    // manifest that takes REQUEST_INSTALL_PACKAGES back out: Play allows it to
+    // app stores only, and rejects an upload that asks for it. The sideloaded
+    // APK keeps it for "Install an update from a file" (SelfUpdater.kt).
+    if (project.findProperty("cubechat.playStore") == "true") {
+        sourceSets.getByName("release").manifest.srcFile("src/play/AndroidManifest.xml")
+    }
 }
 
 flutter {

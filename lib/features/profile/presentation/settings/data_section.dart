@@ -24,8 +24,9 @@ class DataSectionScreen extends ConsumerWidget {
             else if (!PlatformInfo.isWeb)
               _inset(const ImportFromPhoneRow(), vertical: 0),
             // An update installed from here keeps lock-screen calls on. See
-            // [SelfUpdate].
-            if (PlatformInfo.isAndroid) _inset(const _InstallUpdateRow()),
+            // [SelfUpdate]. Not on a Play build, which Play updates itself.
+            if (PlatformInfo.isAndroid && SelfUpdate.offered)
+              _inset(const _InstallUpdateRow()),
           ],
         ),
       ],
