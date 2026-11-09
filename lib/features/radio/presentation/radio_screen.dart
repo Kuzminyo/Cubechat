@@ -572,9 +572,9 @@ class _TalkPanel extends StatelessWidget {
     final active = state.active;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-      child: GlassCard(
-        strong: true,
-        borderRadius: 28,
+      // Straight on the background: the glass pane this sat on read as a
+      // backing plate under the button ("просто сделай кнопки", 2026-11-09).
+      child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,

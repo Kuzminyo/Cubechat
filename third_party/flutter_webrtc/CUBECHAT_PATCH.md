@@ -50,9 +50,18 @@ version iOS uses, fetched by CocoaPods — nothing prebuilt is committed.
 ships the two identical, and the private `buttonPressed:` call is in both.
 `pubspec.yaml` declares `macos` again.
 
+## No waiting for the camera on the main thread (2026-11-09)
+
+Android's `GetUserMediaImpl.getUserVideo` called
+`cameraEventsHandler.waitForCameraOpen()`, a `Thread.sleep(1)` loop until the
+first camera frame, on the main thread that Flutter's UI also runs on. Every
+camera start froze the app for 328-569 ms (`[STALL]`, three calls of three).
+The call is gone. Its result was never used, and a camera that fails still
+reports through the handler it already has.
+
 ## Upgrading
 
-Take the new version from the pub cache, reapply all four changes (including
+Take the new version from the pub cache, reapply all five changes (including
 the Windows and macOS trees above, from the new version), and check:
 
 ```bash

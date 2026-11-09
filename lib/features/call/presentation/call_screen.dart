@@ -775,23 +775,16 @@ class _CallScreenState extends ConsumerState<CallScreen> {
             Positioned.fill(
               child: _VideoSurface(stream: big, mirror: mirrorBig),
             ),
-            // Two short shades rather than one over the whole picture: the
-            // name at the top and the labels at the bottom stay readable on
-            // a white wall behind somebody, and the face in the middle is
-            // left as it came.
+            // Only at the top, for the name on a white wall behind somebody.
+            // There was a matching one under the buttons, and it read as a
+            // backing plate ("просто сделай кнопки", 2026-11-09); their labels
+            // carry their own shadow now.
             const Positioned(
               top: 0,
               left: 0,
               right: 0,
               height: 150,
               child: _Shade(fromTop: true),
-            ),
-            const Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              height: 200,
-              child: _Shade(fromTop: false),
             ),
           ],
           SafeArea(
@@ -1356,6 +1349,9 @@ class _ControlButtonState extends State<_ControlButton> {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: widget.overVideo ? Colors.white : AppColors.textPrimary,
+              shadows: widget.overVideo
+                  ? const [Shadow(color: Color(0xB3000000), blurRadius: 6)]
+                  : null,
             ),
           ),
         ),
@@ -1525,7 +1521,7 @@ class _Notice extends StatelessWidget {
       );
 }
 
-/// A short fade to black at one edge of the picture.
+/// A short fade to black at the top of the picture.
 class _Shade extends StatelessWidget {
   const _Shade({required this.fromTop});
 

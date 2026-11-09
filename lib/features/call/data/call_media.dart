@@ -208,7 +208,22 @@ class WebRtcCallMedia implements CallMedia {
   Future<void>? _cameraWork;
   Timer? _videoTimer;
   Future<void>? _videoWork;
+
+  /// The last loss and round trip the other side reported. Feedback lands
+  /// less often than the poll, so a line about this poll alone said "unknown"
+  /// without telling whether any had ever come (all seven lines of the
+  /// 2026-11-09 log).
+  double? _lastLoss;
+  double? _lastRtt;
   num? _framesSeen;
+
+  /// Seconds without a new frame before their picture counts as gone. It was
+  /// 2, and going means their face replaced by the avatar and the renderer
+  /// thrown away: a 20-second call on 2026-11-09 flipped three times, each
+  /// flip with a black start after it. A last frame held still is what every
+  /// video call shows for a hiccup; a camera really turned off only takes
+  /// three seconds longer to say so.
+  static const int _picturePatience = 5;
   int _stillPolls = 0;
   bool _remoteLive = false;
   /// The ladder step ([CallNetworkQuality.bitrate]) the picture's sender was
@@ -545,6 +560,8 @@ class WebRtcCallMedia implements CallMedia {
       // RTCP often arrives less frequently than getStats is polled. Count
       // actual feedback, not polling gaps, toward sustained recovery.
       if (freshReport) _quality.sample(loss: loss, rtt: rtt);
+      _lastLoss = loss ?? _lastLoss;
+      _lastRtt = rtt ?? _lastRtt;
       final target = _quality.bitrate;
       final changed = _appliedBitrate != target;
       if (changed) {
@@ -576,8 +593,9 @@ class WebRtcCallMedia implements CallMedia {
       // addresses or captured speech; just the measurements needed to debug.
       if (++_qualityTicks % 5 == 0 || changed && _appliedBitrate == target) {
         _log('audio quality: cap ${_appliedBitrate ?? 0} bps, '
-            'loss ${loss == null ? "unknown" : (loss * 100).toStringAsFixed(1)}%, '
-            'rtt ${rtt == null ? "unknown" : (rtt * 1000).round()} ms');
+            'loss ${_lastLoss == null ? "unknown" : (_lastLoss! * 100).toStringAsFixed(1)}%, '
+            'rtt ${_lastRtt == null ? "unknown" : (_lastRtt! * 1000).round()} ms'
+            '${freshReport ? '' : ' (no new report)'}');
       }
       _qualityErrorLogged = false;
     } catch (e) {
@@ -712,8 +730,8 @@ class WebRtcCallMedia implements CallMedia {
   /// there need not be: a sender whose track is gone sends nothing, and a
   /// count of decoded frames that stops moving says so. The same count also
   /// catches an iPhone whose app went to the background, where iOS stops the
-  /// camera, and a link that froze. Two still seconds before it counts as
-  /// stopped, so one late packet does not blink their face away.
+  /// camera, and a link that froze. [_picturePatience] still seconds before
+  /// it counts as stopped.
   void _startVideoMonitor() {
     if (_videoTransceiver == null || _videoTimer != null || _closed) return;
     void poll() {
@@ -734,12 +752,14 @@ class WebRtcCallMedia implements CallMedia {
       final reports = await peer.getStats().timeout(const Duration(seconds: 2));
       if (_closed) return;
       num? frames;
+      Map<dynamic, dynamic>? inbound;
       for (final report in reports) {
         final values = report.values;
         if (report.type != 'inbound-rtp' ||
             (values['kind'] ?? values['mediaType']) != 'video') {
           continue;
         }
+        inbound = values;
         final decoded = values['framesDecoded'];
         if (decoded is num) frames = (frames ?? 0) + decoded;
       }
@@ -750,10 +770,21 @@ class WebRtcCallMedia implements CallMedia {
       } else {
         _stillPolls++;
       }
-      final live = moved || (_remoteLive && _stillPolls < 2);
+      final live = moved || (_remoteLive && _stillPolls < _picturePatience);
       if (live != _remoteLive) {
         _remoteLive = live;
-        _log('their picture ${live ? 'started' : 'stopped'}');
+        // Counters only, so the next report of a freeze says whether it was
+        // the network (lost, nack) or the decoder (dropped, decoder).
+        final why = !live && inbound != null
+            ? ' (received ${inbound['framesReceived']}, '
+                'dropped ${inbound['framesDropped']}, '
+                'lost ${inbound['packetsLost']}, '
+                'nack ${inbound['nackCount']}, '
+                'pli ${inbound['pliCount']}, '
+                'freezes ${inbound['freezeCount']}, '
+                'decoder ${inbound['decoderImplementation']})'
+            : '';
+        _log('their picture ${live ? 'started' : 'stopped'}$why');
         _emit(CallMediaEvent.video);
       }
       if (_videoCappedFor != _quality.bitrate) await _capVideo(peer);

@@ -29,7 +29,7 @@ video call" is the SDP session name `s=cubechat-video` (`markStartsWithCamera` /
 side can show a picture is `sdpCarriesVideo` on its SDP: an old build offers no
 video line and answers ours `recvonly`, and then there is no camera button. Both
 sides `setStreams([audio stream])` so the remote track has a stream to render.
-"Their camera is off" is `framesDecoded` standing still for two seconds. A camera
+"Their camera is off" is `framesDecoded` standing still for five seconds. A camera
 that will not open never ends a call. The encoder is capped at
 `WebRtcCallMedia.videoMaxBitrate` (800 kbit/s, under coturn's `max-bps=128000`
 bytes/s per session in `push/tool/configure_turn.py`) because every byte crosses our TURN

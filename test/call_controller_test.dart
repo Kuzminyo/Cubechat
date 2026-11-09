@@ -1042,6 +1042,65 @@ void main() {
       expect(media.speaker, isEmpty);
       call.hangUp();
     });
+    test('a redial on a call that lost its media rings instead of busy',
+        () async {
+      await call.dial('peer');
+      final first = dialledId();
+      receive(CallSignal.accept(callId: first, sdp: 'answer'));
+      await Future<void>.delayed(Duration.zero);
+      expect(call.phase, CallPhase.talking);
+      media.controller.add(CallMediaEvent.disconnected);
+      await Future<void>.delayed(Duration.zero);
+      sent.clear();
+
+      receive(inviteFor(id(40)));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(call.phase, CallPhase.incoming);
+      expect(call.error, isNull, reason: 'the new call is not a failed one');
+      final kinds = sent.map((s) => s.kind).toList();
+      expect(kinds, isNot(contains(CallSignalKind.busy)));
+      expect(kinds, contains(CallSignalKind.ringing));
+      expect(
+        sent.where((s) => s.kind == CallSignalKind.hangup).single.callId,
+        first,
+        reason: 'the old call is told it is over',
+      );
+      call.decline();
+    });
+
+    test('a call that still has its media answers a second invite busy',
+        () async {
+      await call.dial('peer');
+      receive(CallSignal.accept(callId: dialledId(), sdp: 'answer'));
+      await Future<void>.delayed(Duration.zero);
+      sent.clear();
+
+      receive(inviteFor(id(41)));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(call.phase, CallPhase.talking);
+      expect(sent.single.kind, CallSignalKind.busy);
+      call.hangUp();
+    });
+
+    test('a call whose link came back answers a second invite busy', () async {
+      await call.dial('peer');
+      receive(CallSignal.accept(callId: dialledId(), sdp: 'answer'));
+      await Future<void>.delayed(Duration.zero);
+      media.controller.add(CallMediaEvent.disconnected);
+      media.controller.add(CallMediaEvent.connected);
+      await Future<void>.delayed(Duration.zero);
+      sent.clear();
+
+      receive(inviteFor(id(42)));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(call.phase, CallPhase.talking);
+      expect(sent.single.kind, CallSignalKind.busy);
+      call.hangUp();
+    });
+
     test(
         'a placed call is in the shade from dialling, restarted when it '
         'connects, and gone when it ends', () async {

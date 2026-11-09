@@ -806,7 +806,11 @@ public class GetUserMediaImpl {
         info.cameraEventsHandler = cameraEventsHandler;
         videoCapturer.startCapture(targetWidth, targetHeight, targetFps);
 
-        cameraEventsHandler.waitForCameraOpen();
+        // CubeChat: no cameraEventsHandler.waitForCameraOpen() here. It spun on
+        // the main thread until the first camera frame, and Flutter's UI runs
+        // on that thread: 328-569 ms of frozen app at every camera start
+        // (2026-11-09 log, three calls of three). Nothing below needs the
+        // camera open, and the wait never reported a failure anyway.
 
 
         String trackId = stateProvider.getNextTrackUUID();

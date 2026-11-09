@@ -974,6 +974,17 @@ class CallController extends ChangeNotifier {
         _queueSurface(() => surface.dismiss(null));
         return;
       }
+      // The person on a call that has already lost its media, calling again:
+      // their end has given up on it, and only this one is still waiting out
+      // [_disconnected]. Answered busy, that was three redials in nine seconds
+      // refused for a call nobody had any more (2026-11-09 log). The old one
+      // ends as the failure it was, and this one rings.
+      if (active &&
+          _disconnected != null &&
+          !listEquals(_machine.callId, signal.callId)) {
+        _log('invite ${_hex(signal.callId)} replaces a call with no media');
+        _fail('media');
+      }
       if (!active) {
         peerId = event.chatId;
         error = null;
