@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../theme/colors.dart';
 import '../theme/glass.dart';
 import '../util/frame_stats.dart';
+import '../util/motion.dart';
 import '../util/ui_activity.dart';
 
 /// A single levitating pane of smoked glass — the same treatment the floating
@@ -168,11 +169,14 @@ class FloatingGlass extends StatelessWidget {
 
     final Widget content = Material(
       color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: radius,
-        hoverColor: AppColors.glassHover,
-        child: Padding(padding: padding, child: child),
+      child: Builder(
+        builder: (inner) => InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          hoverColor: AppColors.glassHover,
+          onHighlightChanged: (down) => _PressDip.note(inner, down),
+          child: Padding(padding: padding, child: child),
+        ),
       ),
     );
 
@@ -272,6 +276,44 @@ class FloatingGlass extends StatelessWidget {
       );
     }
 
-    return RepaintBoundary(child: surface);
+    return RepaintBoundary(
+      // Only the unblurred rows: scaling a pane that filters what is behind it
+      // would make it read a moving backdrop on every frame of the dip.
+      child: onTap != null && !blur ? _PressDip(child: surface) : surface,
+    );
   }
+}
+
+/// A row settling a little under the finger.
+///
+/// Driven by the [InkWell]'s highlight, not by the pointer landing: a tap
+/// inside a scrollable only reports down after a short wait, once it is clear
+/// the finger is not starting a scroll, so a list being dragged does not
+/// ripple. Identity at rest, which paints no transform layer at all.
+class _PressDip extends StatefulWidget {
+  const _PressDip({required this.child});
+
+  final Widget child;
+
+  static void note(BuildContext context, bool down) =>
+      context.findAncestorStateOfType<_PressDipState>()?._set(down);
+
+  @override
+  State<_PressDip> createState() => _PressDipState();
+}
+
+class _PressDipState extends State<_PressDip> {
+  bool _down = false;
+
+  void _set(bool down) {
+    if (mounted && _down != down) setState(() => _down = down);
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedScale(
+        scale: _down && !AppMotion.reduced(context) ? 0.98 : 1,
+        duration: AppMotion.feedback,
+        curve: AppMotion.curve,
+        child: widget.child,
+      );
 }

@@ -18,6 +18,8 @@ import '../../../../core/theme/colors.dart';
 import '../../../../core/transport/messaging_service.dart';
 import '../../../../core/theme/typography.dart';
 import '../../../../core/util/debug_log.dart';
+import '../../../../core/util/motion.dart';
+import '../../../../core/widgets/value_pop.dart';
 import '../../../../core/util/frame_stats.dart';
 import '../../../../core/util/transition_probe.dart';
 import '../../../../core/transport/shared_contact.dart';
@@ -595,8 +597,70 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     if (widget.animateEntry) _c.forward();
   }
 
+  /// Reactions that landed in the latest change, which grow in instead of
+  /// being there. Worked out from the change alone, so a bubble scrolled back
+  /// into view — a brand new State — shows its reactions as they are.
+  Set<String> _freshReactions = const {};
+
+  /// Reactions just taken off, drawn a moment longer while they shrink away.
+  final Map<String, Set<String>> _leavingReactions = {};
+
+  /// The order they were in, so one leaving from the middle does not jump to
+  /// the end for the length of its exit.
+  List<String> _reactionOrder = const [];
+  Timer? _leavingTimer;
+
+  static Set<String> _reactionsIn(Map<String, Set<String>> reactions) => {
+        for (final entry in reactions.entries)
+          if (entry.value.isNotEmpty) entry.key,
+      };
+
+  @override
+  void didUpdateWidget(MessageBubble old) {
+    super.didUpdateWidget(old);
+    final was = _reactionsIn(old.message.reactions);
+    final now = _reactionsIn(widget.message.reactions);
+    if (AppMotion.reduced(context)) {
+      _freshReactions = const {};
+      _leavingReactions.clear();
+      return;
+    }
+    _freshReactions = now.difference(was);
+    _leavingReactions.removeWhere((emoji, _) => now.contains(emoji));
+    final gone = was.difference(now);
+    if (gone.isEmpty) return;
+    _reactionOrder = {
+      if (_leavingReactions.isNotEmpty) ..._reactionOrder,
+      ...old.message.reactions.keys,
+    }.toList();
+    for (final emoji in gone) {
+      _leavingReactions[emoji] = old.message.reactions[emoji]!;
+    }
+    _leavingTimer?.cancel();
+    _leavingTimer = Timer(_ReactionArrival.travel, () {
+      if (mounted) setState(_leavingReactions.clear);
+    });
+  }
+
+  /// What the row draws: today's reactions, with any on their way out still
+  /// in the places they had.
+  Map<String, Set<String>> get _shownReactions {
+    final now = widget.message.reactions;
+    if (_leavingReactions.isEmpty) return now;
+    return {
+      for (final emoji in _reactionOrder)
+        if (now[emoji]?.isNotEmpty ?? false)
+          emoji: now[emoji]!
+        else if (_leavingReactions[emoji] != null)
+          emoji: _leavingReactions[emoji]!,
+      for (final entry in now.entries)
+        if (!_reactionOrder.contains(entry.key)) entry.key: entry.value,
+    };
+  }
+
   @override
   void dispose() {
+    _leavingTimer?.cancel();
     _c.dispose();
     _swipe.dispose();
     _dragX.dispose();
@@ -1884,7 +1948,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     Widget inBubble(Widget child) =>
         media ? Padding(padding: inset, child: child) : child;
 
-    final reacted = message.reactions.values.any((by) => by.isNotEmpty);
+    // Still true while the last one shrinks away: the row has to stay for it.
+    final reacted = message.reactions.values.any((by) => by.isNotEmpty) ||
+        _leavingReactions.isNotEmpty;
     // The clock rides *on* a picture that has nothing else to say — the way
     // every messenger draws one. A strip of bubble under the photo carrying
     // four characters is the frame this design spent a release removing, put
@@ -1914,7 +1980,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           _BubbleFooter(
             reactions: reacted
                 ? _ReactionsRow(
-                    reactions: message.reactions,
+                    reactions: _shownReactions,
+                    fresh: _freshReactions,
+                    leaving: _leavingReactions.keys.toSet(),
                     onTap: _canReact ? _toggleReaction : null,
                   )
                 : null,
@@ -3192,9 +3260,16 @@ class _MetaPill extends StatelessWidget {
 /// Row of reaction chips shown under a bubble. Each chip carries the faces of
 /// who reacted and the emoji; a chip the local user contributed to is tinted.
 class _ReactionsRow extends StatelessWidget {
-  const _ReactionsRow({required this.reactions, required this.onTap});
+  const _ReactionsRow({
+    required this.reactions,
+    required this.fresh,
+    required this.leaving,
+    required this.onTap,
+  });
 
   final Map<String, Set<String>> reactions;
+  final Set<String> fresh;
+  final Set<String> leaving;
   final void Function(String emoji)? onTap;
 
   @override
@@ -3205,15 +3280,111 @@ class _ReactionsRow extends StatelessWidget {
       children: [
         for (final entry in reactions.entries)
           if (entry.value.isNotEmpty)
-            _ReactionChip(
-              emoji: entry.key,
-              reactors: entry.value,
-              mine: entry.value.contains('me'),
-              onTap: onTap == null ? null : () => onTap!(entry.key),
+            _ReactionArrival(
+              key: ValueKey(entry.key),
+              grow: fresh.contains(entry.key),
+              leaving: leaving.contains(entry.key),
+              child: _ReactionChip(
+                emoji: entry.key,
+                reactors: entry.value,
+                mine: entry.value.contains('me'),
+                // A reaction on its way out is not there to be tapped: the
+                // tap would put back what was just taken off.
+                onTap: onTap == null || leaving.contains(entry.key)
+                    ? null
+                    : () => onTap!(entry.key),
+              ),
             ),
       ],
     );
   }
+}
+
+/// A reaction arriving on a message, or leaving it.
+///
+/// The space it takes opens and closes with it, so the other chips and the
+/// bubble slide over rather than jump. A factor on an [Align], not a
+/// `SizeTransition`: that one keeps a clip on every chip for good, and the
+/// transcript draws a lot of chips that are not moving. At rest this is a
+/// plain box with nothing scheduled.
+class _ReactionArrival extends StatefulWidget {
+  const _ReactionArrival({
+    super.key,
+    required this.grow,
+    required this.leaving,
+    required this.child,
+  });
+
+  /// How long either way. The bubble holds a leaving chip for exactly this.
+  static const Duration travel = Duration(milliseconds: 240);
+
+  /// Read once: true only when this chip came into being because a reaction
+  /// just landed, never because the bubble was built.
+  final bool grow;
+  final bool leaving;
+  final Widget child;
+
+  @override
+  State<_ReactionArrival> createState() => _ReactionArrivalState();
+}
+
+class _ReactionArrivalState extends State<_ReactionArrival>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: _ReactionArrival.travel,
+    value: widget.grow ? 0 : 1,
+  );
+  late final Animation<double> _room = CurvedAnimation(
+    parent: _c,
+    curve: AppMotion.curve,
+    reverseCurve: Curves.easeInCubic,
+  );
+  late final Animation<double> _scale = Tween<double>(begin: 0.5, end: 1)
+      .animate(
+        CurvedAnimation(
+          parent: _c,
+          curve: AppMotion.pop,
+          reverseCurve: Curves.easeInCubic,
+        ),
+      );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.grow) unawaited(_c.forward());
+  }
+
+  @override
+  void didUpdateWidget(_ReactionArrival old) {
+    super.didUpdateWidget(old);
+    if (widget.leaving == old.leaving) return;
+    unawaited(widget.leaving ? _c.reverse() : _c.forward());
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => FadeTransition(
+        opacity: _room,
+        child: ScaleTransition(
+          scale: _scale,
+          child: AnimatedBuilder(
+            animation: _room,
+            builder: (_, child) => Align(
+              alignment: Alignment.bottomLeft,
+              widthFactor: _room.value,
+              heightFactor: _room.value,
+              child: child,
+            ),
+            child: widget.child,
+          ),
+        ),
+      );
 }
 
 /// The face of one person who reacted.
@@ -3384,7 +3555,10 @@ class _ReactionChip extends StatelessWidget {
     final faces = ordered.take(_maxFaces).toList();
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        // Eases between ours and theirs when a tap joins or leaves it.
+        duration: AppMotion.duration(context, AppMotion.control),
+        curve: AppMotion.curve,
         // A rounded lozenge rather than a small square badge: it sits on the
         // bubble's own bottom line beside the clock, and at this size and
         // radius it reads as a chip on the message instead of a second bubble
@@ -3412,7 +3586,16 @@ class _ReactionChip extends StatelessWidget {
             // changes: the emoji is already on the chip you tapped, and in a
             // chat between two people the whole question a reaction raises is
             // which of them left it.
-            _ReactorFaces(reactors: faces, size: 15),
+            // Who changed, not merely how many: a second person joining pops
+            // the faces, and the chip widens with them.
+            AnimatedSize(
+              duration: AppMotion.duration(context, AppMotion.control),
+              curve: AppMotion.curve,
+              child: ValuePop(
+                value: faces.join(','),
+                child: _ReactorFaces(reactors: faces, size: 15),
+              ),
+            ),
             const SizedBox(width: 5),
             Text(
               emoji,
@@ -3421,12 +3604,15 @@ class _ReactionChip extends StatelessWidget {
             ),
             if (count > _maxFaces) ...[
               const SizedBox(width: 4),
-              Text(
-                '+${count - _maxFaces}',
-                style: TextStyle(
-                  color: AppColors.textOnGlass,
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w700,
+              ValuePop(
+                value: count,
+                child: Text(
+                  '+${count - _maxFaces}',
+                  style: TextStyle(
+                    color: AppColors.textOnGlass,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
             ],
@@ -4107,32 +4293,37 @@ class _BubbleMeta extends StatelessWidget {
           // until Bluetooth or the internet comes back. The second can last
           // hours, and "always show whether it is waiting for a connection or
           // delivered" was asked for in so many words.
-          Icon(
-            switch (message.status) {
-              MessageStatus.sending => message.route == MessageRoute.queued
-                  ? Icons.cloud_off_rounded
-                  : Icons.schedule_rounded,
-              MessageStatus.delivered => Icons.done_rounded,
-              MessageStatus.read => Icons.done_all_rounded,
-              MessageStatus.failed => Icons.error_outline_rounded,
-            },
-            size: 12,
-            color: switch (message.status) {
-              MessageStatus.failed => AppColors.danger,
-              // On our fill the read pair is the full dark, the delivered
-              // tick a shade lighter: the light blue vanished into the green.
-              MessageStatus.read =>
-                onOwnFill ? AppColors.bgDeep : _readColor,
-              _ => _ink(onOwnFill ? 0.6 : 0.85),
-            },
-            semanticLabel: switch (message.status) {
-              MessageStatus.sending => message.route == MessageRoute.queued
-                  ? t.chatWaitingForConnection
-                  : t.chatSending,
-              MessageStatus.delivered => t.chatDelivered,
-              MessageStatus.read => t.chatRead,
-              MessageStatus.failed => '!',
-            },
+          ValuePop(
+            // The tick turning double while you look at it is the one moment
+            // this icon is news.
+            value: (message.status, message.route == MessageRoute.queued),
+            child: Icon(
+              switch (message.status) {
+                MessageStatus.sending => message.route == MessageRoute.queued
+                    ? Icons.cloud_off_rounded
+                    : Icons.schedule_rounded,
+                MessageStatus.delivered => Icons.done_rounded,
+                MessageStatus.read => Icons.done_all_rounded,
+                MessageStatus.failed => Icons.error_outline_rounded,
+              },
+              size: 12,
+              color: switch (message.status) {
+                MessageStatus.failed => AppColors.danger,
+                // On our fill the read pair is the full dark, the delivered
+                // tick a shade lighter: the light blue vanished into the green.
+                MessageStatus.read =>
+                  onOwnFill ? AppColors.bgDeep : _readColor,
+                _ => _ink(onOwnFill ? 0.6 : 0.85),
+              },
+              semanticLabel: switch (message.status) {
+                MessageStatus.sending => message.route == MessageRoute.queued
+                    ? t.chatWaitingForConnection
+                    : t.chatSending,
+                MessageStatus.delivered => t.chatDelivered,
+                MessageStatus.read => t.chatRead,
+                MessageStatus.failed => '!',
+              },
+            ),
           ),
         ],
       ],

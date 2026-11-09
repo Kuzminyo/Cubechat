@@ -804,7 +804,13 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        SizedBox(
+                        // Up and away with the buttons (Telegram's, in the
+                        // screenshot of 2026-11-09): nothing left over the
+                        // picture but the picture.
+                        _ControlsDrawer(
+                          hidden: _controlsHidden,
+                          away: _ControlsDrawer.up,
+                          child: SizedBox(
                           height: 48,
                           child: Row(
                             children: [
@@ -889,6 +895,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                                 const SizedBox(width: 48),
                             ],
                           ),
+                        ),
                         ),
                         if (big == null)
                         Padding(
@@ -1088,14 +1095,25 @@ class _CallScreenState extends ConsumerState<CallScreen> {
 /// its room in the layout the whole time. Opacity goes with it, because with
 /// Reduce Motion on the fade is all that is left of the gesture.
 class _ControlsDrawer extends StatelessWidget {
-  const _ControlsDrawer({required this.hidden, required this.child});
+  const _ControlsDrawer({
+    required this.hidden,
+    required this.child,
+    this.away = _down,
+  });
 
   final bool hidden;
   final Widget child;
 
-  /// In heights of the row: past the bottom inset and the padding under the
-  /// row, and far enough that two pills standing on it go too.
-  static const double _away = 2.6;
+  /// Where it goes, in its own heights. The default is the buttons': past the
+  /// bottom inset and the padding under the row, and far enough that two pills
+  /// standing on it go too.
+  final double away;
+
+  static const double _down = 2.6;
+
+  /// The header's: up past the status bar, a 48-point row going further in
+  /// its own heights than the taller row of buttons does.
+  static const double up = -3;
 
   @override
   Widget build(BuildContext context) {
@@ -1105,7 +1123,7 @@ class _ControlsDrawer extends StatelessWidget {
       ignoring: hidden,
       child: AnimatedSlide(
         offset: hidden && !AppMotion.reduced(context)
-            ? const Offset(0, _away)
+            ? Offset(0, away)
             : Offset.zero,
         duration: duration,
         curve: curve,

@@ -370,6 +370,23 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('takes the header up and away with them', (tester) async {
+      await talking(tester);
+      final fold = find.byIcon(Icons.keyboard_arrow_down_rounded);
+      final at = tester.getTopLeft(fold).dy;
+
+      await tester.tapAt(tester.getCenter(find.text('Alice')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.getTopLeft(fold).dy, lessThan(at - 100));
+      expect(opacityOf(tester, fold), 0);
+
+      await tester.tapAt(tester.getCenter(find.text('Alice')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(tester.getTopLeft(fold).dy, at);
+    });
+
     testWidgets('a hidden button cannot be pressed', (tester) async {
       await talking(tester);
       final where = tester.getCenter(hangUp());

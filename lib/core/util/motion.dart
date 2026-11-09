@@ -39,6 +39,10 @@ abstract final class AppMotion {
   static const entrance = Duration(milliseconds: 320);
   static const curve = Curves.easeOutCubic;
 
+  /// A small thing landing: past its size and back. The tick on a selected
+  /// chat has used it since before it had a name.
+  static const pop = Curves.easeOutBack;
+
   /// True when this device asked for less movement.
   ///
   /// `maybe`, because a widget test pumps a bare `MediaQuery`-less tree often
