@@ -4,7 +4,9 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart'
     show MediaStream, RTCVideoRenderer, RTCVideoView, RTCVideoViewObjectFit;
+import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../core/theme/colors.dart';
+import '../../../core/util/debug_log.dart';
 import '../../../core/util/motion.dart';
 import '../../../core/util/platform_info.dart';
 import '../../../core/widgets/bar_glass.dart';
@@ -14,6 +16,22 @@ import '../data/call_controller.dart';
 import '../data/call_media.dart';
 import '../data/call_screen_access.dart';
 import '../domain/call_state_machine.dart';
+
+/// Asks the phone not to dim or lock while a call fills the screen. A provider
+/// so a test can see the request without a platform underneath it.
+///
+/// Only the idle timer: Android's near-ear sensor ([NearEar]) still blanks the
+/// screen against a cheek. A refusal costs a dimmed screen and nothing else,
+/// so it is logged and the call goes on.
+final keepScreenOnProvider = Provider<Future<void> Function(bool on)>(
+  (ref) => (on) async {
+    try {
+      await WakelockPlus.toggle(enable: on);
+    } catch (e) {
+      DebugLog.instance.log('CALL', 'could not hold the screen on: $e');
+    }
+  },
+);
 
 /// The call, drawn over whatever the router is showing.
 ///
@@ -135,7 +153,24 @@ class _CallHostState extends ConsumerState<CallHost>
     // only way that answer changes is out there, so it is read again here.
     if (state == AppLifecycleState.resumed) {
       unawaited(ref.read(callScreenAccessProvider.notifier).refresh());
+      // Asked again: the system can drop the request while another app has
+      // the screen, and nothing tells us it did.
+      if (_screenHeld) unawaited(_setScreenOn(true));
     }
+  }
+
+  /// A call is filling the screen, so the phone has been asked to stay awake.
+  bool _screenHeld = false;
+
+  /// Read once, on first use: [dispose] has to be able to call it, and a
+  /// widget that is going away may no longer ask `ref` for anything.
+  late final Future<void> Function(bool) _setScreenOn =
+      ref.read(keepScreenOnProvider);
+
+  void _holdScreen(bool hold) {
+    if (hold == _screenHeld) return;
+    _screenHeld = hold;
+    unawaited(_setScreenOn(hold));
   }
 
   Future<bool> _onBack() async {
@@ -167,6 +202,7 @@ class _CallHostState extends ConsumerState<CallHost>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _holdBack(false);
+    _holdScreen(false);
     _sheet.dispose();
     super.dispose();
   }
@@ -221,6 +257,10 @@ class _CallHostState extends ConsumerState<CallHost>
     final expanded = showing && !island && !(_minimized && !call.active);
     _holdBack(expanded);
     _moveSheet(expanded);
+    // Full screen and still live ("so the screen does not go out", 2026-11-09).
+    // Folded into the island the person is reading chats, and the phone should
+    // sleep as it always does; a call that is over has nothing to watch.
+    _holdScreen(expanded && call.active);
     if (expanded) {
       _leaving = CallScreen(
         call: call,
@@ -445,6 +485,38 @@ String callClock(Duration elapsed) {
   return '$minutes:$seconds';
 }
 
+/// How big the small picture is for a video of this width-to-height.
+///
+/// Shaped like the video, so all of it shows. It was a fixed 104 × 144, and a
+/// phone's upright 9:16 picture filled that by losing its top and bottom —
+/// asked for against Telegram's, "so it takes in more of the video"
+/// (screenshots, 2026-11-09). A computer's camera is wide, so it gets a wide
+/// frame rather than a slice out of its middle.
+@visibleForTesting
+Size smallPictureSize(double aspect) {
+  if (aspect >= 1) {
+    const width = 176.0;
+    return Size(width, (width / aspect).clamp(90.0, 140.0));
+  }
+  const width = 104.0;
+  return Size(width, (width / aspect).clamp(140.0, 200.0));
+}
+
+/// How far above the bottom of the screen the small picture sits: just over
+/// the buttons and any pills on them, and down in the corner once a tap has
+/// sent those away, the way Telegram's does.
+@visibleForTesting
+double smallPictureBottom({
+  required double inset,
+  required double rowHeight,
+  required int notices,
+  required bool controlsHidden,
+}) {
+  if (controlsHidden) return inset + 16;
+  // The screen's 32 under the row, the 12 between row and pills, 34 a pill.
+  return inset + 32 + rowHeight + 12 + notices * 34;
+}
+
 class CallScreen extends ConsumerStatefulWidget {
   const CallScreen({super.key, required this.call, this.onMinimize});
 
@@ -468,7 +540,37 @@ class _CallScreenState extends ConsumerState<CallScreen> {
   /// Our camera big and theirs small, after a tap on the small picture.
   bool _swapped = false;
 
+  /// The buttons have floated off the bottom, after a tap on the screen — "tap
+  /// and the buttons sail down, like in Telegram" (2026-11-09).
+  bool _controlsHidden = false;
+
+  /// Whether a tap may do that at all; see where it is set in [build].
+  bool _canHideControls = false;
+
+  /// Width over height of the small picture, once its renderer knows. Upright
+  /// until then: that is what a phone sends.
+  double _smallAspect = 9 / 16;
+
+  void _noteSmallAspect(double aspect) {
+    if (mounted && (aspect - _smallAspect).abs() > 0.01) {
+      setState(() => _smallAspect = aspect);
+    }
+  }
+
   CallController get call => widget.call;
+
+  /// The whole screen is the switch. Wrapped round the finished screen: a
+  /// detector inside the [Stack] would sit under the scroll view, which takes
+  /// every hit. The buttons and the small picture are deeper and win their own
+  /// taps, so only the empty parts of the screen reach this.
+  Widget _tapTogglesControls(Widget screen) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        excludeFromSemantics: true,
+        onTap: _canHideControls
+            ? () => setState(() => _controlsHidden = !_controlsHidden)
+            : null,
+        child: screen,
+      );
 
   Future<void> _onSpeaker() async {
     await call.refreshAudioRoutes();
@@ -638,13 +740,34 @@ class _CallScreenState extends ConsumerState<CallScreen> {
     ];
 
     _overVideo = big != null;
-    final top = MediaQuery.paddingOf(context).top;
     // What the person on the other end has to be told about, in pills over
     // the buttons. Their microphone is not here: nothing on the wire says it.
     final micNotice = call.active && call.micMuted;
     final cameraNotice = talking && call.video && remote == null;
     final cornerSpeaker = flipFirst && call.canUseSpeaker;
-    return Material(
+    // Only during the conversation. Ringing, the answer button must not be one
+    // stray tap from invisible; over, neither must Close — and leaving
+    // [talking] brings the buttons back by itself. Never for a screen reader
+    // either: buttons that have left the screen are buttons it cannot reach.
+    _canHideControls =
+        talking && !(MediaQuery.maybeAccessibleNavigationOf(context) ?? false);
+    if (!_canHideControls) _controlsHidden = false;
+    final statusKey = call.preparing ? 'preparing' : call.phase.name;
+    final smallSize = smallPictureSize(_smallAspect);
+    final smallBottom = smallPictureBottom(
+      inset: MediaQuery.paddingOf(context).bottom,
+      // The disc, the gap and one line of label — see [_ControlButton].
+      rowHeight: 72 + MediaQuery.textScalerOf(context).scale(20),
+      notices: (micNotice ? 1 : 0) + (cameraNotice ? 1 : 0),
+      controlsHidden: _controlsHidden,
+    );
+    // From the first moment: `preparing` comes before any of the phases, and
+    // a ring that started only after it would look like a late hiccup.
+    final pulsing = call.preparing ||
+        call.phase == CallPhase.dialing ||
+        call.phase == CallPhase.ringing ||
+        call.phase == CallPhase.incoming;
+    final screen = Material(
       color: AppColors.bgDeep,
       child: Stack(
         children: [
@@ -776,10 +899,14 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                           child: Column(children: [
                             // Their picture when they have shared one, the same
                             // face the chat list shows; initials otherwise.
-                            PeerAvatar(
-                              peerId: call.peerId ?? '',
-                              label: call.name,
+                            _PulsingAvatar(
+                              pulsing: pulsing,
                               size: 120,
+                              child: PeerAvatar(
+                                peerId: call.peerId ?? '',
+                                label: call.name,
+                                size: 120,
+                              ),
                             ),
                             const SizedBox(height: 24),
                             Text(
@@ -794,40 +921,74 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                             const SizedBox(height: 12),
                             Semantics(
                               liveRegion: !talking,
-                              child: Text(
-                                status,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 16,
-                                  fontFeatures: const [
-                                    FontFeature.tabularFigures(),
-                                  ],
+                              // Keyed by the state, not the words: the clock
+                              // changes its text every second and must not
+                              // cross-fade with itself.
+                              child: AnimatedSwitcher(
+                                duration: AppMotion.duration(
+                                  context,
+                                  AppMotion.control,
+                                ),
+                                child: Text(
+                                  status,
+                                  key: ValueKey(statusKey),
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 16,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures(),
+                                    ],
+                                  ),
                                 ),
                               ),
                             ),
                           ]),
                         ),
-                        Column(
-                          children: [
-                            _NoticeSlot(
-                              visible: micNotice,
-                              icon: Icons.mic_off_rounded,
-                              text: t.callYourMicOff,
-                            ),
-                            _NoticeSlot(
-                              visible: cameraNotice,
-                              icon: Icons.videocam_off_rounded,
-                              text: t.callTheirCameraOff(call.name),
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                for (final control in controls)
-                                  Expanded(child: control),
-                              ],
-                            ),
-                          ],
+                        _ControlsDrawer(
+                          hidden: _controlsHidden,
+                          child: Column(
+                            children: [
+                              // No height of its own, the pills standing up
+                              // out of it: this column shares the screen with
+                              // the centred face by `spaceBetween`, so a pill
+                              // that took room made the face jump every time
+                              // the microphone was muted.
+                              SizedBox(
+                                height: 0,
+                                width: double.infinity,
+                                child: OverflowBox(
+                                  alignment: Alignment.bottomCenter,
+                                  minHeight: 0,
+                                  maxHeight: double.infinity,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(bottom: 12),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        _NoticeSlot(
+                                          visible: micNotice,
+                                          icon: Icons.mic_off_rounded,
+                                          text: t.callYourMicOff,
+                                        ),
+                                        _NoticeSlot(
+                                          visible: cameraNotice,
+                                          icon: Icons.videocam_off_rounded,
+                                          text: t.callTheirCameraOff(call.name),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Row(
+                                children: [
+                                  for (final control in controls)
+                                    Expanded(child: control),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -836,30 +997,46 @@ class _CallScreenState extends ConsumerState<CallScreen> {
               ),
             ),
           ),
-          // The second picture, small, under the header — where FaceTime and
-          // Telegram keep it. A front camera is mirrored, the way a face is
-          // used to seeing itself. A tap swaps it with the big one.
+          // The second picture, small, in the bottom corner over the buttons
+          // — where Telegram keeps it (screenshots, 2026-11-09) — following
+          // them down when they go. A front camera is mirrored, the way a
+          // face is used to seeing itself. A tap swaps it with the big one.
           if (small != null)
-            Positioned(
-              top: top + 64,
+            AnimatedPositioned(
+              duration: AppMotion.duration(
+                context,
+                _controlsHidden ? AppMotion.expand : AppMotion.entrance,
+              ),
+              curve: AppMotion.curve,
+              bottom: smallBottom,
               right: 16,
-              width: 104,
-              height: 144,
-              child: GestureDetector(
-                onTap: () => setState(() => _swapped = !_swapped),
-                child: DecoratedBox(
-                  position: DecorationPosition.foreground,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: AppColors.glass(0.22)),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(18),
-                    child: ColoredBox(
-                      color: Colors.black,
-                      child: _VideoSurface(
-                        stream: small,
-                        mirror: mirrorSmall,
+              width: smallSize.width,
+              height: smallSize.height,
+              // Fades in, and goes at once: fading it out would keep a
+              // renderer on a stream the camera has already let go of, for
+              // the sake of 200 ms.
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: AppMotion.duration(context, AppMotion.control),
+                builder: (_, opacity, child) =>
+                    Opacity(opacity: opacity, child: child),
+                child: GestureDetector(
+                  onTap: () => setState(() => _swapped = !_swapped),
+                  child: DecoratedBox(
+                    position: DecorationPosition.foreground,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: AppColors.glass(0.22)),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: ColoredBox(
+                        color: Colors.black,
+                        child: _VideoSurface(
+                          stream: small,
+                          mirror: mirrorSmall,
+                          onAspect: _noteSmallAspect,
+                        ),
                       ),
                     ),
                   ),
@@ -884,44 +1061,269 @@ class _CallScreenState extends ConsumerState<CallScreen> {
         ],
       ),
     );
+    return _tapTogglesControls(screen);
   }
 
-  // No tooltip: a tooltip needs an Overlay, and there is none above this
-  // screen (see [CallHost]). The label is drawn under the button, and the
-  // Semantics wrapper gives a screen reader the same word the tooltip did.
   Widget _control(
     IconData icon,
     String label,
     VoidCallback action, {
     bool selected = false,
     Color? tone,
-  }) {
+  }) =>
+      _ControlButton(
+        icon: icon,
+        label: label,
+        onPressed: action,
+        selected: selected,
+        tone: tone,
+        overVideo: _overVideo,
+      );
+}
+
+/// The buttons and the pills over them, which a tap on the screen sends down
+/// off the bottom and a second tap brings back.
+///
+/// A translation, so the face in the middle does not move: this column keeps
+/// its room in the layout the whole time. Opacity goes with it, because with
+/// Reduce Motion on the fade is all that is left of the gesture.
+class _ControlsDrawer extends StatelessWidget {
+  const _ControlsDrawer({required this.hidden, required this.child});
+
+  final bool hidden;
+  final Widget child;
+
+  /// In heights of the row: past the bottom inset and the padding under the
+  /// row, and far enough that two pills standing on it go too.
+  static const double _away = 2.6;
+
+  @override
+  Widget build(BuildContext context) {
+    final curve = hidden ? Curves.easeInCubic : Curves.easeOutCubic;
+    final duration = hidden ? AppMotion.expand : AppMotion.entrance;
+    return IgnorePointer(
+      ignoring: hidden,
+      child: AnimatedSlide(
+        offset: hidden && !AppMotion.reduced(context)
+            ? const Offset(0, _away)
+            : Offset.zero,
+        duration: duration,
+        curve: curve,
+        child: AnimatedOpacity(
+          opacity: hidden ? 0 : 1,
+          duration: duration,
+          curve: curve,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// A soft ring breathing out from behind the face while the call rings.
+///
+/// Stops the moment nobody is waiting any more: a call is the hottest thing
+/// this app does, so nothing here runs during the conversation, and the ticker
+/// goes away with the screen when the call is folded into the island. Inside
+/// a [RepaintBoundary] so a frame of it repaints the ring and not the screen.
+/// It takes no room — the ring grows past the avatar's own box — so the name
+/// under it stays where it is.
+class _PulsingAvatar extends StatefulWidget {
+  const _PulsingAvatar({
+    required this.pulsing,
+    required this.size,
+    required this.child,
+  });
+
+  final bool pulsing;
+  final double size;
+  final Widget child;
+
+  @override
+  State<_PulsingAvatar> createState() => _PulsingAvatarState();
+}
+
+class _PulsingAvatarState extends State<_PulsingAvatar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  );
+
+  void _follow() {
+    final run = widget.pulsing && !AppMotion.reduced(context);
+    if (run && !_pulse.isAnimating) {
+      unawaited(_pulse.repeat());
+    } else if (!run && _pulse.isAnimating) {
+      _pulse.stop();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _follow();
+  }
+
+  @override
+  void didUpdateWidget(_PulsingAvatar old) {
+    super.didUpdateWidget(old);
+    _follow();
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  Widget _disc(double alpha) => SizedBox.expand(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: AppColors.textPrimary.withValues(alpha: alpha),
+          ),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final grown = CurvedAnimation(parent: _pulse, curve: Curves.easeOutCubic);
+    // With Reduce Motion the ring holds still rather than disappearing, the
+    // way the online dot holds a lit frame: it still says "this is ringing".
+    final Widget ring = AppMotion.reduced(context)
+        ? Transform.scale(
+            key: const ValueKey('still'),
+            scale: 1.14,
+            child: _disc(0.14),
+          )
+        : FadeTransition(
+            key: const ValueKey('pulse'),
+            opacity: Tween<double>(begin: 0.28, end: 0).animate(grown),
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 1, end: 1.45).animate(grown),
+              child: _disc(1),
+            ),
+          );
+    return SizedBox.square(
+      dimension: widget.size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          Positioned.fill(
+            child: RepaintBoundary(
+              // Answering fades the ring out where it stands, instead of
+              // cutting it off mid-breath.
+              child: AnimatedSwitcher(
+                duration: AppMotion.duration(context, AppMotion.control),
+                child: widget.pulsing
+                    ? ring
+                    : const SizedBox.shrink(key: ValueKey('none')),
+              ),
+            ),
+          ),
+          widget.child,
+        ],
+      ),
+    );
+  }
+}
+
+/// One round button of the call and the word under it.
+///
+/// Dips while a finger is on it and eases between its lit and unlit colours,
+/// so a mute that took is something you see happen.
+class _ControlButton extends StatefulWidget {
+  const _ControlButton({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    required this.selected,
+    required this.tone,
+    required this.overVideo,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+  final bool selected;
+  final Color? tone;
+  final bool overVideo;
+
+  @override
+  State<_ControlButton> createState() => _ControlButtonState();
+}
+
+class _ControlButtonState extends State<_ControlButton> {
+  bool _down = false;
+
+  void _press(bool down) {
+    if (_down != down) setState(() => _down = down);
+  }
+
+  // No tooltip: a tooltip needs an Overlay, and there is none above this
+  // screen (see [CallHost]). The label is drawn under the button, and the
+  // Semantics wrapper gives a screen reader the same word the tooltip did.
+  @override
+  Widget build(BuildContext context) {
+    final tone = widget.tone;
     // White when lit, a frosted white when not (asked for with screenshots,
     // 2026-11-03): the same over the dark field and over a picture.
     final background = tone ??
-        (selected ? Colors.white : Colors.white.withValues(alpha: 0.22));
+        (widget.selected ? Colors.white : Colors.white.withValues(alpha: 0.22));
     final foreground = tone != null
         ? Colors.white
-        : selected
+        : widget.selected
             ? AppColors.bgDeep
             : Colors.white;
+    final change = AppMotion.duration(context, AppMotion.control);
     return Column(
       children: [
         Semantics(
           button: true,
-          label: label,
+          label: widget.label,
           excludeSemantics: true,
-          child: IconButton.filledTonal(
-            onPressed: action,
-            isSelected: selected,
-            style: IconButton.styleFrom(
-              minimumSize: const Size(64, 64),
-              backgroundColor: background,
-              foregroundColor: foreground,
+          // A Listener and not the button's own callbacks: it sees the finger
+          // land and lift without taking part in deciding whether it tapped.
+          child: Listener(
+            onPointerDown: (_) => _press(true),
+            onPointerUp: (_) => _press(false),
+            onPointerCancel: (_) => _press(false),
+            child: AnimatedScale(
+              scale: _down && !AppMotion.reduced(context) ? 0.9 : 1,
+              duration: AppMotion.feedback,
+              curve: AppMotion.curve,
+              child: TweenAnimationBuilder<Color?>(
+                tween: ColorTween(end: background),
+                duration: change,
+                builder: (_, fill, __) => TweenAnimationBuilder<Color?>(
+                  tween: ColorTween(end: foreground),
+                  duration: change,
+                  builder: (_, ink, __) => IconButton.filledTonal(
+                    onPressed: widget.onPressed,
+                    isSelected: widget.selected,
+                    style: IconButton.styleFrom(
+                      minimumSize: const Size(64, 64),
+                      backgroundColor: fill,
+                      foregroundColor: ink,
+                    ),
+                    // Coloured here: a selected filled-tonal button repaints
+                    // its icon in its own scheme colour, which is white on
+                    // the white disc.
+                    icon: AnimatedSwitcher(
+                      duration: change,
+                      child: Icon(
+                        widget.icon,
+                        key: ValueKey(widget.icon),
+                        size: 28,
+                        color: ink,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
-            // Coloured here: a selected filled-tonal button repaints its icon
-            // in its own scheme colour, which is white on the white disc.
-            icon: Icon(icon, size: 28, color: foreground),
           ),
         ),
         const SizedBox(height: 8),
@@ -931,11 +1333,11 @@ class _CallScreenState extends ConsumerState<CallScreen> {
         FittedBox(
           fit: BoxFit.scaleDown,
           child: Text(
-            label,
+            widget.label,
             maxLines: 1,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: _overVideo ? Colors.white : AppColors.textPrimary,
+              color: widget.overVideo ? Colors.white : AppColors.textPrimary,
             ),
           ),
         ),
@@ -948,10 +1350,18 @@ class _CallScreenState extends ConsumerState<CallScreen> {
 /// corner. Owns its renderer: made when the picture appears, let go when it
 /// does, so a call with the camera off holds no texture at all.
 class _VideoSurface extends StatefulWidget {
-  const _VideoSurface({required this.stream, this.mirror = false});
+  const _VideoSurface({
+    required this.stream,
+    this.mirror = false,
+    this.onAspect,
+  });
 
   final MediaStream stream;
   final bool mirror;
+
+  /// Told the picture's width over height when it starts and whenever it
+  /// turns or changes size — not per frame.
+  final ValueChanged<double>? onAspect;
 
   @override
   State<_VideoSurface> createState() => _VideoSurfaceState();
@@ -975,8 +1385,16 @@ class _VideoSurfaceState extends State<_VideoSurface> {
       await _renderer.dispose();
       return;
     }
+    _renderer.addListener(_reportAspect);
     _renderer.srcObject = widget.stream;
     setState(() => _ready = true);
+  }
+
+  void _reportAspect() {
+    final video = _renderer.value;
+    if (video.width > 0 && video.height > 0) {
+      widget.onAspect?.call(video.aspectRatio);
+    }
   }
 
   @override
@@ -990,7 +1408,10 @@ class _VideoSurfaceState extends State<_VideoSurface> {
   @override
   void dispose() {
     _gone = true;
-    if (_ready) unawaited(_renderer.dispose());
+    if (_ready) {
+      _renderer.removeListener(_reportAspect);
+      unawaited(_renderer.dispose());
+    }
     super.dispose();
   }
 
@@ -1005,9 +1426,10 @@ class _VideoSurfaceState extends State<_VideoSurface> {
 }
 
 /// One thing the other side should know — "your microphone is off" — in a
-/// dark pill over the buttons. It rises from below as it appears and sinks
-/// back down as it goes ("appear from the bottom and leave downwards", asked
-/// for 2026-11-03), taking its row with it so the pills above close the gap.
+/// small pill centred over the buttons. It rises from below as it appears and
+/// sinks back down as it goes ("appear from the bottom and leave downwards",
+/// asked for 2026-11-03), taking its row with it so the pills above close the
+/// gap.
 class _NoticeSlot extends StatelessWidget {
   const _NoticeSlot({
     required this.visible,
@@ -1042,7 +1464,7 @@ class _NoticeSlot extends StatelessWidget {
         child: visible
             ? Padding(
                 key: const ValueKey(true),
-                padding: const EdgeInsets.only(top: 8),
+                padding: const EdgeInsets.only(top: 6),
                 child: _Notice(icon: icon, text: text),
               )
             : const SizedBox(key: ValueKey(false), width: double.infinity),
@@ -1057,24 +1479,27 @@ class _Notice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        // Low on purpose ("not so tall", 2026-11-09): two of these stack, and
+        // at 15-point text with 8 above and below they were a wall over the
+        // buttons.
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
         decoration: BoxDecoration(
           // A frosted white, like the unlit buttons under it: a dark pill
           // vanished into the call's dark field.
           color: Colors.white.withValues(alpha: 0.16),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 18, color: Colors.white),
-            const SizedBox(width: 8),
+            Icon(icon, size: 15, color: Colors.white),
+            const SizedBox(width: 6),
             Flexible(
               child: Text(
                 text,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white, fontSize: 15),
+                style: const TextStyle(color: Colors.white, fontSize: 13),
               ),
             ),
           ],

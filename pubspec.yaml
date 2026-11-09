@@ -1,7 +1,7 @@
 name: cubechat
 description: Encrypted peer-to-peer messaging over Bluetooth mesh.
 publish_to: 'none'
-version: 1.0.4+1189
+version: 1.0.4+1190
 
 environment:
   sdk: ^3.6.0
@@ -167,6 +167,7 @@ dependencies:
   window_manager: 0.5.2
   tray_manager: 0.5.3
   launch_at_startup: 0.5.1
+  wakelock_plus: ^1.5.2
 
 # CameraX must mirror the encoded front-camera clip as well as its preview.
 # The small native patch is documented in third_party/camera_android_camerax.
