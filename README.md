@@ -1,4 +1,4 @@
-# cubechat
+# Cubechat
 
 **Encrypted, anonymous messaging over a Bluetooth Low Energy mesh, with the
 internet as a fallback rather than a requirement.** No accounts, no phone
