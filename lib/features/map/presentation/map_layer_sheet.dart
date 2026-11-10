@@ -82,7 +82,7 @@ class _MapLayerSheet extends ConsumerWidget {
                         style: TextStyle(
                           color: AppColors.textOnGlass,
                           fontSize: 17,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -115,14 +115,14 @@ class _MapLayerSheet extends ConsumerWidget {
                     title,
                     style: TextStyle(
                       color: AppColors.textOnGlass,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                      fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                     ),
                   ),
                   subtitle: Text(
                     hint,
                     style: TextStyle(
                       color: AppColors.textOnGlassDim,
-                      fontSize: 11.5,
+                      fontSize: 12,
                     ),
                   ),
                   trailing: selected

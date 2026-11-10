@@ -575,7 +575,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
                               style: TextStyle(
                                 color: AppColors.textOnGlass,
                                 fontSize: 17,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                             if (_centerAddress != null)
@@ -1016,7 +1016,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
                           '${group.length}',
                           style: TextStyle(
                             color: AppColors.bgDeep,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w600,
                             fontSize: 16 * _markerScale,
                           ),
                         ),
@@ -1437,7 +1437,7 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
         style: TextStyle(
           color: Colors.white,
           fontSize: fontSize,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w600,
           height: 1,
         ),
       ),
@@ -1911,7 +1911,7 @@ class _VisibilityPill extends StatelessWidget {
               child: Text(
                 visible ? t.mapVisibleToFriends : t.mapHiddenFromFriends,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: AppColors.textOnGlass, fontSize: 12.5),
+                style: TextStyle(color: AppColors.textOnGlass, fontSize: 13),
               ),
             ),
             const SizedBox(width: 10),
@@ -1919,7 +1919,7 @@ class _VisibilityPill extends StatelessWidget {
               visible ? t.mapHideMe : t.mapShowMe,
               style: TextStyle(
                 color: AppColors.brandPrimary,
-                fontSize: 12.5,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -2015,7 +2015,7 @@ class _PersonCard extends StatelessWidget {
                     style: TextStyle(
                       color: AppColors.textOnGlass,
                       fontSize: 16,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -2025,7 +2025,7 @@ class _PersonCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: AppColors.textOnGlassDim,
-                      fontSize: 11.5,
+                      fontSize: 12,
                     ),
                   ),
                 ],
@@ -2040,7 +2040,7 @@ class _PersonCard extends StatelessWidget {
                   style: TextStyle(
                     color: AppColors.brandPrimary,
                     fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 Icon(

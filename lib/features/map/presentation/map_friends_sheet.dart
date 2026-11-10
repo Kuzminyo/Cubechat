@@ -97,7 +97,7 @@ class _MapFriendsSheet extends ConsumerWidget {
                           style: TextStyle(
                             color: AppColors.textOnGlass,
                             fontSize: 17,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -197,7 +197,7 @@ class _MapFriendsSheet extends ConsumerWidget {
                           color: onMap
                               ? AppColors.brandPrimary
                               : AppColors.textOnGlassDim,
-                          fontSize: 11.5,
+                          fontSize: 12,
                         ),
                       ),
                       trailing: IconButton(

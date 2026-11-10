@@ -153,7 +153,7 @@ class _StorageScreenState extends State<StorageScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: AppColors.textOnGlassDim,
-                      fontSize: 12.5,
+                      fontSize: 13,
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -507,7 +507,7 @@ class _CategoryRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: AppColors.textOnGlassFaint,
-                      fontSize: 11.5,
+                      fontSize: 12,
                     ),
                   ),
                 ],
@@ -518,7 +518,7 @@ class _CategoryRow extends StatelessWidget {
               formatBytes(bucket.bytes),
               style: TextStyle(
                 color: color,
-                fontSize: 13.5,
+                fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -579,7 +579,7 @@ class _ClearButton extends StatelessWidget {
                     color: enabled
                         ? AppColors.textOnGlass
                         : AppColors.textOnGlassFaint,
-                    fontSize: 14.5,
+                    fontSize: 15,
                     fontWeight: FontWeight.w600,
                   ),
                 ),

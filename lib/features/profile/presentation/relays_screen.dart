@@ -81,7 +81,7 @@ class RelaysScreen extends ConsumerWidget {
                             t.relaysCardSubtitle,
                             style: TextStyle(
                               color: AppColors.textOnGlassDim,
-                              fontSize: 11.5,
+                              fontSize: 12,
                             ),
                           ),
                         ],
@@ -99,7 +99,7 @@ class RelaysScreen extends ConsumerWidget {
                   t.relaysExplainer,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
-                    fontSize: 11.5,
+                    fontSize: 12,
                     height: 1.35,
                   ),
                 ),
@@ -142,7 +142,7 @@ class RelaysScreen extends ConsumerWidget {
                 t.relaysEmpty,
                 style: TextStyle(
                   color: AppColors.textOnGlassDim,
-                  fontSize: 12.5,
+                  fontSize: 13,
                 ),
               ),
             ),
@@ -356,7 +356,7 @@ class _AddRelayFieldState extends State<_AddRelayField> {
               t.relaysAdd,
               style: TextStyle(
                 color: AppColors.brandPrimary,
-                fontSize: 12.5,
+                fontSize: 13,
               ),
             ),
           ),

@@ -105,7 +105,7 @@ class CodePadState extends State<CodePad> {
             const SizedBox(height: 6),
             Text(
               widget.hint,
-              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
+              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
             ),
             const SizedBox(height: 18),
             // One dot per digit entered, and hollow ones up to the minimum so
@@ -158,7 +158,7 @@ class CodePadState extends State<CodePad> {
                         error,
                         textAlign: TextAlign.center,
                         style:
-                            TextStyle(color: AppColors.danger, fontSize: 12.5),
+                            TextStyle(color: AppColors.danger, fontSize: 13),
                       ),
                     ),
             ),

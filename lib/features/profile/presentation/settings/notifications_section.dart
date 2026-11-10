@@ -51,7 +51,7 @@ class _NotificationPreviewSelector extends ConsumerWidget {
           maxLines: 1,
           softWrap: false,
           overflow: TextOverflow.fade,
-          style: const TextStyle(fontSize: 13.5),
+          style: const TextStyle(fontSize: 14),
         );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

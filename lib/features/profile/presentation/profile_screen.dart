@@ -400,7 +400,7 @@ class _BackgroundModeCard extends ConsumerWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          color: AppColors.textOnGlassDim, fontSize: 11.5),
+                          color: AppColors.textOnGlassDim, fontSize: 12),
                     ),
                   ],
                 ),
@@ -430,7 +430,7 @@ class _BackgroundModeCard extends ConsumerWidget {
                 label: Text(
                   t.profileBatteryExempt,
                   style:
-                      TextStyle(color: AppColors.brandPrimary, fontSize: 12.5),
+                      TextStyle(color: AppColors.brandPrimary, fontSize: 13),
                 ),
                 style: TextButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -499,7 +499,7 @@ class _RelayFallbackCard extends ConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
-                    fontSize: 11.5,
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -566,7 +566,7 @@ class _FileTransfersCard extends ConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
-                    fontSize: 11.5,
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -629,7 +629,7 @@ class _BackupCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
-                    fontSize: 11.5,
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -845,7 +845,7 @@ class _DeadMansRow extends ConsumerWidget {
                   style: TextStyle(
                     color:
                         days == 0 ? AppColors.textOnGlassDim : AppColors.danger,
-                    fontSize: 12.5,
+                    fontSize: 13,
                   ),
                 ),
                 const SizedBox(width: 4),
@@ -862,7 +862,7 @@ class _DeadMansRow extends ConsumerWidget {
               t.deadmanHint,
               style: TextStyle(
                 color: AppColors.textOnGlassDim,
-                fontSize: 11.5,
+                fontSize: 12,
                 height: 1.35,
               ),
             ),
@@ -946,7 +946,7 @@ class _GraceRow extends ConsumerWidget {
             ),
             Text(
               _label(t, seconds),
-              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
+              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
             ),
             const SizedBox(width: 4),
             Icon(Icons.chevron_right_rounded,
@@ -1091,7 +1091,7 @@ class _InstallUpdateRow extends StatelessWidget {
                   t.selfUpdateHint,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
-                    fontSize: 11.5,
+                    fontSize: 12,
                   ),
                 ),
               ],
@@ -1808,7 +1808,7 @@ class _LanguageSheet extends ConsumerWidget {
                         style: TextStyle(
                           color: AppColors.textOnGlass,
                           fontWeight: entry.key == current
-                              ? FontWeight.w700
+                              ? FontWeight.w600
                               : FontWeight.w500,
                         ),
                       ),
@@ -2106,7 +2106,7 @@ class _RotateKeysTileState extends ConsumerState<_RotateKeysTile> {
                   t.rotateKeysHint,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
-                    fontSize: 11.5,
+                    fontSize: 12,
                   ),
                 ),
               ],

@@ -216,7 +216,7 @@ class _ThemeCard extends ConsumerWidget {
                           color: selected
                               ? AppColors.textOnGlass
                               : AppColors.textOnGlassDim,
-                          fontSize: 10.5,
+                          fontSize: 11,
                         ),
                       ),
                     ],
@@ -439,7 +439,7 @@ class _ScaleCard extends ConsumerWidget {
             t.profileScaleSample,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
           ),
         ],
       ),
@@ -691,7 +691,7 @@ class _SwipeCardState extends ConsumerState<_SwipeCard>
           const SizedBox(height: 8),
           Text(
             t.customizeSwipeHint,
-            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
           ),
         ],
       ),
@@ -1224,7 +1224,7 @@ class _NavBarCard extends ConsumerWidget {
                 t.customizeBarHiddenEmpty,
                 style: TextStyle(
                   color: AppColors.textOnGlassFaint,
-                  fontSize: 12.5,
+                  fontSize: 13,
                 ),
               ),
             )
@@ -1267,8 +1267,8 @@ class _SectionLabel extends StatelessWidget {
           text.toUpperCase(),
           style: TextStyle(
             color: AppColors.textOnGlassFaint,
-            fontSize: 10.5,
-            fontWeight: FontWeight.w700,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
             letterSpacing: 0.6,
           ),
         ),
@@ -1328,7 +1328,7 @@ class _TabRow extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: TextStyle(color: ink, fontSize: 14.5),
+              style: TextStyle(color: ink, fontSize: 15),
             ),
           ),
           trailing,
@@ -1413,7 +1413,7 @@ class _Pill extends StatelessWidget {
           textScaler: TextScaler.noScaling,
           style: TextStyle(
             color: AppColors.textOnGlass,
-            fontSize: 12.5,
+            fontSize: 13,
             fontWeight: active ? FontWeight.w600 : FontWeight.w400,
           ),
         ),

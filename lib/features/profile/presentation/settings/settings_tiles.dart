@@ -32,7 +32,7 @@ class SettingText extends StatelessWidget {
   /// The name's style, where a card's heading wants to be larger than a row's.
   final TextStyle? titleStyle;
 
-  static const _hintStyle = TextStyle(fontSize: 11.5, height: 1.3);
+  static const _hintStyle = TextStyle(fontSize: 12, height: 1.3);
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -280,7 +280,7 @@ class SettingsSectionRow extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.rowTitle.copyWith(
-                    fontSize: 15.5,
+                    fontSize: 16,
                     color: danger ? AppColors.danger : AppColors.textOnGlass,
                   ),
                 ),

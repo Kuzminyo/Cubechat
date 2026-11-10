@@ -143,7 +143,7 @@ class _MapInviteSheetState extends ConsumerState<_MapInviteSheet> {
                           style: TextStyle(
                             color: AppColors.textOnGlass,
                             fontSize: 17,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -178,7 +178,7 @@ class _MapInviteSheetState extends ConsumerState<_MapInviteSheet> {
                         maxLines: 3,
                         style: TextStyle(
                           color: AppColors.textOnGlass,
-                          fontSize: 12.5,
+                          fontSize: 13,
                           height: 1.35,
                         ),
                       ),
@@ -250,7 +250,7 @@ class _MapInviteSheetState extends ConsumerState<_MapInviteSheet> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: AppColors.textOnGlassDim,
-                          fontSize: 11.5,
+                          fontSize: 12,
                         ),
                       ),
                     );
