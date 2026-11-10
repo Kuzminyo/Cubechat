@@ -41,7 +41,7 @@ class ActionStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) => GlassCard(
         strong: true,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         borderRadius: 26,
         child: SizedBox(
           height: height,
@@ -66,12 +66,12 @@ class _Cell extends StatelessWidget {
       onTap: item.onTap,
       borderRadius: BorderRadius.circular(18),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(item.icon, color: tone, size: ActionStrip.iconSize),
-            const SizedBox(height: 7),
+            const SizedBox(height: 8),
             // Shrunk to its cell rather than cut. Measured in Inter Bold at
             // 11 px against the cell a 360 px phone gives five buttons
             // (63 px): "Підтвердити" is 70, "Заблокувати" 72, and "Увімкнути

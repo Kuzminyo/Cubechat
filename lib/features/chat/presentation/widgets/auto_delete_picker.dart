@@ -70,7 +70,7 @@ Future<ChatAutoDelete?> showAutoDeletePicker(
             ),
             onChanged: (value) => Navigator.of(dialogContext).pop(value),
           ),
-        const Divider(height: 12, color: Color(0x26FFFFFF)),
+        Divider(height: 12, color: AppColors.glass(0.15)),
         SimpleDialogOption(
           onPressed: () async {
             final custom = await _askCustom(dialogContext, t);

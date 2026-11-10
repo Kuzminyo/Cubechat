@@ -71,7 +71,7 @@ class SettingText extends StatelessWidget {
                     ),
                   ),
                   if (more) ...[
-                    const SizedBox(width: 5),
+                    const SizedBox(width: 4),
                     Icon(
                       Icons.info_outline_rounded,
                       size: 15,
@@ -123,7 +123,7 @@ Future<void> showSettingInfo(
       builder: (_) => SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -342,7 +342,9 @@ class SettingsSubheader extends StatelessWidget {
     );
     final info = this.info;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+      // On the grid, and still closer to its own rows (8) than to the
+      // section above it (16): unslop pass, 2026-11-10.
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       child: info == null
           ? label
           : GestureDetector(
@@ -351,7 +353,7 @@ class SettingsSubheader extends StatelessWidget {
               child: Row(
                 children: [
                   Flexible(child: label),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 8),
                   Icon(
                     Icons.info_outline_rounded,
                     size: 15,

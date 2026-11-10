@@ -18,19 +18,23 @@ class UnreadBadge extends StatelessWidget {
           ? const SizedBox.shrink()
           : Container(
               constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
-              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               alignment: Alignment.center,
+              // One flat accent with dark figures, like the send button: the
+              // gradient pill and white on mint were the loudest thing in a
+              // row of quiet ones (unslop pass, 2026-11-10).
               decoration: BoxDecoration(
-                gradient: AppColors.brandGradient,
-                borderRadius: BorderRadius.all(Radius.circular(999)),
+                color: AppColors.brandPrimary,
+                borderRadius: const BorderRadius.all(Radius.circular(999)),
               ),
               child: Text(
                 label,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: AppColors.bgDeep,
                   fontSize: 11,
-                  fontWeight: FontWeight.w500,
+                  fontWeight: FontWeight.w600,
                   height: 1.0,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
             ),

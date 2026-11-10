@@ -50,7 +50,7 @@ Future<T?> showGlassSheet<T>({
   required WidgetBuilder builder,
   bool useRootNavigator = true,
   bool isScrollControlled = true,
-  EdgeInsets margin = const EdgeInsets.fromLTRB(10, 0, 10, 10),
+  EdgeInsets margin = const EdgeInsets.fromLTRB(12, 0, 12, 12),
 }) {
   return showModalBottomSheet<T>(
     context: context,

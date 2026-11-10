@@ -678,7 +678,7 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                               _deleteContact(context, ref);
                             },
                           ),
-                        const Divider(height: 1, color: Color(0x26FFFFFF)),
+                        Divider(height: 1, color: AppColors.glass(0.15)),
                         _ActionTile(
                           icon: Icons.flag_outlined,
                           label: t.reportAction,
@@ -1681,14 +1681,14 @@ class _SharedContentCard extends StatelessWidget {
               count: mediaCount,
               onTap: onMedia,
             ),
-            const Divider(height: 1, color: Color(0x26FFFFFF)),
+            Divider(height: 1, color: AppColors.glass(0.15)),
             _ContentRow(
               icon: Icons.mic_none_rounded,
               label: voiceLabel,
               count: voiceCount,
               onTap: onVoice,
             ),
-            const Divider(height: 1, color: Color(0x26FFFFFF)),
+            Divider(height: 1, color: AppColors.glass(0.15)),
             _ContentRow(
               icon: Icons.folder_rounded,
               label: fileLabel,

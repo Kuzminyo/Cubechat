@@ -172,7 +172,7 @@ class _UndoToastState extends State<_UndoToast> with TickerProviderStateMixin {
                 borderRadius: radius,
                 child: GlassBlur(
                   child: Container(
-                    padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+                    padding: const EdgeInsets.fromLTRB(16, 4, 4, 4),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         begin: Alignment.topCenter,
