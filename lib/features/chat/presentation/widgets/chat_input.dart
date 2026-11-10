@@ -661,7 +661,7 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
                             enableSuggestions: true,
                             style: TextStyle(
                               color: AppColors.textOnGlass,
-                              fontSize: 14.5,
+                              fontSize: 15,
                             ),
                             // The keyboard's own send key closes the keyboard,
                             // and the app's send button does not — so the same
@@ -692,7 +692,7 @@ class _ChatInputState extends State<ChatInput> with WidgetsBindingObserver {
                               hintText: widget.hint,
                               hintStyle: TextStyle(
                                 color: AppColors.textOnGlassFaint,
-                                fontSize: 14.5,
+                                fontSize: 15,
                               ),
                             ),
                           ),
@@ -780,7 +780,7 @@ class _EditBanner extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
-                    fontSize: 12.5,
+                    fontSize: 13,
                   ),
                 ),
               ],
@@ -845,7 +845,7 @@ class _RoundIconButtonState extends State<_RoundIconButton> {
             shape: BoxShape.circle,
             color: AppColors.glass(0.08),
           ),
-          child: Icon(widget.icon, color: AppColors.textOnGlass, size: 21),
+          child: Icon(widget.icon, color: AppColors.textOnGlass, size: 20),
         ),
       ),
     );
@@ -945,14 +945,9 @@ class _LockHintState extends State<_LockHint>
             ),
             width: 1.4,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.brandPrimary
-                  .withValues(alpha: 0.35 * widget.travel),
-              blurRadius: 18,
-              spreadRadius: 1,
-            ),
-          ],
+          // No glow as the finger travels: the border brightening and the
+          // fill turning accent when armed already say how far it has gone
+          // (unslop pass, 2026-11-10).
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1205,27 +1200,22 @@ class _VoiceButtonState extends State<_VoiceButton> {
       height: 44,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
+        // The accent as one flat disc, no glow, dark glyph on it: white on
+        // the mint did not reach a readable contrast, and the glow was the
+        // only coloured shadow in the conversation (unslop pass, 2026-11-10).
+        color: filled ? AppColors.brandPrimary : null,
         gradient: filled
-            ? AppColors.brandGradient
+            ? null
             : LinearGradient(
                 colors: [
                   AppColors.glass(0.18),
                   AppColors.glass(0.10),
                 ],
               ),
-        boxShadow: filled
-            ? [
-                BoxShadow(
-                  color: AppColors.brandPrimary.withValues(alpha: 0.45),
-                  blurRadius: 16,
-                  spreadRadius: -2,
-                ),
-              ]
-            : null,
       ),
       child: IconTheme.merge(
         data: IconThemeData(
-          color: filled ? Colors.white : AppColors.textOnGlass,
+          color: filled ? AppColors.bgDeep : AppColors.textOnGlass,
           size: 20,
         ),
         child: Center(child: icon),
@@ -1430,27 +1420,21 @@ class _SendButtonState extends State<_SendButton> {
             height: 44,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
+              // Same flat accent disc and dark glyph as the composer's other
+              // round button (unslop pass, 2026-11-10).
+              color: widget.enabled ? AppColors.brandPrimary : null,
               gradient: widget.enabled
-                  ? AppColors.brandGradient
+                  ? null
                   : LinearGradient(
                       colors: [
                         AppColors.glass(0.18),
                         AppColors.glass(0.10),
                       ],
                     ),
-              boxShadow: widget.enabled
-                  ? [
-                      BoxShadow(
-                        color: AppColors.brandPrimary.withValues(alpha: 0.45),
-                        blurRadius: 16,
-                        spreadRadius: -2,
-                      ),
-                    ]
-                  : null,
             ),
             child: Icon(
               widget.isEdit ? Icons.check_rounded : Icons.arrow_upward_rounded,
-              color: widget.enabled ? Colors.white : AppColors.ink(0.55),
+              color: widget.enabled ? AppColors.bgDeep : AppColors.ink(0.55),
               size: 20,
             ),
           ),

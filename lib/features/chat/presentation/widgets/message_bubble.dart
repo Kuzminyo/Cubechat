@@ -1483,7 +1483,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: AppColors.textOnGlassDim,
-                fontSize: 12.5,
+                fontSize: 13,
                 height: 1.2,
               ),
             ),
@@ -1532,7 +1532,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
       children: [
         Text(
           t.chatSentAt(formatMessageDetailsTime(context, m.sentAt)),
-          style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+          style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
         ),
         // The mark beside the time, said in words.
         if (routeBadgeFor(m) case final badge?)
@@ -1540,14 +1540,14 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             m.isMine
                 ? t.chatRouteDeliveredVia(messageRouteText(t, badge))
                 : t.chatRouteReceivedVia(messageRouteText(t, badge)),
-            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
           ),
         if (readAt != null)
           Text(
             t.chatReadAt(formatMessageDetailsTime(context, readAt)),
             style: const TextStyle(
               color: _BubbleMeta._readColor,
-              fontSize: 11.5,
+              fontSize: 12,
             ),
           ),
         for (final r in readers)
@@ -1558,7 +1558,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: _BubbleMeta._readColor,
-              fontSize: 11.5,
+              fontSize: 12,
             ),
           ),
       ],
@@ -2146,7 +2146,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                                   message.authorId ?? message.authorName!,
                                 ),
                                 fontSize: 12,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ),
@@ -2490,10 +2490,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                       padding: const EdgeInsets.only(top: 6),
                       child: Text(
                         translated,
+                        // Upright: the reading colour already sets the
+                        // translation apart (unslop pass, no italic).
                         style: TextStyle(
                           fontSize: 14,
                           height: 1.35,
-                          fontStyle: FontStyle.italic,
                           color: readingColor,
                         ),
                       ),
@@ -2792,13 +2793,13 @@ class _SharedLocationBubble extends StatelessWidget {
             '${location.latitude.toStringAsFixed(5)}, '
             '${location.longitude.toStringAsFixed(5)}',
             style:
-                AppTypography.mono(size: 11.5, color: AppColors.textOnGlassDim),
+                AppTypography.mono(size: 12, color: AppColors.textOnGlassDim),
           ),
           if (location.accuracyMetres > 0) ...[
             const SizedBox(height: 2),
             Text(
               t.locationAccuracy(location.accuracyMetres),
-              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
             ),
           ],
           const SizedBox(height: 8),
@@ -2807,7 +2808,7 @@ class _SharedLocationBubble extends StatelessWidget {
             // sender plainly remembers sending something.
             Text(
               t.locationExpired,
-              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
             )
           else
             GestureDetector(
@@ -2824,13 +2825,13 @@ class _SharedLocationBubble extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.map_rounded,
-                      size: 15, color: AppColors.brandPrimary),
+                      size: 16, color: AppColors.brandPrimary),
                   const SizedBox(width: 6),
                   Text(
                     t.locationOpenInMaps,
                     style: TextStyle(
                       color: AppColors.brandPrimary,
-                      fontSize: 12.5,
+                      fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -2877,7 +2878,7 @@ class _MapFriendLinkBubble extends StatelessWidget {
                     accepted
                         ? Icons.location_on_rounded
                         : Icons.person_add_alt_1_rounded,
-                    size: 19,
+                    size: 20,
                     color: AppColors.brandPrimary,
                   ),
                   const SizedBox(width: 8),
@@ -2887,7 +2888,7 @@ class _MapFriendLinkBubble extends StatelessWidget {
                       style: TextStyle(
                         color: AppColors.textOnGlass,
                         fontSize: 14,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -2900,7 +2901,7 @@ class _MapFriendLinkBubble extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: AppColors.textOnGlassDim,
-                  fontSize: 12.5,
+                  fontSize: 13,
                 ),
               ),
               const SizedBox(height: 8),
@@ -2911,7 +2912,7 @@ class _MapFriendLinkBubble extends StatelessWidget {
                     accepted || mine
                         ? Icons.map_rounded
                         : Icons.check_circle_rounded,
-                    size: 15,
+                    size: 16,
                     color: AppColors.brandPrimary,
                   ),
                   const SizedBox(width: 6),
@@ -2919,7 +2920,7 @@ class _MapFriendLinkBubble extends StatelessWidget {
                     accepted ? t.mapTitle : t.mapInviteAction(1),
                     style: TextStyle(
                       color: AppColors.brandPrimary,
-                      fontSize: 12.5,
+                      fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -2975,7 +2976,7 @@ class _CallRecordBubble extends StatelessWidget {
                     shape: BoxShape.circle,
                     color: tone.withValues(alpha: 0.16),
                   ),
-                  child: Icon(icon, size: 21, color: tone),
+                  child: Icon(icon, size: 20, color: tone),
                 ),
                 const SizedBox(width: 11),
                 Flexible(
@@ -2991,7 +2992,7 @@ class _CallRecordBubble extends StatelessWidget {
                           color:
                               missed ? AppColors.danger : AppColors.textOnGlass,
                           fontSize: 15,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                       if (call.answered) ...[
@@ -3000,7 +3001,7 @@ class _CallRecordBubble extends StatelessWidget {
                           callClock(call.talkedFor),
                           style: TextStyle(
                             color: AppColors.textOnGlassDim,
-                            fontSize: 12.5,
+                            fontSize: 13,
                           ),
                         ),
                       ],
@@ -3078,7 +3079,7 @@ class _SharedContactBubble extends ConsumerWidget {
                         color: contact.isInvitation && forMe
                             ? AppColors.brandPrimary
                             : AppColors.textOnGlassDim,
-                        fontSize: 10.5,
+                        fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -3090,7 +3091,7 @@ class _SharedContactBubble extends ConsumerWidget {
                       style: TextStyle(
                         color: AppColors.textOnGlass,
                         fontSize: 15,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -3098,7 +3099,7 @@ class _SharedContactBubble extends ConsumerWidget {
                       t.contactProfileOpen,
                       style: TextStyle(
                         color: AppColors.textOnGlassDim,
-                        fontSize: 10.5,
+                        fontSize: 11,
                       ),
                     ),
                   ],
@@ -3610,8 +3611,8 @@ class _ReactionChip extends StatelessWidget {
                   '+${count - _maxFaces}',
                   style: TextStyle(
                     color: AppColors.textOnGlass,
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -4229,7 +4230,7 @@ class _BubbleMeta extends StatelessWidget {
         if (pinned) ...[
           Icon(
             Icons.push_pin_rounded,
-            size: 11,
+            size: 12,
             color: _ink(message.isMine ? 0.8 : 0.55),
             semanticLabel: t.chatPinnedTitle,
           ),
@@ -4238,7 +4239,7 @@ class _BubbleMeta extends StatelessWidget {
         if (message.forwardSecret) ...[
           Icon(
             Icons.lock_clock_rounded,
-            size: 11,
+            size: 12,
             color: _ink(message.isMine ? 0.8 : 0.55),
             semanticLabel: 'forward secret',
           ),
@@ -4248,8 +4249,7 @@ class _BubbleMeta extends StatelessWidget {
           Text(
             t.chatEdited,
             style: TextStyle(
-              fontSize: 10.5,
-              fontStyle: FontStyle.italic,
+              fontSize: 11,
               color: _ink(message.isMine ? 0.7 : 0.45),
             ),
           ),
@@ -4273,7 +4273,7 @@ class _BubbleMeta extends StatelessWidget {
             Text(
               '${badge.hops}',
               style: TextStyle(
-                fontSize: 9.5,
+                fontSize: 11,
                 color: _ink(message.isMine ? 0.7 : 0.45),
               ),
             ),
@@ -4283,7 +4283,7 @@ class _BubbleMeta extends StatelessWidget {
         Text(
           time,
           style: TextStyle(
-            fontSize: 10.5,
+            fontSize: 11,
             color: _ink(message.isMine ? 0.8 : 0.5),
           ),
         ),
@@ -4363,7 +4363,7 @@ class _CommentsLink extends ConsumerWidget {
         children: [
           Icon(
             Icons.mode_comment_outlined,
-            size: 13,
+            size: 14,
             color: AppColors.brandPrimary,
           ),
           const SizedBox(width: 5),
@@ -4371,7 +4371,7 @@ class _CommentsLink extends ConsumerWidget {
             t.channelPostComments,
             style: TextStyle(
               color: AppColors.brandPrimary,
-              fontSize: 11.5,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -4422,7 +4422,7 @@ class _ForwardHeader extends ConsumerWidget {
         ] else ...[
           Icon(
             Icons.shortcut_rounded,
-            size: 13,
+            size: 14,
             color: AppColors.brandSecondary,
           ),
           const SizedBox(width: 5),
@@ -4434,7 +4434,7 @@ class _ForwardHeader extends ConsumerWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: AppColors.brandSecondary,
-              fontSize: 11.5,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
           ),

@@ -856,7 +856,7 @@ class _PillIconButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      icon: Icon(icon, color: color, size: 21),
+      icon: Icon(icon, color: color, size: 20),
       onPressed: onPressed,
       tooltip: tooltip,
       visualDensity: VisualDensity.compact,
@@ -1007,7 +1007,7 @@ class _ChatHeader extends StatelessWidget {
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     style: AppTypography.heading(
-                                      size: 15.5,
+                                      size: 16,
                                       color: AppColors.textOnGlass,
                                     ),
                                   ),
@@ -1066,7 +1066,7 @@ class _ChatHeader extends StatelessWidget {
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           color: statusColor,
-                                          fontSize: 11.5,
+                                          fontSize: 12,
                                         ),
                                       ),
                                     ),
@@ -1200,12 +1200,12 @@ class _ChatRouteIndicator extends ConsumerWidget {
             title,
             style: TextStyle(
               color: live ? AppColors.textOnGlass : AppColors.textOnGlassDim,
-              fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+              fontWeight: active ? FontWeight.w600 : FontWeight.w500,
             ),
           ),
           subtitle: Text(
             hint,
-            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+            style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
           ),
           trailing: active
               ? Icon(Icons.check_rounded, color: AppColors.brandPrimary)
@@ -1241,7 +1241,7 @@ class _ChatRouteIndicator extends ConsumerWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: AppColors.textOnGlassDim,
-                  fontSize: 11.5,
+                  fontSize: 12,
                   height: 1.35,
                 ),
               ),
@@ -1284,14 +1284,14 @@ class _ChatRouteIndicator extends ConsumerWidget {
                         style: TextStyle(
                           color: AppColors.textOnGlass,
                           fontWeight:
-                              chosen ? FontWeight.w700 : FontWeight.w500,
+                              chosen ? FontWeight.w600 : FontWeight.w500,
                         ),
                       ),
                       subtitle: Text(
                         hint,
                         style: TextStyle(
                           color: AppColors.textOnGlassDim,
-                          fontSize: 11.5,
+                          fontSize: 12,
                         ),
                       ),
                       trailing: Icon(
@@ -1341,7 +1341,7 @@ class _ChatRouteIndicator extends ConsumerWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: AppColors.textOnGlassDim,
-                  fontSize: 11.5,
+                  fontSize: 12,
                   height: 1.35,
                 ),
               ),
@@ -1355,7 +1355,7 @@ class _ChatRouteIndicator extends ConsumerWidget {
   Widget _routeChip(IconData icon, String label, Color color) => Tooltip(
         message: label,
         child: compact
-            ? Icon(icon, size: 13, color: color)
+            ? Icon(icon, size: 14, color: color)
             : Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1367,7 +1367,7 @@ class _ChatRouteIndicator extends ConsumerWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: color,
-                      fontSize: 11.5,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -2955,7 +2955,7 @@ class _SavedTagFilterBar extends ConsumerWidget {
                   style: TextStyle(
                     color: AppColors.textOnGlass,
                     fontSize: 13,
-                    fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+                    fontWeight: on ? FontWeight.w600 : FontWeight.w500,
                   ),
                 ),
               ),
@@ -3001,7 +3001,7 @@ class _DaySeparator extends StatelessWidget {
               formatDayHeader(context, day),
               style: TextStyle(
                 color: AppColors.textOnGlassDim,
-                fontSize: 11.5,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -3279,7 +3279,7 @@ class _ChatSearchBarState extends State<_ChatSearchBar> {
                   prefixIcon: Icon(
                     Icons.search_rounded,
                     color: AppColors.brandPrimary,
-                    size: 19,
+                    size: 20,
                   ),
                   prefixIconConstraints:
                       const BoxConstraints(minWidth: 34, minHeight: 34),
@@ -3302,7 +3302,7 @@ class _ChatSearchBarState extends State<_ChatSearchBar> {
                   color: widget.resultIndex == null && _query.trim().isNotEmpty
                       ? AppColors.textOnGlassDim
                       : AppColors.brandPrimary,
-                  fontSize: 11.5,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
                   height: 1,
                 ),
@@ -3441,7 +3441,7 @@ class _ChatSelectionBar extends StatelessWidget {
                 style: TextStyle(
                   color: AppColors.textOnGlass,
                   fontSize: 18,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -3504,7 +3504,7 @@ class _SelectionActionButton extends StatelessWidget {
           onTap: onPressed,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            child: Icon(icon, size: 21, color: effectiveColor),
+            child: Icon(icon, size: 20, color: effectiveColor),
           ),
         ),
       ),
@@ -3642,8 +3642,8 @@ class _PinnedBar extends StatelessWidget {
                           : t.chatPinnedTitle,
                       style: TextStyle(
                         color: AppColors.brandPrimary,
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 1),
@@ -3653,7 +3653,7 @@ class _PinnedBar extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: AppColors.textOnGlass,
-                        fontSize: 12.5,
+                        fontSize: 13,
                         height: 1.15,
                       ),
                     ),
@@ -4922,7 +4922,7 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
                 style: TextStyle(
                   color: AppColors.textOnGlass,
                   fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 14),
@@ -5768,7 +5768,7 @@ class _UnblockIsland extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(
             children: [
-              Icon(Icons.block_rounded, size: 15, color: AppColors.danger),
+              Icon(Icons.block_rounded, size: 16, color: AppColors.danger),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -5777,7 +5777,7 @@ class _UnblockIsland extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
-                    fontSize: 12.5,
+                    fontSize: 13,
                   ),
                 ),
               ),
@@ -5786,8 +5786,8 @@ class _UnblockIsland extends StatelessWidget {
                 t.peerUnblock,
                 style: TextStyle(
                   color: AppColors.brandPrimary,
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
@@ -5847,8 +5847,8 @@ class _ReplyComposeBar extends StatelessWidget {
                     header,
                     style: TextStyle(
                       color: AppColors.brandPrimary,
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 1),
@@ -5858,7 +5858,7 @@ class _ReplyComposeBar extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: AppColors.textOnGlass,
-                      fontSize: 12.5,
+                      fontSize: 13,
                       height: 1.15,
                     ),
                   ),
@@ -5913,7 +5913,7 @@ class _VerificationMark extends StatelessWidget {
       return Tooltip(
         message: t.verifyTitle,
         child: Icon(Icons.shield_rounded,
-            size: 13, color: AppColors.textOnGlassFaint),
+            size: 14, color: AppColors.textOnGlassFaint),
       );
     }
     return Tooltip(
