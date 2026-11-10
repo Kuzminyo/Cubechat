@@ -23,4 +23,4 @@ const String appVersion = '1.0.4';
 ///
 /// Verified inside `libapp.so` after every build — see `tool/build_apk.ps1`,
 /// which is what catches a build that silently reused an old snapshot.
-const String appBuildStamp = '2026-11-09-branch-soft-reactions';
+const String appBuildStamp = '2026-11-10-unslop-one-scale';
