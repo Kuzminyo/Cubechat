@@ -109,7 +109,7 @@ class _NewChannelScreenState extends ConsumerState<NewChannelScreen> {
             text,
             style: TextStyle(
               color: AppColors.textOnGlassDim,
-              fontSize: 11.5,
+              fontSize: 12,
               height: 1.35,
             ),
           ),

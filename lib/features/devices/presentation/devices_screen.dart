@@ -99,7 +99,7 @@ class DevicesScreen extends ConsumerWidget {
             t.devicesCaveat,
             style: TextStyle(
               color: AppColors.textOnGlassFaint,
-              fontSize: 12.5,
+              fontSize: 13,
               height: 1.4,
             ),
           ),
@@ -241,7 +241,7 @@ class _DeviceRow extends StatelessWidget {
                   detail,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
-                    fontSize: 12.5,
+                    fontSize: 13,
                   ),
                 ),
               ],

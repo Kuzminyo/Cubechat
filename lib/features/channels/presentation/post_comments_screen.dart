@@ -231,7 +231,7 @@ class _PostCard extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           color: AppColors.textOnGlass,
-          fontSize: 13.5,
+          fontSize: 14,
           height: 1.3,
         ),
       ),
@@ -265,7 +265,7 @@ class _DayLine extends StatelessWidget {
             formatDayHeader(context, day),
             style: TextStyle(
               color: AppColors.textOnGlassDim,
-              fontSize: 11.5,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -305,7 +305,7 @@ class _CommentRow extends StatelessWidget {
                     style: TextStyle(
                       color: AppColors.authorTint(comment.authorId ?? name),
                       fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 Text(

@@ -86,7 +86,7 @@ class _Cell extends StatelessWidget {
                 style: TextStyle(
                   color: tone,
                   fontSize: ActionStrip.labelSize,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),

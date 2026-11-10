@@ -633,7 +633,7 @@ class _AddContactRow extends StatelessWidget {
               style: TextStyle(
                 color: AppColors.textOnGlass,
                 fontSize: 15,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -697,7 +697,7 @@ class _ContactTile extends ConsumerWidget {
                         style: TextStyle(
                           color: AppColors.textOnGlass,
                           fontSize: 15,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -771,7 +771,7 @@ class _ContactsEmptyState extends StatelessWidget {
             style: TextStyle(
               color: AppColors.textOnGlass,
               fontSize: 18,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 8),

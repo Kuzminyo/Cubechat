@@ -193,7 +193,7 @@ class _CallRow extends ConsumerWidget {
                           ? AppColors.danger
                           : AppColors.textOnGlass,
                       fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 4),

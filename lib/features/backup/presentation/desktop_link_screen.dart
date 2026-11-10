@@ -175,7 +175,7 @@ class _DesktopLinkScreenState extends ConsumerState<DesktopLinkScreen> {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: AppColors.textOnGlassFaint,
-                    fontSize: 12.5,
+                    fontSize: 13,
                     height: 1.4,
                   ),
                 ),
@@ -419,7 +419,7 @@ class _LinkRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: AppColors.textOnGlassDim,
-                      fontSize: 11.5,
+                      fontSize: 12,
                     ),
                   ),
                 ],

@@ -206,7 +206,7 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                 style: TextStyle(
                   color: AppColors.textOnGlass,
                   fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 4),
@@ -937,7 +937,7 @@ class _ContactProfileScreenState extends ConsumerState<ContactProfileScreen>
                                       style: TextStyle(
                                         color: AppColors.textOnGlass,
                                         fontSize: 15,
-                                        fontWeight: FontWeight.w700,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                     const SizedBox(height: 4),
@@ -1728,7 +1728,7 @@ class _ContentRow extends StatelessWidget {
                 style: TextStyle(
                   color: AppColors.textOnGlass,
                   fontSize: 15,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),

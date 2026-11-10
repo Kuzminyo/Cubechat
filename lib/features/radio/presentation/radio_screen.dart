@@ -285,7 +285,7 @@ class _Label extends StatelessWidget {
           text.toUpperCase(),
           style: TextStyle(
             color: AppColors.textOnGlassDim,
-            fontSize: 11.5,
+            fontSize: 12,
             fontWeight: FontWeight.w600,
             letterSpacing: 0.6,
           ),
@@ -485,7 +485,7 @@ class _SwitchTile extends StatelessWidget {
                   hint,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
-                    fontSize: 11.5,
+                    fontSize: 12,
                     height: 1.35,
                   ),
                 ),
@@ -974,7 +974,7 @@ class _TalkButtonState extends State<_TalkButton>
               style: TextStyle(
                 color: ink,
                 fontSize: 14,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
                 height: 1.2,
               ),
             ),

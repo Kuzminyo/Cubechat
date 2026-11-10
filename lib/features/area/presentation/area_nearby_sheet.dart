@@ -61,7 +61,7 @@ class _AreaNearbySheetState extends ConsumerState<_AreaNearbySheet>
         padding: const EdgeInsets.only(bottom: 10),
         child: Text(
           text,
-          style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
+          style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
         ),
       );
     }
@@ -85,7 +85,7 @@ class _AreaNearbySheetState extends ConsumerState<_AreaNearbySheet>
               ),
               Text(
                 t.areaPublicBadge,
-                style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 11.5),
+                style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
               ),
             ],
           ),
@@ -206,7 +206,7 @@ class _LevelRow extends ConsumerWidget {
               '${areaDisplayName(t, last.pubkey, last.name)}: ${last.text}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5),
+              style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
             ),
     );
   }

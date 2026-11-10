@@ -123,7 +123,7 @@ class _RadioJoinSheetState extends ConsumerState<_RadioJoinSheet> {
               t.radioJoinHint,
               style: TextStyle(
                 color: AppColors.textOnGlassDim,
-                fontSize: 11.5,
+                fontSize: 12,
                 height: 1.35,
               ),
             ),

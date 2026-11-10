@@ -39,7 +39,7 @@ class StrangerReachSelector extends ConsumerWidget {
           maxLines: 1,
           softWrap: false,
           overflow: TextOverflow.fade,
-          style: const TextStyle(fontSize: 13.5),
+          style: const TextStyle(fontSize: 14),
         );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -107,7 +107,7 @@ class StrangerReachSelector extends ConsumerWidget {
             t.strangerReachHint,
             style: TextStyle(
               color: AppColors.textOnGlassDim,
-              fontSize: 11.5,
+              fontSize: 12,
               height: 1.35,
             ),
           ),

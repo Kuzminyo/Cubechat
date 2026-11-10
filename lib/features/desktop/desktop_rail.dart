@@ -149,8 +149,8 @@ class _RailItem extends StatelessWidget {
                         badge > 99 ? '99+' : '$badge',
                         style: const TextStyle(
                           color: Colors.black,
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -165,8 +165,8 @@ class _RailItem extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: fg,
-                fontSize: 11.5,
-                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                fontSize: 12,
+                fontWeight: active ? FontWeight.w600 : FontWeight.w500,
               ),
             ),
           ],

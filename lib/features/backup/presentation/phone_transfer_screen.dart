@@ -91,7 +91,7 @@ class _PhoneTransferScreenState extends ConsumerState<PhoneTransferScreen> {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
-                    fontSize: 12.5,
+                    fontSize: 13,
                   ),
                 ),
               ],
@@ -120,7 +120,7 @@ class _PhoneTransferScreenState extends ConsumerState<PhoneTransferScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: AppColors.textOnGlass,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 16),

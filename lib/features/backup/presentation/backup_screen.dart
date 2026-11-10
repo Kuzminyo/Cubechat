@@ -274,7 +274,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                     t.backupExplainer,
                     style: TextStyle(
                       color: AppColors.textOnGlassDim,
-                      fontSize: 12.5,
+                      fontSize: 13,
                       height: 1.4,
                     ),
                   ),
@@ -323,7 +323,7 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: AppColors.textOnGlassDim,
-                  fontSize: 12.5,
+                  fontSize: 13,
                   height: 1.35,
                 ),
               ),
@@ -378,7 +378,7 @@ class _BackupActionCard extends StatelessWidget {
                     subtitle,
                     style: TextStyle(
                       color: AppColors.textOnGlassDim,
-                      fontSize: 11.5,
+                      fontSize: 12,
                       height: 1.3,
                     ),
                   ),
@@ -426,7 +426,7 @@ class _AutoBackupCard extends ConsumerWidget {
     final notifier = ref.read(autoBackupControllerProvider.notifier);
     final dim = TextStyle(
       color: AppColors.textOnGlassDim,
-      fontSize: 11.5,
+      fontSize: 12,
       height: 1.3,
     );
     final last = auto.lastAt;

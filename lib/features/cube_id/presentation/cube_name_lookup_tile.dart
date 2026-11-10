@@ -110,7 +110,7 @@ class _CubeNameLookupTileState extends ConsumerState<CubeNameLookupTile> {
                     style: TextStyle(
                       color: AppColors.textOnGlass,
                       fontSize: 15,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                   const SizedBox(height: 2),

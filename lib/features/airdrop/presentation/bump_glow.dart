@@ -427,7 +427,7 @@ class _BumpGlowState extends ConsumerState<BumpGlow>
               style: TextStyle(
                 color: AppColors.textOnGlass,
                 fontSize: 17,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: 12),

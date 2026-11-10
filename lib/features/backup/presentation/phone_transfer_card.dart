@@ -54,7 +54,7 @@ class PhoneTransferCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
-                    fontSize: 11.5,
+                    fontSize: 12,
                   ),
                 ),
               ],

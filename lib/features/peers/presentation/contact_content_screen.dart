@@ -379,7 +379,7 @@ class _AuthorLine extends ConsumerWidget {
         const SizedBox(width: 8),
         Text(
           formatMessageDetailsTime(context, message.sentAt),
-          style: TextStyle(color: AppColors.textOnGlassFaint, fontSize: 11.5),
+          style: TextStyle(color: AppColors.textOnGlassFaint, fontSize: 12),
         ),
       ],
     );
@@ -474,7 +474,7 @@ class _LinkList extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: AppColors.textOnGlass,
-                    fontSize: 13.5,
+                    fontSize: 14,
                   ),
                 ),
               ),

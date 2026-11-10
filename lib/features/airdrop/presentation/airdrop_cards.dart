@@ -139,7 +139,7 @@ class AirDropRequestCard extends StatelessWidget {
                       style: TextStyle(
                         color: AppColors.textOnGlass,
                         fontSize: 16,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                     const SizedBox(height: 3),
@@ -233,7 +233,7 @@ class AirDropProgressCard extends StatelessWidget {
                             style: TextStyle(
                               color: AppColors.textOnGlass,
                               fontSize: 14,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),

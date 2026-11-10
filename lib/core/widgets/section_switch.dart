@@ -87,7 +87,7 @@ class SectionSwitch extends StatelessWidget {
                                     ? AppColors.textOnGlass
                                     : AppColors.textOnGlassDim,
                                 fontSize: 14,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w600,
                               ),
                               child: Text(
                                 labels[i],

@@ -86,7 +86,7 @@ class ContactCardScreen extends ConsumerWidget {
                   t.contactMineExplainer,
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
-                    fontSize: 11.5,
+                    fontSize: 12,
                     height: 1.35,
                   ),
                 ),
@@ -188,7 +188,7 @@ class ContactCardScreen extends ConsumerWidget {
                     t.contactUnverified,
                     style: TextStyle(
                       color: AppColors.textOnGlassDim,
-                      fontSize: 11.5,
+                      fontSize: 12,
                       height: 1.35,
                     ),
                   ),
@@ -220,7 +220,7 @@ class _RelayOffBanner extends ConsumerWidget {
               t.contactRelayOff,
               style: TextStyle(
                 color: AppColors.textOnGlass,
-                fontSize: 12.5,
+                fontSize: 13,
                 height: 1.3,
               ),
             ),
@@ -238,7 +238,7 @@ class _RelayOffBanner extends ConsumerWidget {
               t.contactRelayEnable,
               style: TextStyle(
                 color: AppColors.brandPrimary,
-                fontSize: 12.5,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -348,14 +348,14 @@ class _AddContactFieldState extends ConsumerState<_AddContactField> {
               enableSuggestions: false,
               maxLines: 2,
               minLines: 1,
-              style: TextStyle(color: AppColors.textOnGlass, fontSize: 12.5),
+              style: TextStyle(color: AppColors.textOnGlass, fontSize: 13),
               decoration: InputDecoration(
                 isDense: true,
                 border: InputBorder.none,
                 hintText: t.addContactHintName,
                 hintStyle: TextStyle(
                   color: AppColors.textOnGlassFaint,
-                  fontSize: 12.5,
+                  fontSize: 13,
                 ),
               ),
               onSubmitted: (_) => _submit(),
@@ -378,7 +378,7 @@ class _AddContactFieldState extends ConsumerState<_AddContactField> {
               style: TextStyle(
                 color:
                     _busy ? AppColors.textOnGlassFaint : AppColors.brandPrimary,
-                fontSize: 12.5,
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -458,7 +458,7 @@ class _CardPreviewState extends State<_CardPreview> {
                         : 'Показати повний код · ${card.length} симв.',
                     style: TextStyle(
                       color: AppColors.brandPrimary,
-                      fontSize: 11.5,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
                   ),

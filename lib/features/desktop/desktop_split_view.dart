@@ -476,7 +476,7 @@ class _EmptyPane extends StatelessWidget {
             style: TextStyle(
               color: AppColors.brandPrimary,
               fontSize: 13,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),
@@ -551,8 +551,8 @@ class _ChatFaces extends ConsumerWidget {
                                         : '${chat.unreadCount}',
                                     style: const TextStyle(
                                       color: Colors.white,
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w700,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ),

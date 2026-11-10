@@ -159,7 +159,7 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                 t.channelRemoveMemberHint,
                 style: TextStyle(
                   color: AppColors.textOnGlassFaint,
-                  fontSize: 11.5,
+                  fontSize: 12,
                 ),
               ),
               onTap: () => Navigator.of(sheetContext).pop('remove'),
@@ -433,7 +433,7 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                 style: TextStyle(
                   color: AppColors.textOnGlass,
                   fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 14),
@@ -897,7 +897,7 @@ class _ChannelInfoScreenState extends ConsumerState<ChannelInfoScreen> {
                             t.channelShareHistoryHint,
                             style: TextStyle(
                               color: AppColors.textOnGlassFaint,
-                              fontSize: 11.5,
+                              fontSize: 12,
                               height: 1.3,
                             ),
                           ),
@@ -1050,7 +1050,7 @@ class _ChannelAdminOnly extends ConsumerWidget {
                   Text(
                     t.channelAdminOnlyHint,
                     style: TextStyle(
-                        color: AppColors.textOnGlassDim, fontSize: 11.5),
+                        color: AppColors.textOnGlassDim, fontSize: 12),
                   ),
                 ],
               ),
@@ -1182,7 +1182,7 @@ class _ChannelAutoHistory extends ConsumerWidget {
                     t.channelHistoryAutoHint,
                     style: TextStyle(
                       color: AppColors.textOnGlassFaint,
-                      fontSize: 11.5,
+                      fontSize: 12,
                       height: 1.3,
                     ),
                   ),
@@ -1235,7 +1235,7 @@ class _ChannelDescription extends StatelessWidget {
                   style: TextStyle(
                     color: AppColors.textOnGlassDim,
                     fontSize: 11,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                     letterSpacing: 1.1,
                   ),
                 ),
@@ -1384,7 +1384,7 @@ class _ChannelCover extends StatelessWidget {
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 25,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -1442,7 +1442,7 @@ class _RoundAction extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: AppColors.textOnGlass,
-                fontSize: 11.5,
+                fontSize: 12,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -1511,7 +1511,7 @@ class _InfoRow extends StatelessWidget {
                           subtitle!,
                           style: TextStyle(
                             color: AppColors.textOnGlassFaint,
-                            fontSize: 11.5,
+                            fontSize: 12,
                           ),
                         ),
                       ],

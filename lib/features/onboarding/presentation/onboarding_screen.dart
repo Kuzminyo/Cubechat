@@ -135,7 +135,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: AppColors.textOnGlassDim,
-                              fontSize: 14.5,
+                              fontSize: 15,
                               height: 1.45,
                             ),
                           ),

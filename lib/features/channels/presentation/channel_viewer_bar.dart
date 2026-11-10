@@ -84,7 +84,7 @@ class ChannelViewerBar extends ConsumerWidget {
                           style: TextStyle(
                             color: AppColors.textOnGlass,
                             fontSize: 16,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),

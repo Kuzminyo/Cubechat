@@ -119,7 +119,7 @@ class StickerGrid extends ConsumerWidget {
             style: TextStyle(
               color: AppColors.textOnGlassDim,
               fontSize: 11,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w600,
               letterSpacing: 0.4,
             ),
           ),

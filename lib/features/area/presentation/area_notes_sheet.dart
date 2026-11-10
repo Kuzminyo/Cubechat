@@ -258,7 +258,7 @@ class _NoteTile extends StatelessWidget {
                       ].join(' · '),
                       style: TextStyle(
                         color: AppColors.textOnGlassDim,
-                        fontSize: 11.5,
+                        fontSize: 12,
                       ),
                     ),
                   ),

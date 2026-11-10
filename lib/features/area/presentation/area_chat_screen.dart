@@ -340,7 +340,7 @@ class _AreaChatScreenState extends ConsumerState<AreaChatScreen>
                                   ),
                                   style: TextStyle(
                                     color: AppColors.authorTint(identity.pubkey),
-                                    fontSize: 12.5,
+                                    fontSize: 13,
                                   ),
                                 ),
                               ),
@@ -372,7 +372,7 @@ class _AreaChatScreenState extends ConsumerState<AreaChatScreen>
                                 t.areaPresenceOffHint,
                                 style: TextStyle(
                                   color: AppColors.textOnGlassDim,
-                                  fontSize: 11.5,
+                                  fontSize: 12,
                                 ),
                               ),
                         onChanged: (on) => unawaited(
@@ -583,7 +583,7 @@ class _PostBubble extends StatelessWidget {
                 style: TextStyle(
                   color: AppColors.authorTint(post.pubkey),
                   fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               if (quoted != null)
@@ -615,7 +615,7 @@ class _PostBubble extends StatelessWidget {
                   '$hh:$mm',
                   style: TextStyle(
                     color: AppColors.textOnGlassFaint,
-                    fontSize: 10.5,
+                    fontSize: 11,
                   ),
                 ),
               ),

@@ -130,7 +130,7 @@ class AreaMapOverlay {
         style: const TextStyle(
           color: Colors.white,
           fontSize: 24,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
         ),
       ),
       textDirection: TextDirection.ltr,

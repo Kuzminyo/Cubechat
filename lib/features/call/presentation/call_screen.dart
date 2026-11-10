@@ -389,7 +389,7 @@ class CallIsland extends StatelessWidget {
                           style: TextStyle(
                             color: AppColors.textOnGlass,
                             fontSize: 15,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         Text(
@@ -397,7 +397,7 @@ class CallIsland extends StatelessWidget {
                           maxLines: 1,
                           style: TextStyle(
                             color: AppColors.brandPrimary,
-                            fontSize: 12.5,
+                            fontSize: 13,
                             fontWeight: FontWeight.w600,
                             fontFeatures: const [FontFeature.tabularFigures()],
                           ),
@@ -840,7 +840,7 @@ class _CallScreenState extends ConsumerState<CallScreen> {
                                             style: const TextStyle(
                                               color: Colors.white,
                                               fontSize: 17,
-                                              fontWeight: FontWeight.w700,
+                                              fontWeight: FontWeight.w600,
                                             ),
                                           ),
                                           Text(
@@ -1598,7 +1598,7 @@ class _RoutePicker extends StatelessWidget {
                         style: TextStyle(
                           color: AppColors.textPrimary,
                           fontSize: 16,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),

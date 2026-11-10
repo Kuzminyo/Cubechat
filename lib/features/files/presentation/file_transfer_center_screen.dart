@@ -185,7 +185,7 @@ class _TransferCard extends ConsumerWidget {
                         '${_formatBytes(task.bytesTotal)}',
                         style: TextStyle(
                           color: AppColors.textOnGlassDim,
-                          fontSize: 11.5,
+                          fontSize: 12,
                         ),
                       ),
                       if (task.source == FileTransferSource.airdrop)
@@ -195,7 +195,7 @@ class _TransferCard extends ConsumerWidget {
                             t.airdropFromLabel(task.peerName ?? '—'),
                             style: TextStyle(
                               color: AppColors.brandPrimary,
-                              fontSize: 11.5,
+                              fontSize: 12,
                             ),
                           ),
                         ),
