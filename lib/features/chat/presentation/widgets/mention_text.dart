@@ -221,7 +221,7 @@ class _MentionTextState extends State<MentionText> {
           match.end,
           style: base.copyWith(
             color: ink ?? AppColors.brandSecondary,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
           ),
         );
       }

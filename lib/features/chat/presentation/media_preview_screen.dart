@@ -529,8 +529,8 @@ class _SendButton extends StatelessWidget {
                 '$count',
                 style: TextStyle(
                   color: AppColors.textOnGlass,
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),

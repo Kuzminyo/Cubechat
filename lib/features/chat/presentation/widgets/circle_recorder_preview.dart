@@ -346,7 +346,7 @@ class CircleRecorderPreview extends StatelessWidget {
                                                   maxLines: 1,
                                                   style: const TextStyle(
                                                     fontSize: 12,
-                                                    fontWeight: FontWeight.w700,
+                                                    fontWeight: FontWeight.w600,
                                                   ),
                                                 ),
                                               ),

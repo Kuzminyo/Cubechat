@@ -402,7 +402,7 @@ class _PinnedMessagesScreenState extends ConsumerState<_PinnedMessagesScreen> {
                                   style: TextStyle(
                                     color: AppColors.danger,
                                     fontSize: 15,
-                                    fontWeight: FontWeight.w700,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
@@ -553,7 +553,7 @@ class _PinnedDayLine extends StatelessWidget {
             formatDayHeader(context, day),
             style: TextStyle(
               color: AppColors.textOnGlassDim,
-              fontSize: 11.5,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -674,7 +674,7 @@ class _PinnedRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: AppColors.textOnGlass,
-                      fontSize: 13.5,
+                      fontSize: 14,
                       height: 1.25,
                     ),
                   ),

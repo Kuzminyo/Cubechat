@@ -175,7 +175,7 @@ class _MonthBlock extends StatelessWidget {
             style: TextStyle(
               color: AppColors.textOnGlass,
               fontSize: 14,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ),
@@ -263,7 +263,7 @@ class _DaySquare extends StatelessWidget {
                     style: TextStyle(
                       color: AppColors.textOnGlass,
                       fontSize: 17,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                       shadows: photo != null
                           ? const [Shadow(blurRadius: 4, color: Colors.black)]
                           : null,
@@ -273,7 +273,7 @@ class _DaySquare extends StatelessWidget {
                     '${day.count}',
                     style: TextStyle(
                       color: AppColors.textOnGlassDim,
-                      fontSize: 10.5,
+                      fontSize: 11,
                       shadows: photo != null
                           ? const [Shadow(blurRadius: 4, color: Colors.black)]
                           : null,

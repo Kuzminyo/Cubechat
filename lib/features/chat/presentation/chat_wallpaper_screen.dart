@@ -249,7 +249,7 @@ extension on ChatWallpaperScreen {
                 style: TextStyle(
                   color: AppColors.textOnGlass,
                   fontSize: 16,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const SizedBox(height: 14),

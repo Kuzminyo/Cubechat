@@ -496,7 +496,7 @@ class _ActionSheet extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: action.tone ?? AppColors.textOnGlass,
-                                fontSize: 14.5,
+                                fontSize: 15,
                               ),
                             ),
                           ),

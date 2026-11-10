@@ -143,7 +143,7 @@ class RequestBanner extends ConsumerWidget {
                 t.requestBanner(name),
                 style: TextStyle(
                   color: AppColors.textOnGlass,
-                  fontSize: 13.5,
+                  fontSize: 14,
                   height: 1.35,
                 ),
               ),

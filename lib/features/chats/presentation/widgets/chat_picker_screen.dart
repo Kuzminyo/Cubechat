@@ -135,7 +135,7 @@ class _ChatPickerScreenState extends ConsumerState<_ChatPickerScreen> {
                     style: TextStyle(
                       color: AppColors.brandPrimary,
                       fontSize: 16,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
@@ -152,7 +152,7 @@ class _ChatPickerScreenState extends ConsumerState<_ChatPickerScreen> {
                   controller: _search,
                   onChanged: (v) => setState(() => _query = v),
                   style:
-                      TextStyle(color: AppColors.textOnGlass, fontSize: 14.5),
+                      TextStyle(color: AppColors.textOnGlass, fontSize: 15),
                   decoration: InputDecoration(
                     isDense: true,
                     filled: true,

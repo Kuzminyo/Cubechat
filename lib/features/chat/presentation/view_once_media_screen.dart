@@ -217,7 +217,7 @@ class _ViewOnceMediaScreenState extends ConsumerState<ViewOnceMediaScreen>
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: AppColors.textOnGlassDim,
-                      fontSize: 12.5,
+                      fontSize: 13,
                     ),
                   ),
                 ),

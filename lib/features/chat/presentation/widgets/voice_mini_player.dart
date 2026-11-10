@@ -233,7 +233,7 @@ class _SpeedPill extends StatelessWidget {
                 ? AppColors.textOnGlassDim
                 : AppColors.brandPrimary,
             fontSize: 12,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),

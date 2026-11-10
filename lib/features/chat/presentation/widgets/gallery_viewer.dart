@@ -151,7 +151,7 @@ class _GalleryViewerState extends State<GalleryViewer> {
                                 style: const TextStyle(
                                   color: Colors.black,
                                   fontSize: 12,
-                                  fontWeight: FontWeight.w700,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               )
                             : null,

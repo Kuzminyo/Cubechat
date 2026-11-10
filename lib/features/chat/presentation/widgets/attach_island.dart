@@ -151,7 +151,7 @@ class _AttachTab extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: colour,
-                    fontSize: 11.5,
+                    fontSize: 12,
                     fontWeight: active ? FontWeight.w600 : FontWeight.w400,
                   ),
                 ),

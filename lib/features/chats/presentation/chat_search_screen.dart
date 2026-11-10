@@ -290,7 +290,7 @@ class _Suggestions extends ConsumerWidget {
                     style: TextStyle(
                       color: AppColors.textOnGlassDim,
                       fontSize: 12,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                       letterSpacing: 0.3,
                     ),
                   ),
@@ -303,7 +303,7 @@ class _Suggestions extends ConsumerWidget {
                     t.chatsSearchClear,
                     style: TextStyle(
                       color: AppColors.brandPrimary,
-                      fontSize: 12.5,
+                      fontSize: 13,
                     ),
                   ),
                 ),
@@ -411,7 +411,7 @@ class _MessageHitTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final snippet = messageHitSnippet(hit.message, query);
-    final body = TextStyle(color: AppColors.textOnGlassDim, fontSize: 12.5);
+    final body = TextStyle(color: AppColors.textOnGlassDim, fontSize: 13);
     final marked = body.copyWith(
       color: AppColors.searchHighlightInk,
       backgroundColor: AppColors.searchHighlight,
@@ -506,7 +506,7 @@ class _SectionLabel extends StatelessWidget {
           style: TextStyle(
             color: AppColors.textOnGlassDim,
             fontSize: 12,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
             letterSpacing: 0.3,
           ),
         ),
@@ -544,7 +544,7 @@ class _FrequentTile extends ConsumerWidget {
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: AppColors.textOnGlass,
-                fontSize: 11.5,
+                fontSize: 12,
               ),
             ),
           ],

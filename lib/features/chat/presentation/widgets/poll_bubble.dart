@@ -41,7 +41,7 @@ class PollBubble extends ConsumerWidget {
                 style: TextStyle(
                   color: AppColors.brandPrimary,
                   fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
@@ -52,7 +52,7 @@ class PollBubble extends ConsumerWidget {
             style: TextStyle(
               color: AppColors.textOnGlass,
               fontSize: 15,
-              fontWeight: FontWeight.w700,
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 8),
@@ -111,7 +111,7 @@ class PollBubble extends ConsumerWidget {
                               message.pollOptions[index],
                               style: TextStyle(
                                 color: AppColors.textOnGlass,
-                                fontSize: 13.5,
+                                fontSize: 14,
                               ),
                             ),
                           ),
@@ -135,7 +135,7 @@ class PollBubble extends ConsumerWidget {
             t.channelPollVotes(total),
             style: TextStyle(
               color: AppColors.textOnGlassDim,
-              fontSize: 11.5,
+              fontSize: 12,
             ),
           ),
         ],

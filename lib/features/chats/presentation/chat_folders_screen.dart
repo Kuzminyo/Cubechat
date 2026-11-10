@@ -58,7 +58,7 @@ class ChatFoldersScreen extends ConsumerWidget {
                       style: TextStyle(
                         color: AppColors.textOnGlass,
                         fontSize: 15,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -90,7 +90,7 @@ class ChatFoldersScreen extends ConsumerWidget {
                               style: TextStyle(
                                 color: AppColors.textOnGlass,
                                 fontSize: 15,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                             const SizedBox(height: 3),
@@ -175,7 +175,7 @@ class _SectionTitle extends StatelessWidget {
             color: AppColors.textOnGlassDim,
             fontSize: 12,
             letterSpacing: 1.5,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
           ),
         ),
       );

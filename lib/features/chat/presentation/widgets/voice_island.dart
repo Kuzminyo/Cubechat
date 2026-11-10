@@ -193,7 +193,7 @@ class _VoicePanel extends ConsumerWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     color: AppColors.textOnGlass,
-                    fontSize: 13.5,
+                    fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -207,7 +207,7 @@ class _VoicePanel extends ConsumerWidget {
                       '${_fmt(playback.position)} / ${_fmt(playback.duration)}',
                       style: TextStyle(
                         color: AppColors.textOnGlassDim,
-                        fontSize: 10.5,
+                        fontSize: 11,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -301,7 +301,7 @@ class _SpeedPill extends StatelessWidget {
                 ? AppColors.textOnGlassDim
                 : AppColors.brandPrimary,
             fontSize: 12,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
           ),
         ),
       ),

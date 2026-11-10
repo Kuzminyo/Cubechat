@@ -292,7 +292,7 @@ class _VoiceBubbleState extends ConsumerState<VoiceBubble> {
               formatMessageDetailsTime(context, widget.message.sentAt),
               style: TextStyle(
                 color: AppColors.textOnGlassFaint,
-                fontSize: 11.5,
+                fontSize: 12,
               ),
             ),
           ],

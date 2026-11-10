@@ -130,7 +130,7 @@ class FileBubble extends ConsumerWidget {
                     size == null ? t.fileOpenHint : formatBytes(size),
                     style: TextStyle(
                       color: AppColors.textOnGlassDim,
-                      fontSize: 11.5,
+                      fontSize: 12,
                     ),
                   ),
                 ],

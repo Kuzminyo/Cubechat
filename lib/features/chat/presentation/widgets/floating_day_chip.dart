@@ -171,7 +171,7 @@ class _FloatingDayChipState extends State<FloatingDayChip> {
                         formatDayHeader(context, day),
                         style: TextStyle(
                           color: AppColors.textOnGlass,
-                          fontSize: 11.5,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
                       ),

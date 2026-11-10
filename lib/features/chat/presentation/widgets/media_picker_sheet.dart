@@ -886,7 +886,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
                     style: TextStyle(
                       color: AppColors.brandPrimary,
                       fontSize: 13,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
@@ -1032,7 +1032,7 @@ class _MediaPickerSheetState extends State<MediaPickerSheet> {
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 11,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
@@ -1393,7 +1393,7 @@ class _ThumbState extends State<_Thumb> {
                               style: const TextStyle(
                                 color: Colors.black,
                                 fontSize: 11,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w600,
                               ),
                             )
                           : null,

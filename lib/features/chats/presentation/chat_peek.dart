@@ -382,7 +382,7 @@ class _PeekHeader extends ConsumerWidget {
                         iconSize: 12,
                         style: TextStyle(
                           color: AppColors.brandPrimary,
-                          fontSize: 11.5,
+                          fontSize: 12,
                         ),
                       )
                     else if (status != null)
@@ -396,7 +396,7 @@ class _PeekHeader extends ConsumerWidget {
                           color: isOnline && !isTyping
                               ? AppColors.online
                               : AppColors.textOnGlassDim,
-                          fontSize: 11.5,
+                          fontSize: 12,
                         ),
                       ),
                   ],
@@ -445,7 +445,7 @@ class _PeekConversation extends StatelessWidget {
                 formatDayHeader(context, message.sentAt),
                 style: TextStyle(
                   color: AppColors.textOnGlassDim,
-                  fontSize: 11.5,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -577,7 +577,7 @@ class _PeekAction extends StatelessWidget {
               label,
               style: TextStyle(
                 color: color,
-                fontSize: 14.5,
+                fontSize: 15,
                 fontWeight: FontWeight.w500,
               ),
             ),
