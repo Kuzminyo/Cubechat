@@ -114,6 +114,10 @@ abstract final class AppColors {
   // Semantic
   static const Color danger = Color(0xFFFF5A6B);
   static const Color warning = Color(0xFFF5C26B);
+
+  /// The pair of ticks once a message is read, in the bubble and in the chat
+  /// list alike. It was a private copy in each; one colour, one place.
+  static const Color readTick = Color(0xFF66D9FF);
   static Color online = Color(0xFF2EDB8F);
 
   /// The two-colour gradient a stable seed maps to, for an identity with no

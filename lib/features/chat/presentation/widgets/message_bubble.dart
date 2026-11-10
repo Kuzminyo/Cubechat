@@ -4202,8 +4202,9 @@ class _BubbleMeta extends StatelessWidget {
   /// for, because what is behind it is a photograph and not a bubble.
   final bool onMedia;
 
-  /// Distinct tint for a "read" tick so it reads apart from plain delivery.
-  static const _readColor = Color(0xFF66D9FF);
+  /// Distinct tint for a "read" tick so it reads apart from plain delivery —
+  /// the theme's, shared with the chat list.
+  static const _readColor = AppColors.readTick;
 
   /// The ink for everything in this row, given what it is drawn on.
   Color _ink(double onBubble) => onMedia

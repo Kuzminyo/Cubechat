@@ -274,7 +274,7 @@ class AppMenuRow extends StatelessWidget {
         child: Row(
           children: [
             Icon(icon, size: AppMenu.rowIcon + 2, color: ink),
-            const SizedBox(width: 14),
+            const SizedBox(width: AppMenu.rowGap),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -285,7 +285,7 @@ class AppMenuRow extends StatelessWidget {
                     style: TextStyle(
                       color: ink,
                       fontSize: AppMenu.rowLabel,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: AppMenu.rowWeight,
                     ),
                   ),
                   if (subtitle != null) ...[

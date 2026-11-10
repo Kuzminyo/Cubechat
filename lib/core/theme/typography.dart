@@ -168,6 +168,13 @@ abstract final class AppMenu {
   /// The row's label.
   static const double rowLabel = 14;
 
+  /// Between the glyph and the label. 12 on the grid, was a hand-copied 14.
+  static const double rowGap = 12;
+
+  /// The label's weight: 500, the size and the glyph carry the row (was 600,
+  /// unslop pass, 2026-11-10).
+  static const FontWeight rowWeight = FontWeight.w500;
+
   /// The line under it, when a row explains itself.
   static const double rowSubtitle = 11;
 

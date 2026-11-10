@@ -3,6 +3,7 @@ import '../../../../core/theme/typography.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/colors.dart';
+import '../../../../core/util/motion.dart';
 import '../../../peers/data/presence_controller.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/unread_badge.dart';
@@ -93,10 +94,13 @@ class ChatTile extends ConsumerWidget {
               : AppColors.textOnGlassDim,
       fontSize: 14,
       height: 1.35,
-      fontWeight: unread ? FontWeight.w600 : FontWeight.w400,
+      // 500, not 600: the brighter colour already lights the line up, and the
+      // name above it carries the heavier step (unslop pass, 2026-11-09).
+      fontWeight: unread ? FontWeight.w500 : FontWeight.w400,
     );
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      // On the 4-point grid with everything else in the row (was 10).
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       child: Row(
         children: [
           // No hero tag, so opening a chat is just the page sliding in.
@@ -137,7 +141,9 @@ class ChatTile extends ConsumerWidget {
                   child: AnimatedScale(
                     scale: selected ? 1 : 0,
                     duration: const Duration(milliseconds: 220),
-                    curve: selected ? Curves.easeOutBack : Curves.easeInCubic,
+                    // Settles rather than springs: the app's one ease-out, no
+                    // overshoot on a control (unslop pass, 2026-11-09).
+                    curve: selected ? AppMotion.curve : Curves.easeInCubic,
                     child: Container(
                       width: 20,
                       height: 20,
@@ -146,10 +152,10 @@ class ChatTile extends ConsumerWidget {
                         color: AppColors.brandPrimary,
                         border: Border.all(color: AppColors.bgDeep, width: 2),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.check_rounded,
                         size: 12,
-                        color: Colors.black,
+                        color: AppColors.bgDeep,
                       ),
                     ),
                   ),
@@ -160,9 +166,11 @@ class ChatTile extends ConsumerWidget {
                   Positioned(
                     left: 0,
                     bottom: 0,
+                    // The same 20 and 12 as the selection tick in the other
+                    // corner: two badges on one avatar, one size.
                     child: Container(
-                      width: 18,
-                      height: 18,
+                      width: 20,
+                      height: 20,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: AppColors.bgDeep,
@@ -173,7 +181,7 @@ class ChatTile extends ConsumerWidget {
                       ),
                       child: Icon(
                         Icons.timer_rounded,
-                        size: 11,
+                        size: 12,
                         color: AppColors.brandPrimary,
                       ),
                     ),
@@ -209,7 +217,7 @@ class ChatTile extends ConsumerWidget {
                       Icon(
                         Icons.verified_rounded,
                         color: AppColors.brandPrimary,
-                        size: 14,
+                        size: _markSize,
                       ),
                     ],
                     // Next to the name, because it is the name that stays
@@ -220,21 +228,27 @@ class ChatTile extends ConsumerWidget {
                       Icon(
                         Icons.notifications_off_rounded,
                         color: AppColors.textOnGlassFaint,
-                        size: 13,
+                        size: _markSize,
                       ),
                     ],
+                    // Flexible, so on a narrow row the tag gives way with an
+                    // ellipsis instead of pushing the row past its edge.
                     if (chat.isChannel) ...[
-                      const SizedBox(width: 6),
-                      _StatusPill(
-                        icon: Icons.campaign_rounded,
-                        label: t.chatsStatusChannel,
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: _StatusPill(
+                          icon: Icons.campaign_rounded,
+                          label: t.chatsStatusChannel,
+                        ),
                       ),
                     ] else if (chat.signKeyRotated) ...[
-                      const SizedBox(width: 6),
-                      _StatusPill(
-                        icon: Icons.warning_amber_rounded,
-                        label: t.peerKeyRotated,
-                        tone: _PillTone.warning,
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: _StatusPill(
+                          icon: Icons.warning_amber_rounded,
+                          label: t.peerKeyRotated,
+                          tone: _PillTone.warning,
+                        ),
                       ),
                     ],
                     // No "via mesh" pill either.
@@ -313,7 +327,7 @@ class ChatTile extends ConsumerWidget {
               // announce. Sharing a line with the badge keeps every row the
               // same height whether or not either is there.
               if (chat.unreadCount > 0 || chat.isPinned || chat.isFavorite) ...[
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -324,7 +338,7 @@ class ChatTile extends ConsumerWidget {
                         child: Icon(
                           Icons.star_rounded,
                           color: AppColors.warning,
-                          size: 13,
+                          size: _markSize,
                         ),
                       ),
                     if (chat.unreadCount > 0)
@@ -336,7 +350,7 @@ class ChatTile extends ConsumerWidget {
           ),
           // Only on the rows that can actually move — the pinned block.
           if (reorderIndex case final index?) ...[
-            const SizedBox(width: 2),
+            const SizedBox(width: 4),
             _DragGrip(index: index),
           ],
         ],
@@ -345,17 +359,17 @@ class ChatTile extends ConsumerWidget {
   }
 }
 
+/// Every small mark in a row — verified, muted, pinned, starred, the delivery
+/// tick — at one size. They were 13 and 14 side by side, and the column under
+/// the time read as ragged for it (unslop pass, 2026-11-09).
+const double _markSize = 14;
+
 /// One tick sent, two delivered, two tinted read — the same glyphs and the same
 /// colours the bubble uses, so the mark means the same thing in both places.
 class _StatusTick extends StatelessWidget {
   const _StatusTick({required this.status});
 
   final MessageStatus status;
-
-  /// Matches `_BubbleMeta._readColor`. Copied rather than shared because that
-  /// one is private to the bubble and this is the only other place it appears;
-  /// if a third turns up it should move somewhere common.
-  static const _readColor = Color(0xFF66D9FF);
 
   @override
   Widget build(BuildContext context) {
@@ -366,10 +380,10 @@ class _StatusTick extends StatelessWidget {
         MessageStatus.read => Icons.done_all_rounded,
         MessageStatus.failed => Icons.error_outline_rounded,
       },
-      size: 13,
+      size: _markSize,
       color: switch (status) {
         MessageStatus.failed => AppColors.danger,
-        MessageStatus.read => _readColor,
+        MessageStatus.read => AppColors.readTick,
         _ => AppColors.textOnGlassFaint,
       },
     );
@@ -388,7 +402,7 @@ class _PinMark extends StatelessWidget {
       child: Icon(
         Icons.push_pin_rounded,
         color: AppColors.brandPrimary,
-        size: 13,
+        size: _markSize,
       ),
     );
   }
@@ -414,11 +428,11 @@ class _DragGrip extends StatelessWidget {
     return ReorderableDragStartListener(
       index: index,
       child: SizedBox(
-        width: 34,
+        width: 36,
         height: 52,
         child: Icon(
           Icons.drag_handle_rounded,
-          size: 22,
+          size: 20,
           color: AppColors.textOnGlassFaint,
         ),
       ),
@@ -457,8 +471,11 @@ class _StatusPill extends StatelessWidget {
         color = AppColors.danger;
         alpha = 0.18;
     }
+    // On the grid, at 11 rather than 10 (no text below 11), weight 500, no
+    // tracking: a quiet tag beside the name, not a badge shouting over it
+    // (unslop pass, 2026-11-09).
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: alpha),
         borderRadius: BorderRadius.circular(8),
@@ -466,15 +483,18 @@ class _StatusPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 11, color: color),
-          const SizedBox(width: 3),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.2,
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],

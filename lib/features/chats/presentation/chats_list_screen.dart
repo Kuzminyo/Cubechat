@@ -1451,8 +1451,11 @@ class _RequestsEntry extends ConsumerWidget {
         blur: false,
         borderRadius: 18,
         onTap: () => context.push('/requests'),
+        // A row of the same list as the chats, so it speaks the chat row's
+        // measures: 12 around, name in [AppTypography.rowTitle], 4 to the
+        // preview at 14 (unslop pass, 2026-11-09). It was 14/15/2/13.
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          padding: const EdgeInsets.all(12),
           child: Row(
             children: [
               Icon(
@@ -1468,25 +1471,18 @@ class _RequestsEntry extends ConsumerWidget {
                   children: [
                     Row(
                       children: [
-                        Text(
-                          t.requestsTitle,
-                          style: TextStyle(
-                            color: AppColors.textOnGlass,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
+                        Text(t.requestsTitle, style: AppTypography.rowTitle),
+                        const SizedBox(width: 8),
                         Text(
                           '${requests.length}',
-                          style: TextStyle(
+                          style: AppTypography.caption.copyWith(
                             color: AppColors.textOnGlassFaint,
-                            fontSize: 12,
+                            fontFeatures: const [FontFeature.tabularFigures()],
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       newest.peerName.isEmpty
                           ? newest.lastMessage
@@ -1495,7 +1491,8 @@ class _RequestsEntry extends ConsumerWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: AppColors.textOnGlassDim,
-                        fontSize: 13,
+                        fontSize: 14,
+                        height: 1.35,
                       ),
                     ),
                   ],
@@ -1550,8 +1547,11 @@ class _ArchiveEntry extends ConsumerWidget {
             icon: Icons.visibility_off_rounded,
           );
         },
+        // The chat row's measures, like the requests row above it (unslop
+        // pass, 2026-11-09): 12 around, the row title, 4 to a 14 preview that
+        // lights up the way a chat's does. It was 10/15/2/12.5 and 600.
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          padding: const EdgeInsets.all(12),
           child: Row(
             children: [
               // The faces of what is inside, stacked — the same thing a folder
@@ -1571,26 +1571,22 @@ class _ArchiveEntry extends ConsumerWidget {
                           size: 14,
                           color: AppColors.textOnGlassDim,
                         ),
-                        const SizedBox(width: 5),
+                        const SizedBox(width: 4),
                         Text(
                           t.chatsArchiveTitle,
-                          style: TextStyle(
-                            color: AppColors.textOnGlass,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: AppTypography.rowTitle,
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 8),
                         Text(
                           '${archived.length}',
-                          style: TextStyle(
+                          style: AppTypography.caption.copyWith(
                             color: AppColors.textOnGlassFaint,
-                            fontSize: 12,
+                            fontFeatures: const [FontFeature.tabularFigures()],
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
                       preview,
                       maxLines: 1,
@@ -1599,9 +1595,10 @@ class _ArchiveEntry extends ConsumerWidget {
                         color: unread > 0
                             ? AppColors.textOnGlass
                             : AppColors.textOnGlassDim,
-                        fontSize: 12.5,
+                        fontSize: 14,
+                        height: 1.35,
                         fontWeight:
-                            unread > 0 ? FontWeight.w600 : FontWeight.w400,
+                            unread > 0 ? FontWeight.w500 : FontWeight.w400,
                       ),
                     ),
                   ],
@@ -1627,8 +1624,9 @@ class _ArchiveFaces extends StatelessWidget {
 
   final List<Chat> chats;
 
-  static const double _size = 30;
-  static const double _step = 19;
+  // On the grid (were 30 and 19): the faces still overlap by a third.
+  static const double _size = 32;
+  static const double _step = 20;
 
   @override
   Widget build(BuildContext context) {
@@ -2108,10 +2106,12 @@ class ChatSelectionBar extends ConsumerWidget {
         ),
         Text(
           '${selected.length}',
+          // A count, so tabular, and 600 rather than 700: size carries it.
           style: TextStyle(
             color: AppColors.textOnGlass,
             fontSize: 18,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w600,
+            fontFeatures: const [FontFeature.tabularFigures()],
           ),
         ),
         const Spacer(),
@@ -2484,8 +2484,10 @@ class _FolderFilterIsland extends StatelessWidget {
   static const double barHeight = 34;
 
   /// The name on a tab. Small on purpose: these are labels on a filter, and at
-  /// the size of a heading they competed with the chat names underneath.
-  static const double labelSize = 12.5;
+  /// the size of a heading they competed with the chat names underneath. 13,
+  /// a size the rest of the app uses, rather than a one-off 12.5 (unslop pass,
+  /// 2026-11-09).
+  static const double labelSize = 13;
 
   @override
   Widget build(BuildContext context) {
@@ -2646,9 +2648,11 @@ class _FolderFilterIsland extends StatelessWidget {
     final painter = TextPainter(
       text: TextSpan(
         text: label,
+        // The active tab's weight, the heavier of the two, so a selected
+        // name never needs more room than was measured for it.
         style: const TextStyle(
           fontSize: labelSize,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w600,
         ),
       ),
       textDirection: Directionality.of(context),
@@ -2709,7 +2713,8 @@ class _FolderIslandTab extends StatelessWidget {
               style: TextStyle(
                 color: color,
                 fontSize: _FolderFilterIsland.labelSize,
-                fontWeight: spec.active ? FontWeight.w700 : FontWeight.w600,
+                // 600 and 500: one step apart, colour does the rest.
+                fontWeight: spec.active ? FontWeight.w600 : FontWeight.w500,
               ),
               child: Text(
                 spec.label,
@@ -2759,13 +2764,14 @@ class _EmptyState extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               title,
+              // 500 and 8 to the hint, on the scale (unslop pass, 2026-11-10).
               style: TextStyle(
                 color: AppColors.textOnGlass,
                 fontSize: 16,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w500,
               ),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
               hint,
               textAlign: TextAlign.center,
@@ -2900,7 +2906,7 @@ PopupMenuItem<String> _chatMenuItem(
     child: Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 19, color: effectiveColor),
+        Icon(icon, size: AppMenu.rowIcon + 2, color: effectiveColor),
         const SizedBox(width: 12),
         Flexible(
           child: Text(
@@ -3189,7 +3195,7 @@ Future<void> _confirmAndDeleteChat(
               style: TextStyle(color: AppColors.textOnGlassDim, fontSize: 13),
             ),
             if (retractable.isNotEmpty) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 8),
               CheckboxListTile(
                 value: alsoForThem,
                 onChanged: (v) =>
@@ -3201,12 +3207,12 @@ Future<void> _confirmAndDeleteChat(
                 title: Text(
                   t.chatsDeleteForThemToo,
                   style:
-                      TextStyle(color: AppColors.textOnGlass, fontSize: 13.5),
+                      TextStyle(color: AppColors.textOnGlass, fontSize: 14),
                 ),
                 subtitle: Text(
                   t.chatsDeleteForThemHint,
                   style:
-                      TextStyle(color: AppColors.textOnGlassDim, fontSize: 11),
+                      TextStyle(color: AppColors.textOnGlassDim, fontSize: 12),
                 ),
               ),
             ],
@@ -3518,13 +3524,13 @@ class _MenuRow extends StatelessWidget {
     return Row(
       children: [
         Icon(icon, size: AppMenu.rowIcon + 2, color: AppColors.textOnGlass),
-        const SizedBox(width: 14),
+        const SizedBox(width: AppMenu.rowGap),
         Text(
           label,
           style: TextStyle(
             color: AppColors.textOnGlass,
             fontSize: AppMenu.rowLabel,
-            fontWeight: FontWeight.w600,
+            fontWeight: AppMenu.rowWeight,
           ),
         ),
       ],
