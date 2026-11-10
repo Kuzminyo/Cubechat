@@ -242,11 +242,13 @@ void main() {
     ]);
     await tester.pumpWidget(app());
     await tester.pumpAndSettle();
+    // Measured before the call covers it: a page under a risen call is not
+    // laid out on screen any more.
+    final before = tester.getTopLeft(find.text('underneath'));
 
     unawaited(call.dial('peer'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    final before = tester.getTopLeft(find.text('underneath'));
 
     await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
     await tester.pump();
@@ -446,6 +448,31 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(tester.getTopLeft(hangUp()), button);
     });
+  });
+
+  testWidgets('the app under a risen call is not drawn, and is again when it '
+      'folds', (tester) async {
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    unawaited(call.dial('peer'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(find.text('underneath'), findsOneWidget,
+        reason: 'still rising: the page shows around it');
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('underneath'), findsNothing,
+        reason: 'covered: offstage, not painted');
+    expect(find.text('underneath', skipOffstage: false), findsOneWidget,
+        reason: 'kept, with its state');
+
+    await tester.tap(find.byIcon(Icons.keyboard_arrow_down_rounded));
+    await tester.pump();
+    expect(find.text('underneath'), findsOneWidget,
+        reason: 'drawn again as soon as the call starts to fold');
+    await tester.pump(const Duration(milliseconds: 400));
+    call.hangUp();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
   });
 
   group('the screen stays on', () {

@@ -51,6 +51,63 @@ void main() {
     expect(quality.bars, 2);
   });
 
+  group('with WebRTC\'s own bandwidth estimate', () {
+    const budget = 832000; // 800 kbit/s of picture and 32 of speech.
+
+    test('a link short of what we send steps down without any RTCP', () {
+      final quality = CallNetworkQuality()
+        ..sample(rtt: 0.1, available: 400000, budget: budget);
+      expect(quality.bitrate, 24000);
+      expect(quality.bars, 3, reason: 'an estimate is a measurement');
+      // Still short of the smaller step: one more down.
+      quality.sample(rtt: 0.1, available: 150000, budget: 384000);
+      expect(quality.bitrate, 16000);
+    });
+
+    test('a link that carries what we send does not step down', () {
+      final quality = CallNetworkQuality()
+        ..sample(rtt: 0.1, available: 900000, budget: budget);
+      expect(quality.bitrate, 32000);
+    });
+
+    test('a clear link climbs back with no loss figure from the other side',
+        () {
+      final quality = CallNetworkQuality()
+        ..sample(rtt: 0.1, available: 200000, budget: budget);
+      expect(quality.bitrate, lessThan(32000));
+      for (var i = 0; i < 8; i++) {
+        quality.sample(rtt: 0.1, available: 400000, budget: 184000);
+      }
+      expect(quality.bitrate, 32000);
+    });
+
+    test('right after climbing, a lagging estimate does not knock it down',
+        () {
+      final quality = CallNetworkQuality()
+        ..sample(rtt: 0.1, available: 200000, budget: budget);
+      for (var i = 0; i < 8; i++) {
+        quality.sample(rtt: 0.1, available: 400000, budget: 184000);
+      }
+      expect(quality.bitrate, 32000);
+      // The estimate still describes the old ceiling for a moment.
+      quality.sample(rtt: 0.1, available: 400000, budget: budget);
+      quality.sample(rtt: 0.1, available: 450000, budget: budget);
+      expect(quality.bitrate, 32000, reason: 'two polls of grace');
+      quality.sample(rtt: 0.1, available: 450000, budget: budget);
+      expect(quality.bitrate, 24000, reason: 'then it is believed');
+    });
+
+    test('an estimate alone, with no round trip, cannot restore quality', () {
+      final quality = CallNetworkQuality()
+        ..sample(rtt: 0.1, available: 200000, budget: budget);
+      final constrained = quality.bitrate;
+      for (var i = 0; i < 12; i++) {
+        quality.sample(available: 5000000, budget: budget);
+      }
+      expect(quality.bitrate, constrained);
+    });
+  });
+
   test('the picture steps down with the link and up to its ceiling', () {
     const good = 32000;
     const fair = 24000;

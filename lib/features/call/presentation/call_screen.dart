@@ -110,17 +110,27 @@ class _CallHostState extends ConsumerState<CallHost>
   }
 
   void _onSheetStatus(AnimationStatus status) {
-    // Gone for good only once it is out of sight. With Reduce Motion the jump
-    // to 0 happens inside build, where a setState is not allowed, so there it
+    // Gone for good only once it is out of sight; fully risen is when the app
+    // underneath stops being drawn (see [build]). With Reduce Motion the jump
+    // happens inside build, where a setState is not allowed, so there it
     // waits for the frame to finish.
-    if (status != AnimationStatus.dismissed || !mounted) return;
+    if (!mounted) return;
+    if (status != AnimationStatus.dismissed &&
+        status != AnimationStatus.completed) {
+      return;
+    }
+    void settle() {
+      if (!mounted) return;
+      setState(() {
+        if (_sheet.isDismissed) _leaving = null;
+      });
+    }
+
     if (SchedulerBinding.instance.schedulerPhase ==
         SchedulerPhase.persistentCallbacks) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _sheet.isDismissed) setState(() => _leaving = null);
-      });
+      WidgetsBinding.instance.addPostFrameCallback((_) => settle());
     } else {
-      setState(() => _leaving = null);
+      settle();
     }
   }
 
@@ -274,6 +284,14 @@ class _CallHostState extends ConsumerState<CallHost>
         (expanded || _sheet.status != AnimationStatus.dismissed);
 
     final media = MediaQuery.of(context);
+    // The call fills the screen and has finished rising: the app under it is
+    // not seen at all, and stops being drawn. While a picture comes in, every
+    // frame of it composited the whole chat list underneath as well — the
+    // full-screen gradients and glass that are most of what the GPU spends
+    // its time on (perf-triage). Offstage keeps every page's state, and
+    // TickerMode stops anything down there animating for nobody. Drawn again
+    // the moment the call starts to fold away, so the slide shows it.
+    final covered = expanded && _sheet.isCompleted;
     return Stack(children: [
       // Every screen under the island reads its top inset from here, so the
       // headers step down by the island's height instead of sitting under it.
@@ -288,7 +306,13 @@ class _CallHostState extends ConsumerState<CallHost>
                 ),
               )
             : media,
-        child: ExcludeFocus(excluding: expanded, child: widget.child),
+        child: Offstage(
+          offstage: covered,
+          child: TickerMode(
+            enabled: !covered,
+            child: ExcludeFocus(excluding: expanded, child: widget.child),
+          ),
+        ),
       ),
       if (island)
         Positioned(

@@ -215,6 +215,37 @@ class WebRtcCallMedia implements CallMedia {
   /// 2026-11-09 log).
   double? _lastLoss;
   double? _lastRtt;
+  int? _lastAvailable;
+
+  /// What the phone's encoder is doing for our picture, as last logged.
+  String? _pictureWork;
+
+  /// One line whenever how our picture is made changes: which encoder (a
+  /// hardware one — MediaCodec, VideoToolbox — or libvpx/OpenH264 in
+  /// software, which is what makes a video call hot), the size and rate it
+  /// actually sends, and what WebRTC says is holding it back. Asked for to
+  /// answer "it heats during a video call" with a measurement rather than a
+  /// guess; the size and rate are left out of the comparison, so a picture
+  /// stepping with the link does not write a line a second.
+  void _notePictureWork(Map<dynamic, dynamic> values) {
+    final encoder = values['encoderImplementation'];
+    final limit = values['qualityLimitationReason'];
+    if (encoder == null) return;
+    final key = '$encoder|$limit';
+    if (key == _pictureWork) return;
+    _pictureWork = key;
+    _log('picture made by $encoder: '
+        '${values['frameWidth']}x${values['frameHeight']} '
+        'at ${values['framesPerSecond']} fps, limited by $limit');
+  }
+
+  /// What a step of the ladder asks of the link, in bits a second: speech,
+  /// plus the picture while our camera is sending.
+  int _sendBudget(int audioStep) =>
+      audioStep +
+      (_camera != null
+          ? videoLimits(audioStep, relayed: _relayed).bitrate
+          : 0);
   num? _framesSeen;
 
   /// Seconds without a new frame before their picture counts as gone. It was
@@ -539,8 +570,27 @@ class WebRtcCallMedia implements CallMedia {
       var freshReport = false;
       double? loss;
       double? rtt;
+      // The connection's own view, present on every poll whether or not the
+      // other side reports: WebRTC's estimate of what the link carries out of
+      // this phone, and the round trip its connectivity checks measure.
+      int? available;
+      double? pairRtt;
+      num? pairBytes;
       for (final report in reports) {
         final values = report.values;
+        if (report.type == 'candidate-pair' &&
+            (values['nominated'] == true || values['state'] == 'succeeded')) {
+          final sent = values['bytesSent'];
+          final bytes = sent is num ? sent : 0;
+          if (pairBytes == null || bytes > pairBytes) {
+            pairBytes = bytes;
+            final estimate = values['availableOutgoingBitrate'];
+            final roundTrip = values['currentRoundTripTime'];
+            available = estimate is num ? estimate.round() : null;
+            pairRtt = roundTrip is num ? roundTrip.toDouble() : null;
+          }
+          continue;
+        }
         // Remote inbound describes how the OTHER phone receives OUR audio.
         // Local inbound loss is the opposite direction and cannot be fixed by
         // reducing our encoder's bandwidth.
@@ -557,11 +607,21 @@ class WebRtcCallMedia implements CallMedia {
         if (fraction is num) loss = fraction.toDouble();
         if (roundTrip is num) rtt = roundTrip.toDouble();
       }
-      // RTCP often arrives less frequently than getStats is polled. Count
-      // actual feedback, not polling gaps, toward sustained recovery.
-      if (freshReport) _quality.sample(loss: loss, rtt: rtt);
+      // RTCP often arrives less frequently than getStats is polled, so a poll
+      // counts only with something real in it: a fresh report from the other
+      // side, or the connection's own estimate (see [CallNetworkQuality]).
+      final roundTrip = rtt ?? pairRtt;
+      if (freshReport || available != null || pairRtt != null) {
+        _quality.sample(
+          loss: loss,
+          rtt: roundTrip,
+          available: available,
+          budget: _sendBudget(_quality.bitrate),
+        );
+      }
       _lastLoss = loss ?? _lastLoss;
-      _lastRtt = rtt ?? _lastRtt;
+      _lastRtt = roundTrip ?? _lastRtt;
+      _lastAvailable = available ?? _lastAvailable;
       final target = _quality.bitrate;
       final changed = _appliedBitrate != target;
       if (changed) {
@@ -594,7 +654,8 @@ class WebRtcCallMedia implements CallMedia {
       if (++_qualityTicks % 5 == 0 || changed && _appliedBitrate == target) {
         _log('audio quality: cap ${_appliedBitrate ?? 0} bps, '
             'loss ${_lastLoss == null ? "unknown" : (_lastLoss! * 100).toStringAsFixed(1)}%, '
-            'rtt ${_lastRtt == null ? "unknown" : (_lastRtt! * 1000).round()} ms'
+            'rtt ${_lastRtt == null ? "unknown" : (_lastRtt! * 1000).round()} ms, '
+            'link ${_lastAvailable == null ? "unknown" : '${_lastAvailable! ~/ 1000} kbps'}'
             '${freshReport ? '' : ' (no new report)'}');
       }
       _qualityErrorLogged = false;
@@ -755,6 +816,11 @@ class WebRtcCallMedia implements CallMedia {
       Map<dynamic, dynamic>? inbound;
       for (final report in reports) {
         final values = report.values;
+        if (report.type == 'outbound-rtp' &&
+            (values['kind'] ?? values['mediaType']) == 'video') {
+          _notePictureWork(values);
+          continue;
+        }
         if (report.type != 'inbound-rtp' ||
             (values['kind'] ?? values['mediaType']) != 'video') {
           continue;
