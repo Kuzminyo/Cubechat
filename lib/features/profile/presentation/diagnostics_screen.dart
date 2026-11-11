@@ -677,6 +677,28 @@ class _BenchmarkRow extends ConsumerWidget {
             Wrap(
               spacing: 4,
               children: [
+                // The floor: the same run on a screen with almost nothing in
+                // it, so what a push costs the frame before the page has
+                // anything to build is read, not guessed. A chat's first
+                // frame has ~4 ms of build outside the chat itself.
+                //
+                // Read on 1206, eight rounds each from the chat list: About
+                // opens with build p95 6.8 / p99 20.3 ms, raster p95 9.5 and
+                // 9 frames over 8.3 ms; a chat, 3.4 / 16.8, 9.4 and 7. The
+                // small screen is not the cheaper open, so what the chat
+                // costs on top of a push is not what keeps the first frame
+                // over budget: the push, the aurora behind the page and
+                // the slide are, and they are the same for every screen.
+                TextButton(
+                  onPressed: () => unawaited(
+                    bench.run(
+                      router: GoRouter.of(context),
+                      overlay: Overlay.of(context, rootOverlay: true),
+                      chat: '/settings/about',
+                    ),
+                  ),
+                  child: const Text('baseline: About'),
+                ),
                 for (final chat in chats)
                   TextButton(
                     onPressed: () => unawaited(
