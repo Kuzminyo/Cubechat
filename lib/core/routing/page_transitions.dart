@@ -5,6 +5,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:go_router/go_router.dart';
 
 import '../util/motion.dart';
+import '../util/timed_subtree.dart';
 import '../util/transition_probe.dart';
 import 'back_gesture.dart';
 
@@ -102,6 +103,57 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
 
   @override
   Widget buildContent(BuildContext context) => _builder(context);
+
+  /// The scripted run times the page and the slide around it, into the frame
+  /// meter as `route.page` and `route.trans` (inflate and layout each), to
+  /// split the ~4 ms of a chat's first frame that is not the chat: about
+  /// 4.4 ms on 1204, and a nearly empty screen (About) opens no cheaper. The
+  /// transition's number contains the page's, so `route.trans` minus
+  /// `route.page` is what the slide's own widgets cost.
+  ///
+  /// **Read on 1207, About, eight opens from the chat list:** build 12.0-14.1
+  /// ms in the first frame, of which `route.trans` layout 6.8 and inflate 2.2
+  /// against `route.page` layout 6.8 and inflate 2.1 — the slide's own widgets
+  /// cost about 0.1 ms. Labelled work adds up to ~9 ms, so ~4.7 ms of that
+  /// frame is outside the page and the slide: the same ~4.4 ms a chat has
+  /// outside its own parts. That is the Navigator and its overlay, the shell
+  /// and its five branches being rebuilt (`branch x5, shell x1, branches x1`
+  /// in every one of these frames), the frame's own tickers and callbacks, and
+  /// whatever the collector does. None of those is timed here.
+  ///
+  /// Only while the run is on, so nobody holding the phone gets two extra
+  /// wrappers per page.
+  bool get _timed => TransitionProbe.instance.scripted;
+
+  @override
+  Widget buildPage(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+  ) {
+    final page = super.buildPage(context, animation, secondaryAnimation);
+    if (!_timed) return page;
+    return TimedSubtree(
+      'route.page',
+      child: TimedInflate('route.page', child: page),
+    );
+  }
+
+  @override
+  Widget buildTransitions(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    final transitions =
+        _buildSlide(context, animation, secondaryAnimation, child);
+    if (!_timed) return transitions;
+    return TimedSubtree(
+      'route.trans',
+      child: TimedInflate('route.trans', child: transitions),
+    );
+  }
 
   @override
   Duration get transitionDuration =>
@@ -234,8 +286,7 @@ class _SlideRoute<T> extends PageRoute<T> with CupertinoRouteTransitionMixin<T> 
   /// Only the detector changes, because that is where the problem was: a strip
   /// too narrow to hit, in the one place Android's own gesture navigation
   /// already takes the touch. See [EdgeBackGesture].
-  @override
-  Widget buildTransitions(
+  Widget _buildSlide(
     BuildContext context,
     Animation<double> animation,
     Animation<double> secondaryAnimation,
