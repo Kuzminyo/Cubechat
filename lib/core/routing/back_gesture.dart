@@ -75,7 +75,14 @@ class EdgeBackGesture extends StatefulWidget {
   /// else accepts at, which is the least that can still be called "after
   /// them". Asked for directly — the gesture wanted less travel before it
   /// starts moving anything.
-  static const double _pageThreshold = 20;
+  ///
+  /// Fourteen since 1208, asked for again ("жесты лучше откликались",
+  /// 2026-11-11). The slop above is the one in a comment written when it was
+  /// Flutter's own 18; a phone reports its own, 8 logical pixels on the
+  /// S24+, so there is room under twenty and still a margin over what an inner
+  /// widget accepts at. Only the horizontal travel counts, so a mostly
+  /// vertical scroll that drifts right is claimed by the list long before this.
+  static const double _pageThreshold = 14;
 
   /// Where the immediate band ends: after whatever the platform reserved for
   /// its own gesture, plus [_edgeReach].
@@ -358,9 +365,8 @@ class EdgeBackGestureController {
     final pace = velocity.abs() >= _minFlingVelocity ? _flingPace : 1.0;
     final ms = (_settleFull.inMilliseconds * pace * travel).round();
     return Duration(
-      milliseconds: ms < _settleMin.inMilliseconds
-          ? _settleMin.inMilliseconds
-          : ms,
+      milliseconds:
+          ms < _settleMin.inMilliseconds ? _settleMin.inMilliseconds : ms,
     );
   }
 

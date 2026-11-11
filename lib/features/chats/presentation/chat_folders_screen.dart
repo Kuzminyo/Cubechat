@@ -7,6 +7,7 @@ import '../../../core/theme/typography.dart';
 import '../../../core/widgets/aurora_background.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../chat/presentation/widgets/preview_line.dart';
 import '../data/chat_folders_controller.dart';
 import '../data/user_chat_folders_controller.dart';
 import 'chats_list_screen.dart' show chatsProvider, folderIcon, folderLabel;
@@ -246,13 +247,11 @@ Future<void> _editFolder(
                     chat.peerName,
                     style: TextStyle(color: AppColors.textOnGlass),
                   ),
-                  subtitle: Text(
+                  subtitle: PreviewLine(
                     storedTextPreview(
                       chat.lastMessage,
                       AppLocalizations.of(ctx),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: AppColors.textOnGlassDim),
                   ),
                 ),

@@ -12,6 +12,8 @@ import '../../../core/widgets/context_popup.dart';
 import '../../../core/widgets/glass_card.dart';
 import '../../../core/widgets/more_button.dart';
 import '../../../l10n/app_localizations.dart';
+import '../../chat/presentation/widgets/chat_input.dart'
+    show MessageIslandGlass;
 import '../../peers/data/contact_aliases_controller.dart';
 import '../../peers/data/known_peers_controller.dart';
 import '../data/radio_controller.dart';
@@ -571,10 +573,20 @@ class _TalkPanel extends StatelessWidget {
     final floor = state.floor;
     final active = state.active;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-      // Straight on the background: the glass pane this sat on read as a
-      // backing plate under the button ("просто сделай кнопки", 2026-11-09).
-      child: Padding(
+      // 12 at the sides, the margin of the composer and the header capsule.
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+      // On its glass pane again. It was taken off on 2026-11-09 ("просто
+      // сделай кнопки", build 1191) and asked back on 2026-11-10 with a
+      // screenshot of the pane and the plain round button as "как должно
+      // быть".
+      //
+      // And as an island, not a card (2026-11-11, "надо сделать в формате как
+      // главный бар в чате, островки профиля и смс"): the same smoked glass,
+      // radius and side margin as the chat's header, pinned bar and composer,
+      // so the pane you hold to talk reads as one more of that family rather
+      // than as a card from a list.
+      child: MessageIslandGlass(
+        borderRadius: 28,
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -829,157 +841,99 @@ class _TalkButtonState extends State<_TalkButton>
     // [_down]).
     final dim = !tuned || _heard;
     final ink = dim ? AppColors.textOnGlassDim : AppColors.textOnGlass;
-    // An eye, as asked (2026-10-31, "как глаз"): a dark round of glass for
-    // the white, a glowing ring for the iris and a bright core with the
-    // microphone for the pupil. Three static decorations, no painter and no
-    // ticker of its own - the only motion is the existing pulse while
-    // somebody talks. Brighter while talking, faded when a press would be
-    // refused.
-    final glow = _talking
-        ? 1.0
+    // One round of glass with the microphone and the words inside it — the
+    // button as it was before the eye (2026-10-31, "как глаз", three rings and
+    // the label underneath), restored on 2026-11-10 from a screenshot of this
+    // one as "как должно быть". Lit green while talking, faded when a press
+    // would be refused. No glow while talking, unlike the original: the glows
+    // left the app in c32c48a9, and the fill already says it.
+    final fill = _talking
+        ? AppColors.brandPrimary.withValues(alpha: 0.34)
+        : AppColors.glass(dim ? 0.08 : 0.18);
+    final edge = _talking
+        ? AppColors.brandPrimary
         : dim
-            ? 0.35
-            : 0.7;
-    final eye = Stack(
-      alignment: Alignment.center,
-      children: [
-        // The white: a dark disc with the faintest green rim.
-        Container(
-          width: _size,
-          height: _size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(
-              colors: [
-                AppColors.bgDeep.withValues(alpha: 0.55),
-                AppColors.bgDeep.withValues(alpha: 0.75),
-                AppColors.brandPrimary.withValues(alpha: 0.18 * glow),
-              ],
-              stops: const [0, 0.78, 1],
-            ),
-            border: Border.all(
-              color: AppColors.brandPrimary.withValues(alpha: 0.35 * glow),
-              width: 1.5,
-            ),
-          ),
-        ),
-        // The iris: a lit ring.
-        Container(
-          width: _size * 0.7,
-          height: _size * 0.7,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: AppColors.brandPrimary.withValues(alpha: 0.75 * glow),
-              width: 2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.brandPrimary.withValues(alpha: 0.45 * glow),
-                blurRadius: _talking ? 30 : 18,
-                spreadRadius: -4,
-              ),
-            ],
-          ),
-        ),
-        // The pupil: the bright core with the microphone in the palette's
-        // darkest, readable on the light green.
-        Container(
-          width: _size * 0.46,
-          height: _size * 0.46,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: RadialGradient(
-              colors: [
-                AppColors.brandPrimary.withValues(alpha: 0.95 * glow + 0.05),
-                AppColors.brandSecondary.withValues(alpha: 0.8 * glow + 0.05),
-              ],
-            ),
-          ),
-          child: Icon(
-            Icons.mic_rounded,
-            size: 32,
-            color: AppColors.bgDeep.withValues(alpha: dim ? 0.6 : 0.9),
-          ),
-        ),
-      ],
-    );
+            ? AppColors.glass(0.18)
+            : AppColors.brandPrimary.withValues(alpha: 0.55);
 
-    return Semantics(
-      container: true,
-      button: true,
-      enabled: tuned,
-      // Always the invitation, not the live label: a reader that said
-      // "Говори…" mid-press would be describing the finger, not the control.
-      label: t.radioPushToTalk,
-      excludeSemantics: true,
-      // The eye and the words under it are one control: a press on the label
-      // talks as well.
-      child: Listener(
-        key: const ValueKey('radio-talk-button'),
-        behavior: HitTestBehavior.opaque,
-        onPointerDown: _down,
-        onPointerUp: _up,
-        onPointerCancel: _up,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: _size + 44,
-              height: _size + 44,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  if (_talking || _heard)
-                    IgnorePointer(
-                      child: RepaintBoundary(
-                        child: AnimatedBuilder(
-                          animation: _pulse,
-                          builder: (_, __) => Transform.scale(
-                            scale: 1 + 0.3 * _pulse.value,
-                            child: Container(
-                              width: _size,
-                              height: _size,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: AppColors.brandPrimary.withValues(
-                                    alpha: 0.6 * (1 - _pulse.value),
-                                  ),
-                                  width: 2,
-                                ),
-                              ),
-                            ),
+    return SizedBox(
+      width: _size + 44,
+      height: _size + 44,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          if (_talking || _heard)
+            IgnorePointer(
+              child: RepaintBoundary(
+                child: AnimatedBuilder(
+                  animation: _pulse,
+                  builder: (_, __) => Transform.scale(
+                    scale: 1 + 0.3 * _pulse.value,
+                    child: Container(
+                      width: _size,
+                      height: _size,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: AppColors.brandPrimary.withValues(
+                            alpha: 0.6 * (1 - _pulse.value),
                           ),
+                          width: 2,
                         ),
                       ),
                     ),
-                  AnimatedScale(
-                    // A press sinks the eye a little, as a finger on it would.
-                    scale: _talking ? 0.96 : 1,
-                    duration: const Duration(milliseconds: 120),
-                    curve: Curves.easeOutCubic,
-                    child: eye,
                   ),
-                ],
+                ),
               ),
             ),
-            const SizedBox(height: 4),
-            // Under the eye rather than in it: the pupil holds the microphone
-            // and nothing else, as an eye would.
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              style: TextStyle(
-                color: ink,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                height: 1.2,
+          Semantics(
+            container: true,
+            button: true,
+            enabled: tuned,
+            // Always the invitation, not the live label: a reader that said
+            // "Говори…" mid-press would be describing the finger, not the
+            // control.
+            label: t.radioPushToTalk,
+            excludeSemantics: true,
+            child: Listener(
+              key: const ValueKey('radio-talk-button'),
+              behavior: HitTestBehavior.opaque,
+              onPointerDown: _down,
+              onPointerUp: _up,
+              onPointerCancel: _up,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 120),
+                curve: Curves.easeOutCubic,
+                width: _size,
+                height: _size,
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: fill,
+                  border: Border.all(color: edge, width: 2),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.mic_rounded, size: 34, color: ink),
+                    const SizedBox(height: 6),
+                    Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      style: TextStyle(
+                        color: ink,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

@@ -668,10 +668,9 @@ class ChatScreen extends ConsumerWidget {
     bool suppressed(Message m) =>
         m.authorId != null &&
         suppressedAuthors.contains(m.authorId!.toLowerCase());
-    final messages =
-        suppressedAuthors.isEmpty || !allMessages.any(suppressed)
-            ? allMessages
-            : allMessages.where((m) => !suppressed(m)).toList();
+    final messages = suppressedAuthors.isEmpty || !allMessages.any(suppressed)
+        ? allMessages
+        : allMessages.where((m) => !suppressed(m)).toList();
     final availableRoute = resolveChatRoute(
       directBluetooth: false,
       meshAvailable: ref.watch(
@@ -2886,7 +2885,8 @@ class _ConversationViewState extends ConsumerState<_ConversationView> {
                       onForward: () => unawaited(_forwardSelection(selection)),
                       onDelete: () => unawaited(_deleteSelection(selection)),
                       onTranslate: singleSelected == null ||
-                              !ref.read(platformCapabilitiesProvider)
+                              !ref
+                                  .read(platformCapabilitiesProvider)
                                   .translation ||
                               _translatableText(singleSelected) == null ||
                               ref.read(
@@ -4012,7 +4012,13 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     // Mark this chat as the one the user is viewing, so inbound messages
     // for it don't pop a (redundant) notification. Clears any banner too.
     AppLifecycle.instance.activeChatId = widget.canonicalId;
-    NotificationService.instance.clearForChat(widget.canonicalId);
+    // Not in this frame: cancelling a banner is a platform-channel call, and
+    // the open's first frame is the one the slide waits on. The marker above
+    // is what stops a new banner, so the old one going a moment later cannot
+    // be seen. (A 1204 profile trace of seven opens: ~0.3 ms of that frame in
+    // `FlutterLocalNotificationsPlugin.cancel`, nothing to do with the page.)
+    Timer.run(
+        () => NotificationService.instance.clearForChat(widget.canonicalId));
     // Reading is something a person does, so it has to be able to start again
     // when they come back — see [_markChatRead], which refuses while the app
     // is away.
@@ -5051,7 +5057,8 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
   /// A picture goes as a photo, fitted to the mesh budget like one from the
   /// camera; anything else as a file, except in a channel, which carries no
   /// files.
-  Future<void> sendComputerFiles(List<({String path, String name})> files) async {
+  Future<void> sendComputerFiles(
+      List<({String path, String name})> files) async {
     for (final (i, f) in files.indexed) {
       if (!mounted) return;
       if (isPictureFileName(f.name)) {
@@ -5668,14 +5675,14 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
           : null,
       recordMode: _recordMode,
       // No circles without a camera: the record button stays a voice note.
-      onToggleRecordMode: mediaEnabled &&
-              ref.read(platformCapabilitiesProvider).camera
-          ? () => setState(
-                () => _recordMode = _recordMode == RecordMode.voice
-                    ? RecordMode.circle
-                    : RecordMode.voice,
-              )
-          : null,
+      onToggleRecordMode:
+          mediaEnabled && ref.read(platformCapabilitiesProvider).camera
+              ? () => setState(
+                    () => _recordMode = _recordMode == RecordMode.voice
+                        ? RecordMode.circle
+                        : RecordMode.voice,
+                  )
+              : null,
       recordLocked: _recordLocked,
       recording: _recordMode == RecordMode.circle
           // Not while finishing: the native camera still reports recording

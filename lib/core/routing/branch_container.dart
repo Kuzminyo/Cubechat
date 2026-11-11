@@ -306,9 +306,8 @@ class _BranchContainerState extends State<BranchContainer>
           // way one inside a PageView does.
           behavior: HitTestBehavior.translucent,
           gestures: <Type, GestureRecognizerFactory>{
-            _LazyHorizontalDragRecognizer:
-                GestureRecognizerFactoryWithHandlers<
-                    _LazyHorizontalDragRecognizer>(
+            _LazyHorizontalDragRecognizer: GestureRecognizerFactoryWithHandlers<
+                _LazyHorizontalDragRecognizer>(
               _LazyHorizontalDragRecognizer.new,
               (r) => r
                 ..onStart = _onDragStart
@@ -371,7 +370,12 @@ class _LazyHorizontalDragRecognizer extends HorizontalDragGestureRecognizer {
   /// the page's own back gesture (20 away from the edge) and over the chat
   /// row's swipe, and sixteen points is still a clear win for both — while the
   /// tab swipe itself stops needing most of a fingertip before anything moves.
-  static const double _threshold = 36;
+  ///
+  /// Twenty-eight since 1208 ("жесты лучше откликались", 2026-11-11): still
+  /// above the page's own back gesture (14 now) and well above what a chat
+  /// row or a bubble accepts at, so whatever was inside has claimed the drag
+  /// by the time this would. The tab swipe starts moving 8 points sooner.
+  static const double _threshold = 28;
 
   @override
   bool hasSufficientGlobalDistanceToAccept(
@@ -412,7 +416,22 @@ class _Branch extends StatelessWidget {
             // Silences tickers inside a branch nobody can see — the aurora,
             // entrance animations — but leaves them running for whichever one
             // is sliding in, so it does not arrive frozen.
-            child: TickerMode(enabled: visible, child: child),
+            //
+            // And no heroes from the tabs that are not the one landed on.
+            // On every push the navigator walks the whole element tree of
+            // the page it leaves, looking for [Hero]s to fly, and it walks
+            // offstage branches as readily as the visible one — a profile
+            // trace of seven chat opens (1204) put `_allHeroesFor` at ~7% of
+            // the first frame, in the post-frame callback. A [HeroMode] with
+            // `enabled: false` is the one thing that scan stops at. The tab
+            // you are on keeps its heroes (the contacts avatar flies to the
+            // profile from the Contacts tab, the cover from Profile); a tab
+            // that is not active has none to show. The wrapper is always
+            // there and only its flag changes, so no branch changes shape.
+            child: TickerMode(
+              enabled: visible,
+              child: HeroMode(enabled: active, child: child),
+            ),
           ),
         ),
       ),

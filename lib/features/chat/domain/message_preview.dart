@@ -93,6 +93,18 @@ String? _theirReactionTo(Message message) {
   return null;
 }
 
+/// The emoji a preview line opens with for a call, a position, a map invitation
+/// and a contact card.
+///
+/// Emoji in the string, because the same string is a notification body and a
+/// line in the send queue, where nothing else can be drawn. A chat list row
+/// draws an icon in their place — see `PreviewLine` — and finds them by these
+/// constants, so the two cannot drift apart.
+const String previewCallLead = '📞';
+const String previewLocationLead = '📍';
+const String previewMapLead = '🗺';
+const String previewContactLead = '👤';
+
 /// Words, or the name of whatever is riding inside them.
 ///
 /// Three kinds of thing travel as text in this app — a position, a contact
@@ -110,14 +122,22 @@ String _textPreview(String text, AppLocalizations t) {
   if (!trimmed.startsWith('cubechat:')) return text;
   final call = tryParseCallRecord(trimmed);
   if (call != null) {
-    if (!call.answered) return '📞 ${call.outgoing ? t.previewCallOutgoing : t.previewCallMissed}';
+    if (!call.answered) {
+      return '$previewCallLead ${call.outgoing ? t.previewCallOutgoing : t.previewCallMissed}';
+    }
     return call.outgoing
-        ? '📞 ${t.previewCallOutgoing}'
-        : '📞 ${t.previewCallIncoming}';
+        ? '$previewCallLead ${t.previewCallOutgoing}'
+        : '$previewCallLead ${t.previewCallIncoming}';
   }
-  if (SharedLocation.tryParse(trimmed) != null) return '📍 ${t.previewLocation}';
-  if (MapFriendLink.tryParse(trimmed) != null) return '🗺 ${t.previewMapInvite}';
-  if (SharedContact.tryParse(trimmed) != null) return '👤 ${t.previewContact}';
+  if (SharedLocation.tryParse(trimmed) != null) {
+    return '$previewLocationLead ${t.previewLocation}';
+  }
+  if (MapFriendLink.tryParse(trimmed) != null) {
+    return '$previewMapLead ${t.previewMapInvite}';
+  }
+  if (SharedContact.tryParse(trimmed) != null) {
+    return '$previewContactLead ${t.previewContact}';
+  }
   // An unknown `cubechat:` payload — a newer build's, most likely. Saying so is
   // better than showing base64 at somebody.
   return t.previewUnsupported;

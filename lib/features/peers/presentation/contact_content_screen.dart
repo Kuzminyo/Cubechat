@@ -105,13 +105,15 @@ class ContactContentScreen extends ConsumerWidget {
         .toList()
       ..sort((a, b) => b.sentAt.compareTo(a.sentAt));
     final voices = messages
-        .where((message) =>
-            message.isVoiceNote && message.voiceNotePath != null)
+        .where(
+            (message) => message.isVoiceNote && message.voiceNotePath != null)
         .toList()
       ..sort((a, b) => b.sentAt.compareTo(a.sentAt));
     final files = messages
         .where((message) =>
-            message.kind == MessageKind.file && !message.isCircle && message.filePath != null)
+            message.kind == MessageKind.file &&
+            !message.isCircle &&
+            message.filePath != null)
         .toList()
       ..sort((a, b) => b.sentAt.compareTo(a.sentAt));
     // Polls get their own tab rather than sitting in with the photos and
@@ -163,51 +165,109 @@ class ContactContentScreen extends ConsumerWidget {
             ],
           ),
         ),
-        body: TabBarView(
-          children: [
-            _MediaGrid(
-              chatId: chatId,
-              images: images,
-              onLongPress: (message) => _showMessageActions(context, message),
-              emptyLabel: t.contactProfileNoMedia,
-            ),
-            _MediaGrid(
-              chatId: chatId,
-              images: stickers,
-              onLongPress: (message) => _showMessageActions(context, message),
-              emptyLabel: t.contactProfileNoStickers,
-              // Not openable: the full-screen browser is the photo pager, and
-              // it deliberately holds no stickers — paging into one would put
-              // it back in the place this tab exists to take it out of. A tap
-              // here does what a long press does.
-              openable: false,
-            ),
-            _VoiceList(
-              chatId: chatId,
-              voices: voices,
-              onLongPress: (message) => _showMessageActions(context, message),
-              emptyLabel: t.contactProfileNoVoiceMessages,
-            ),
-            _FileList(
-              files: files,
-              onLongPress: (message) => _showMessageActions(context, message),
-              emptyLabel: t.contactProfileNoFiles,
-            ),
-            _LinkList(
-              links: links,
-              onTap: (message) => _showMessageActions(context, message),
-              emptyLabel: t.contactProfileNoLinks,
-            ),
-            _PollList(
-              polls: polls,
-              onTap: (message) => _showMessageActions(context, message),
-              emptyLabel: t.contactProfileNoPolls,
-            ),
-          ],
+        body: _BackPastFirstTab(
+          child: TabBarView(
+            children: [
+              _MediaGrid(
+                chatId: chatId,
+                images: images,
+                onLongPress: (message) => _showMessageActions(context, message),
+                emptyLabel: t.contactProfileNoMedia,
+              ),
+              _MediaGrid(
+                chatId: chatId,
+                images: stickers,
+                onLongPress: (message) => _showMessageActions(context, message),
+                emptyLabel: t.contactProfileNoStickers,
+                // Not openable: the full-screen browser is the photo pager, and
+                // it deliberately holds no stickers — paging into one would put
+                // it back in the place this tab exists to take it out of. A tap
+                // here does what a long press does.
+                openable: false,
+              ),
+              _VoiceList(
+                chatId: chatId,
+                voices: voices,
+                onLongPress: (message) => _showMessageActions(context, message),
+                emptyLabel: t.contactProfileNoVoiceMessages,
+              ),
+              _FileList(
+                files: files,
+                onLongPress: (message) => _showMessageActions(context, message),
+                emptyLabel: t.contactProfileNoFiles,
+              ),
+              _LinkList(
+                links: links,
+                onTap: (message) => _showMessageActions(context, message),
+                emptyLabel: t.contactProfileNoLinks,
+              ),
+              _PollList(
+                polls: polls,
+                onTap: (message) => _showMessageActions(context, message),
+                emptyLabel: t.contactProfileNoPolls,
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+/// Swipe right on the first tab to go back.
+///
+/// "Чтобы жестом можно было выходить с чужой профиль медиа" (2026-11-11). The
+/// page-wide back gesture waits until other horizontal gestures have had their
+/// chance, and on this screen one always takes it: the tab view claims every
+/// horizontal drag at the touch slop, including a rightward one on the first
+/// tab, where it has nowhere to go. So a swipe back anywhere but the very edge
+/// did nothing at all.
+///
+/// The tab view's own overscroll says exactly when that is happening — it is
+/// being dragged past its first page — and that is taken as "back". Every
+/// other tab still swipes to its neighbour as before.
+class _BackPastFirstTab extends StatefulWidget {
+  const _BackPastFirstTab({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_BackPastFirstTab> createState() => _BackPastFirstTabState();
+}
+
+class _BackPastFirstTabState extends State<_BackPastFirstTab> {
+  /// How far past the first page the drag has pulled, in pixels.
+  double _pulled = 0;
+  bool _popped = false;
+
+  /// Past the slop a deliberate swipe has, short of a fingertip.
+  static const double _popAfter = 24;
+
+  bool _onNotification(ScrollNotification n) {
+    if (n.metrics.axis != Axis.horizontal || n.depth != 0) return false;
+    if (n is ScrollStartNotification) {
+      _pulled = 0;
+    } else if (n is OverscrollNotification && n.overscroll < 0) {
+      // Android: the clamping page view reports the pull it refused.
+      _pulled -= n.overscroll;
+    } else if (n is ScrollUpdateNotification &&
+        n.metrics.pixels < n.metrics.minScrollExtent) {
+      // iOS: the bouncing one goes past its first page instead.
+      _pulled = n.metrics.minScrollExtent - n.metrics.pixels;
+    }
+    if (!_popped && _pulled > _popAfter) {
+      _popped = true;
+      Navigator.of(context).maybePop();
+    }
+    return false;
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      NotificationListener<ScrollNotification>(
+        onNotification: _onNotification,
+        child: widget.child,
+      );
 }
 
 class _MediaGrid extends StatelessWidget {
@@ -434,7 +494,8 @@ List<String> linksIn(String text) => _linkPattern
     .where((url) => url.length > 10)
     .toList();
 
-final RegExp _linkPattern = RegExp(r'\b(?:https?://|www\.)\S+', caseSensitive: false);
+final RegExp _linkPattern =
+    RegExp(r'\b(?:https?://|www\.)\S+', caseSensitive: false);
 
 /// The Links tab: one row per URL, newest first, tapping through to the message
 /// it came from.

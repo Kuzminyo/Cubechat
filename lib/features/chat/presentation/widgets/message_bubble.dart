@@ -1910,7 +1910,17 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           ),
         LongPressGestureRecognizer:
             GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
-          () => LongPressGestureRecognizer(debugOwner: this),
+          // 350 ms, not the framework's 500: the hold is what opens the
+          // spotlight with the reactions and actions, the most used thing a
+          // finger does to a message after reading it, and half a second of
+          // nothing under a held finger reads as the hold not having been
+          // noticed ("жесты лучше откликались", 2026-11-11). Telegram's is in
+          // the same place. The slop that cancels it for a scroll is
+          // unchanged, so a drag that starts on a row still scrolls.
+          () => LongPressGestureRecognizer(
+            debugOwner: this,
+            duration: const Duration(milliseconds: 350),
+          ),
           (r) => r.onLongPressStart =
               (d) => _hold(d.globalPosition, selecting: selecting),
         ),
@@ -2782,13 +2792,20 @@ class _SharedLocationBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final expired = location.expired;
+    // 168-212, was 200-250. The title row used to be an [Expanded] in a
+    // full-width [Row], which took whatever the maximum was, so every position
+    // was 250 wide however short its words ("локація", a pair of coordinates)
+    // — "пузырь карты ... не такие длинные" (2026-11-11). Sized by what is in
+    // it now, between a floor that keeps a run of them aligned and a ceiling
+    // that keeps the coordinates on one line at 12 pt.
     return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 200, maxWidth: 250),
+      constraints: const BoxConstraints(minWidth: 168, maxWidth: 212),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 expired ? Icons.location_off_rounded : Icons.place_rounded,
@@ -2797,7 +2814,7 @@ class _SharedLocationBubble extends StatelessWidget {
                     expired ? AppColors.textOnGlassDim : AppColors.brandPrimary,
               ),
               const SizedBox(width: 8),
-              Expanded(
+              Flexible(
                 child: Text(
                   t.locationBubbleTitle,
                   style: TextStyle(
@@ -2886,7 +2903,9 @@ class _MapFriendLinkBubble extends StatelessWidget {
       borderRadius: BorderRadius.circular(14),
       onTap: () => unawaited(onTap()),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 210, maxWidth: 250),
+        // 168-212, was 210-250: the same ceiling as a shared position, and
+        // for the same reason — see [_SharedLocationBubble].
+        constraints: const BoxConstraints(minWidth: 168, maxWidth: 212),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 2),
           child: Column(
@@ -2894,6 +2913,7 @@ class _MapFriendLinkBubble extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(
                     accepted
@@ -2903,7 +2923,7 @@ class _MapFriendLinkBubble extends StatelessWidget {
                     color: AppColors.brandPrimary,
                   ),
                   const SizedBox(width: 8),
-                  Expanded(
+                  Flexible(
                     child: Text(
                       accepted ? t.mapTitle : t.mapInviteTitle,
                       style: TextStyle(
@@ -2985,7 +3005,11 @@ class _CallRecordBubble extends StatelessWidget {
   /// the camera sat in three different places ("звонки в чате пузырь
   /// выровняй", 2026-11-10). 244 holds the longest Ukrainian label at 15 pt;
   /// a longer one ellipsises, as it already could at the old maximum.
-  static const double _width = 244;
+  ///
+  /// 220 since 1208 ("пузырь ... вызовов не такие длинные", 2026-11-11): the
+  /// round is 36 and the label 14 pt, which is what 220 holds the longest
+  /// label at (36 + 10 + ~146 + 8 + 20), 24 pt shorter than before.
+  static const double _width = 220;
 
   @override
   Widget build(BuildContext context) {
@@ -3019,15 +3043,15 @@ class _CallRecordBubble extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width: 40,
-                  height: 40,
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: tone.withValues(alpha: own == null ? 0.16 : 0.12),
                   ),
-                  child: Icon(icon, size: 20, color: tone),
+                  child: Icon(icon, size: 19, color: tone),
                 ),
-                const SizedBox(width: 11),
+                const SizedBox(width: 10),
                 // Expanded, so the camera is at the right edge of every row.
                 Expanded(
                   child: Column(
@@ -3040,7 +3064,7 @@ class _CallRecordBubble extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: labelInk,
-                          fontSize: 15,
+                          fontSize: 14,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -3057,11 +3081,11 @@ class _CallRecordBubble extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 // The way it will call back: a video call again with video.
                 Icon(
                   call.video ? Icons.videocam_rounded : Icons.call_rounded,
-                  size: 22,
+                  size: 20,
                   color: callBackInk,
                 ),
               ],

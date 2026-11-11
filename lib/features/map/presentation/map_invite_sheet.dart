@@ -13,6 +13,7 @@ import '../../../l10n/app_localizations.dart';
 import '../../chats/models/chat.dart';
 import '../../chats/presentation/chats_list_screen.dart';
 import '../data/map_friend_link.dart';
+import '../../chat/presentation/widgets/preview_line.dart';
 import '../data/map_friends_controller.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import 'map_sharing_consent.dart';
@@ -244,10 +245,8 @@ class _MapInviteSheetState extends ConsumerState<_MapInviteSheet> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: AppColors.textOnGlass),
                       ),
-                      subtitle: Text(
+                      subtitle: PreviewLine(
                         storedTextPreview(chat.lastMessage, t),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: AppColors.textOnGlassDim,
                           fontSize: 12,

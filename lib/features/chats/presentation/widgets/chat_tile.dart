@@ -8,6 +8,7 @@ import '../../../peers/data/presence_controller.dart';
 import '../../../../core/utils/time_format.dart';
 import '../../../../core/widgets/unread_badge.dart';
 import '../../../chat/models/message.dart';
+import '../../../chat/presentation/widgets/preview_line.dart';
 import '../../../peers/data/typing_controller.dart';
 import '../../../peers/presentation/peer_status.dart';
 import '../../../peers/presentation/widgets/peer_avatar.dart';
@@ -281,12 +282,13 @@ class ChatTile extends ConsumerWidget {
                 if (activity != null)
                   PeerActivityLine(activity: activity, style: previewStyle)
                 else
-                  Text(
+                  // [PreviewLine] draws an icon where the preview string has
+                  // an emoji (a call, a position, a contact), and is a plain
+                  // [Text] for everything else.
+                  PreviewLine(
                     chat.isDraft
                         ? '${t.chatDraft}: ${chat.lastMessage}'
                         : chat.lastMessage,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                     style: previewStyle,
                   ),
               ],

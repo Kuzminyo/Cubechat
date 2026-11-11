@@ -674,47 +674,53 @@ class _BenchmarkRow extends ConsumerWidget {
               'turns. About 60 s, hands off — a touch stops it.',
               style: dim,
             ),
-            Wrap(
-              spacing: 4,
-              children: [
-                // The floor: the same run on a screen with almost nothing in
-                // it, so what a push costs the frame before the page has
-                // anything to build is read, not guessed. A chat's first
-                // frame has ~4 ms of build outside the chat itself.
-                //
-                // Read on 1206, eight rounds each from the chat list: About
-                // opens with build p95 6.8 / p99 20.3 ms, raster p95 9.5 and
-                // 9 frames over 8.3 ms; a chat, 3.4 / 16.8, 9.4 and 7. The
-                // small screen is not the cheaper open, so what the chat
-                // costs on top of a push is not what keeps the first frame
-                // over budget: the push, the aurora behind the page and
-                // the slide are, and they are the same for every screen.
-                TextButton(
-                  onPressed: () => unawaited(
-                    bench.run(
-                      router: GoRouter.of(context),
-                      overlay: Overlay.of(context, rootOverlay: true),
-                      chat: '/settings/about',
-                    ),
-                  ),
-                  child: const Text('baseline: About'),
-                ),
-                for (final chat in chats)
+            // One row that scrolls sideways, not a wrap: the panel above
+            // has a fixed height, and a fifth button wrapping onto a second
+            // line overflowed it by 32 points and put the last chat under the
+            // bottom edge, where nothing could reach it.
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  // The floor: the same run on a screen with almost nothing in
+                  // it, so what a push costs the frame before the page has
+                  // anything to build is read, not guessed. A chat's first
+                  // frame has ~4 ms of build outside the chat itself.
+                  //
+                  // Read on 1206, eight rounds each from the chat list: About
+                  // opens with build p95 6.8 / p99 20.3 ms, raster p95 9.5 and
+                  // 9 frames over 8.3 ms; a chat, 3.4 / 16.8, 9.4 and 7. The
+                  // small screen is not the cheaper open, so what the chat
+                  // costs on top of a push is not what keeps the first frame
+                  // over budget: the push, the aurora behind the page and
+                  // the slide are, and they are the same for every screen.
                   TextButton(
                     onPressed: () => unawaited(
                       bench.run(
                         router: GoRouter.of(context),
                         overlay: Overlay.of(context, rootOverlay: true),
-                        chat: routeForChat(chat),
+                        chat: '/settings/about',
                       ),
                     ),
-                    child: Text(
-                      chat.peerName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: const Text('baseline: About'),
                   ),
-              ],
+                  for (final chat in chats)
+                    TextButton(
+                      onPressed: () => unawaited(
+                        bench.run(
+                          router: GoRouter.of(context),
+                          overlay: Overlay.of(context, rootOverlay: true),
+                          chat: routeForChat(chat),
+                        ),
+                      ),
+                      child: Text(
+                        chat.peerName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+              ),
             ),
           ],
         );
