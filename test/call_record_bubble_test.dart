@@ -102,6 +102,46 @@ void main() {
     await finish(tester);
   });
 
+  testWidgets('every call row is one width, the camera at its right edge',
+      (tester) async {
+    // "Outgoing call" and "Missed call" are different lengths; the rows used
+    // to be as wide as their labels, so a run of calls did not line up.
+    final widths = <double>[];
+    final cameraGaps = <double>[];
+    for (final outgoing in [true, false]) {
+      await pump(
+          tester, _record(outgoing: outgoing, seconds: outgoing ? 9 : 0));
+      final row = tester.getRect(
+        find
+            .ancestor(
+              of: find.byIcon(Icons.call_rounded),
+              matching: find.byType(Row),
+            )
+            .first,
+      );
+      final camera = tester.getRect(find.byIcon(Icons.call_rounded));
+      widths.add(row.width);
+      cameraGaps.add(row.right - camera.right);
+      await finish(tester);
+    }
+    expect(widths[0], widths[1]);
+    expect(cameraGaps, everyElement(lessThan(1)));
+  });
+
+  testWidgets('on our own bubble the row is in the ink of our own text',
+      (tester) async {
+    await pump(tester, _record(outgoing: true, seconds: 9));
+    final label = tester.widget<Text>(find.text('Outgoing call')).style!.color!;
+    final arrow = tester.widget<Icon>(find.byIcon(Icons.call_made_rounded));
+    final camera = tester.widget<Icon>(find.byIcon(Icons.call_rounded));
+    // The palette's darkest at 88%, what [MessageBubble] gives our words.
+    expect(label.a, closeTo(0.88, 0.01));
+    expect(label.computeLuminance(), lessThan(0.05));
+    expect(arrow.color, label);
+    expect(camera.color, label);
+    await finish(tester);
+  });
+
   testWidgets('while picking messages out, a tap ticks instead of calling',
       (tester) async {
     await pump(tester, _record(outgoing: false, seconds: 12));
