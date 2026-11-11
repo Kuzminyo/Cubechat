@@ -18,6 +18,7 @@ import 'dart:io';
 
 import 'package:cubechat/core/storage/hive_cipher.dart';
 import 'package:cubechat/core/theme/colors.dart';
+import 'package:cubechat/core/widgets/floating_glass.dart';
 import 'package:cubechat/features/chat/presentation/widgets/chat_input.dart';
 import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';
 import 'package:cubechat/features/contacts/presentation/contacts_screen.dart';
@@ -176,5 +177,63 @@ void main() {
           'screen three times over in a conversation, and every one of these '
           'is paid again on every frame the messages move behind it',
     );
+  });
+
+  // Since 1200 a floating pane inside the conversation's backdrop group reads
+  // the islands' shared backdrop rather than one of its own. The number of
+  // layers does not move — still one backdrop filter per pane, which is what
+  // the counts above hold — what changes is that the layer carries the
+  // group's key, and the engine reads the backdrop once per key. Outside a
+  // group, which is every other screen, it must carry none: the app-wide
+  // grouping of 2026-08-06 was reverted (see FloatingGlass.blur).
+  testWidgets('a floating pane shares the chat group\'s backdrop, and only '
+      'inside it', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    List<BackdropFilterLayer> filters() {
+      final found = <BackdropFilterLayer>[];
+      void walk(Layer? layer) {
+        for (var node = layer; node != null; node = node.nextSibling) {
+          if (node is BackdropFilterLayer) found.add(node);
+          if (node is ContainerLayer) walk(node.firstChild);
+        }
+      }
+
+      walk(tester.binding.renderViews.first.debugLayer);
+      return found;
+    }
+
+    Widget host(Widget child) => MaterialApp(
+          home: ColoredBox(
+            color: const Color(0xFF06140D),
+            child: Center(child: SizedBox(width: 340, height: 120, child: child)),
+          ),
+        );
+
+    final key = BackdropKey();
+    await tester.pumpWidget(host(BackdropGroup(
+      backdropKey: key,
+      child: const Column(
+        children: [
+          Expanded(child: MessageIslandGlass(child: SizedBox.expand())),
+          Expanded(child: FloatingGlass(child: SizedBox.expand())),
+        ],
+      ),
+    )));
+    await tester.pump();
+    final grouped = filters();
+    expect(grouped, hasLength(2), reason: 'one island and one floating pane');
+    expect(grouped.map((l) => l.backdropKey), everyElement(same(key)),
+        reason: 'both read the one backdrop the group takes');
+
+    await tester.pumpWidget(
+      host(const FloatingGlass(child: SizedBox.expand())),
+    );
+    await tester.pump();
+    final alone = filters();
+    expect(alone, hasLength(1));
+    expect(alone.single.backdropKey, isNull,
+        reason: 'with no group above it the pane filters on its own');
   });
 }

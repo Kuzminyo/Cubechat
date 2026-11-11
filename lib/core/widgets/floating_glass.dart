@@ -6,6 +6,7 @@ import '../theme/colors.dart';
 import '../theme/glass.dart';
 import '../util/frame_stats.dart';
 import '../util/motion.dart';
+import '../util/transition_probe.dart';
 import '../util/ui_activity.dart';
 
 /// A single levitating pane of smoked glass — the same treatment the floating
@@ -87,7 +88,16 @@ class FloatingGlass extends StatelessWidget {
   ///
   /// It was revisited for the chat screen's three islands, which are not these
   /// panes, and measured: grouped there since 1061, see [AppBlur.groupedPanes].
-  /// The panes here are still separate.
+  ///
+  /// Since 1200 these join that group too — but only inside it. A pane under
+  /// the chat screen's [BackdropGroup] (the jump-to-newest button, the voice
+  /// bar, the empty-chat greeting) reads the conversation's one shared
+  /// backdrop instead of taking its own; everywhere else there is no group
+  /// above it, `BackdropFilter.grouped` finds no key, and the pane filters
+  /// alone exactly as it did — which is what keeps this from being the
+  /// app-wide grouping reverted above. Argued from 1061's numbers for the
+  /// islands, **not measured on a phone for these panes**: the scripted run's
+  /// `chat-1199` rows are the old behaviour, taking turns with the new.
   final bool blur;
 
   /// Long-press reporting the global press point, so a caller can anchor a
@@ -250,10 +260,19 @@ class FloatingGlass extends StatelessWidget {
                             UiActivity.instance.isNavigating.value) {
                           return pane!;
                         }
-                        return BackdropFilter(
-                          filter: AppBlur.pane,
-                          child: pane,
-                        );
+                        // Same widget type either way, so the comparison
+                        // run flips the render object rather than remounting
+                        // the pane. See [blur] for where this groups.
+                        return AppBlur.groupedPanes &&
+                                !TransitionProbe.instance.previousChat.value
+                            ? BackdropFilter.grouped(
+                                filter: AppBlur.pane,
+                                child: pane,
+                              )
+                            : BackdropFilter(
+                                filter: AppBlur.pane,
+                                child: pane,
+                              );
                       },
                     )
                   : tint,

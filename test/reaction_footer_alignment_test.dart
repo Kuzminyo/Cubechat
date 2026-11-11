@@ -6,6 +6,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/bubble_meta.dart';
+
 /// A reaction on somebody else's message sits at the left of its bubble, the
 /// way Telegram draws it — not huddled against the clock at the right, which
 /// on a long message put it a whole line's width away from where the text
@@ -53,7 +55,7 @@ void main() {
     await _pump(tester, _theirs(mine: false));
     final text = tester.getRect(find.textContaining('a message long enough'));
     final reaction = _reaction(tester);
-    final clock = tester.getRect(find.text('10:11').hitTestable().first);
+    final clock = tester.getRect(bubbleClock('10:11').hitTestable().first);
     // The emoji sits inside its chip after the reactor's face, ~25 px in;
     // huddled by the clock it was 155.
     expect(reaction.left - text.left, lessThan(40),

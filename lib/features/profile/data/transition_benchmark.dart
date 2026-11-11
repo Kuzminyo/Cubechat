@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/glass.dart';
@@ -20,6 +21,10 @@ enum BenchVariant {
   /// flipping rather than naming one side keeps the comparison when the
   /// default moves, which it did in 1164.
   otherUnderlay,
+
+  /// The conversation as 1199 built it — see [TransitionProbe.previousChat].
+  /// Its rows carry `chat-1199`; the rows without it are 1200's.
+  previousChat,
 }
 
 /// Opens and closes one conversation from the chat list, the same way every
@@ -82,9 +87,19 @@ class TransitionBenchmark {
   /// Blur against no blur answered the close's too in 1062: the same six
   /// frames over budget either way, all in its first 90 ms. Keeping the chat
   /// list painted underneath answered what that is in 1063 (6.7 frames to
-  /// 0.4). What is asked now is what keeping it painted costs a scroll in the
-  /// open chat — eight rounds of each, with a scroll in every one.
+  /// 0.4). Keeping it painted against a scroll answered in 1164 (off stage
+  /// won), so [BenchVariant.otherUnderlay] sits out of [variants] until it is
+  /// asked again. What is asked now (1200) is whether the lighter bubbles,
+  /// header and grouped panes buy anything on the phone: 1200 against the
+  /// 1199 paths it still carries — eight rounds of each, with a scroll in
+  /// every one.
   static const int defaultRounds = 8;
+
+  /// The variants a run takes turns between, in this order.
+  static const List<BenchVariant> variants = [
+    BenchVariant.asIs,
+    BenchVariant.previousChat,
+  ];
 
   bool _touched = false;
 
@@ -104,7 +119,7 @@ class TransitionBenchmark {
     final wasInstant = probe.instantTransitions.value;
     final wasBlur = AppBlur.panes;
     final wasUnderlay = probe.keepUnderlay.value;
-    const variants = BenchVariant.values;
+    final wasPrevious = probe.previousChat.value;
     final total = rounds * variants.length;
     progress.value = 'starting';
     _touched = false;
@@ -123,6 +138,7 @@ class TransitionBenchmark {
       probe
         ..placeholderMedia.value = false
         ..instantTransitions.value = false
+        ..previousChat.value = v == BenchVariant.previousChat
         ..keepUnderlay.value =
             v == BenchVariant.otherUnderlay ? !wasUnderlay : wasUnderlay;
     }
@@ -141,6 +157,14 @@ class TransitionBenchmark {
       for (var i = 0; i < total; i++) {
         final variant = variants[i % variants.length];
         apply(variant);
+        // The drag used to flip on every cycle while the variants also
+        // alternated every cycle, so one variant always flung up and the
+        // other always down. Up runs into the end of the list and dies in
+        // ~570 ms; the other kept going for ~1100 ms, and the 1200 log read
+        // "scroll build p95 0.6 against 3.0, 61 frames against 111" as a win
+        // for the new code. Now every variant takes the same direction in
+        // turn: the direction changes once per pass through the variants.
+        _dragDown = (i ~/ variants.length).isOdd;
         progress.value = '${i + 1}/$total · ${variant.name}';
         if (!await _cycle(router, chat)) return;
       }
@@ -156,6 +180,7 @@ class TransitionBenchmark {
       AppBlur.panes = wasBlur;
       probe
         ..scripted = false
+        ..previousChat.value = wasPrevious
         ..keepUnderlay.value = wasUnderlay
         ..placeholderMedia.value = wasPlaceholders
         ..instantTransitions.value = wasInstant;
@@ -178,6 +203,7 @@ class TransitionBenchmark {
     unawaited(router.push<void>(chat));
     await Future<void>.delayed(afterOpen);
     if (_interrupted) return false;
+    _logBlurLayers();
     TransitionProbe.instance.noteScroll();
     await _drag();
     await Future<void>.delayed(afterScroll);
@@ -188,6 +214,30 @@ class TransitionBenchmark {
   }
 
   bool get _interrupted => _touched || !_foreground;
+
+  /// How many backdrop filters the open chat has alive, and how many of them
+  /// share a group key, so a raster-bound open (9-10 ms against 8.3) can be
+  /// told apart from "too many blurs" without a profiler.
+  void _logBlurLayers() {
+    var all = 0;
+    var grouped = 0;
+    void visit(RenderObject node) {
+      if (node is RenderBackdropFilter) {
+        all++;
+        if (node.backdropKey != null) grouped++;
+      }
+      node.visitChildren(visit);
+    }
+
+    for (final view in RendererBinding.instance.renderViews) {
+      visit(view);
+    }
+    DebugLog.instance.log(
+      'NAV-COST',
+      'blur layers in the open chat: $all, grouped: $grouped '
+          '(previousChat=${TransitionProbe.instance.previousChat.value})',
+    );
+  }
 
   /// A thumb's flick through the middle of the screen: 35% of its height in
   /// 120 ms, down one round and up the next so the conversation is not walked

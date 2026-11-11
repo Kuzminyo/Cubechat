@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/bubble_meta.dart';
+
 /// A clip is drawn the way a picture is.
 ///
 /// Reported off a screenshot of a conversation holding both: the photo ran to
@@ -65,13 +67,24 @@ Future<void> _pump(WidgetTester tester, Message message) async {
   );
 }
 
-/// The one box in the bubble that carries the fill, the border and the inset.
-Container _surface(WidgetTester tester, Finder of) {
-  final boxes = tester.widgetList<Container>(
-    find.ancestor(of: of, matching: find.byType(Container, skipOffstage: false)),
-  );
-  return boxes.firstWhere((box) => box.decoration is BoxDecoration);
-}
+/// The boxes of type [T] the bubble wraps [of] in — between the bubble and
+/// it, nothing outside.
+///
+/// It was one [Container] carrying the fill, the border and the inset until
+/// 1200, which builds the fill as a DecoratedBox and the inset as a Padding
+/// and leaves out whichever has nothing to do — so a clip, which has no
+/// inset, has no Padding at all.
+Iterable<T> _around<T extends Widget>(WidgetTester tester, Finder of) =>
+    tester.widgetList<T>(
+      find.descendant(
+        of: find.byType(MessageBubble, skipOffstage: false),
+        matching: find.ancestor(
+          of: of,
+          matching: find.byType(T, skipOffstage: false),
+        ),
+        skipOffstage: false,
+      ),
+    );
 
 void main() {
   late Directory dir;
@@ -93,21 +106,24 @@ void main() {
     addTearDown(tester.view.reset);
 
     await _pump(tester, _clip(name: 'clip.mp4'));
-    final surface = _surface(
-      tester,
-      find.byType(VideoBubble, skipOffstage: false),
-    );
-    final decoration = surface.decoration! as BoxDecoration;
+    final video = find.byType(VideoBubble, skipOffstage: false);
+    final fills = [
+      for (final box in _around<DecoratedBox>(tester, video))
+        if (box.decoration case final BoxDecoration d
+            when d.color != null || d.gradient != null)
+          d,
+    ];
+    expect(fills, hasLength(1), reason: 'the bubble still has its fill');
 
     expect(
-      surface.padding,
-      EdgeInsets.zero,
+      _around<Padding>(tester, video).map((p) => p.padding),
+      everyElement(EdgeInsets.zero),
       reason: 'fourteen points of glass on every side is the frame a photo '
           'stopped drawing, and it made the bubble 28 points wider than the '
           'clip inside it',
     );
     expect(
-      decoration.border,
+      fills.single.border,
       isNull,
       reason: 'a border paints inside the container and is then clipped at the '
           'outer radius, so it comes apart in every corner — the same reason '
@@ -151,7 +167,8 @@ void main() {
 
     await _pump(tester, _clip(name: 'clip.mp4'));
     final clip = tester.getRect(find.byType(VideoBubble, skipOffstage: false));
-    final clock = tester.getRect(find.text('10:11', skipOffstage: false));
+    final clock =
+        tester.getRect(bubbleClock('10:11', skipOffstage: false));
 
     expect(
       clip.contains(clock.center),
@@ -174,7 +191,8 @@ void main() {
     final circle = tester.getRect(
       find.byKey(const ValueKey('circle-disc'), skipOffstage: false),
     );
-    final clock = tester.getRect(find.text('10:11', skipOffstage: false));
+    final clock =
+        tester.getRect(bubbleClock('10:11', skipOffstage: false));
 
     // **At rest the slot is the disc, with nothing round it.**
     //

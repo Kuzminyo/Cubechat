@@ -76,6 +76,20 @@ class TransitionProbe {
   /// 0.4. See `_SlideRoute.opaque`.
   final ValueNotifier<bool> keepUnderlay = ValueNotifier<bool>(false);
 
+  /// **Experiment, temporary (1200).** The conversation built the way 1199
+  /// built it: the clock row as a row of icons and texts, every bubble in its
+  /// full set of wrappers, the header's buttons as Material [IconButton]s with
+  /// their tooltips, and the chat's floating panes each reading the backdrop
+  /// on their own.
+  ///
+  /// 1200 trimmed all four, and the open frame cannot be compared across two
+  /// builds: the same code drifted from 22 to 29 ms a chat open over one
+  /// evening as the phone warmed (1193 against 1198, scripted run). Here the
+  /// old and the new take turns inside one scripted run, so the heat lands on
+  /// both. Read when a chat is built, so it applies to the next one opened.
+  /// The old paths exist only for this and go with it once it has answered.
+  final ValueNotifier<bool> previousChat = ValueNotifier<bool>(false);
+
   /// The transitions are being driven by a script rather than a thumb — see
   /// `TransitionBenchmark`. Filed apart, because the two are not comparable:
   /// a thumb opens the next chat while the last close is still settling.
@@ -213,6 +227,7 @@ class TransitionProbe {
         if (scripted) 'bench',
         if (instantTransitions.value) 'instant',
         if (placeholderMedia.value) 'placeholders',
+        if (previousChat.value) 'chat-1199',
         keepUnderlay.value ? 'underlay' : 'opaque',
         AppBlur.panes ? 'blur' : 'no-blur',
         if (AppBlur.panes && !AppBlur.groupedPanes) 'ungrouped',

@@ -179,7 +179,8 @@ class AppBlur {
   ///
   /// It was tried app-wide on 2026-08-06 and reverted as "less smooth
   /// everywhere" — by feel, with nothing that could put a number on one slide.
-  /// See [FloatingGlass.blur], which is still not grouped.
+  /// See [FloatingGlass.blur], which joins this group inside a conversation
+  /// since 1200 and is ungrouped everywhere else.
   static bool groupedPanes = true;
 
   /// Ready-made filter, so no call site has to remember to pass the same value

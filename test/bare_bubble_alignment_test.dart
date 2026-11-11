@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/bubble_meta.dart';
+
 /// A message with no bubble still belongs against the edge.
 ///
 /// Reported from a screenshot: a lone emoji sent as a reply sat in the middle
@@ -56,7 +58,7 @@ Future<Rect> _pump(WidgetTester tester, Message m) async {
   // The clock, not the picture: a single emoji with a drawing in the pack is
   // rendered as that drawing rather than as text, and the clock is half of
   // what was reported adrift anyway.
-  return tester.getRect(find.text('10:11'));
+  return tester.getRect(bubbleClock('10:11'));
 }
 
 void main() {
@@ -127,19 +129,32 @@ void main() {
     );
     final video = find.byType(VideoBubble, skipOffstage: false);
     expect(video, findsOneWidget);
-    final parents = tester.widgetList<Container>(
-      find.ancestor(
-        of: video,
-        matching: find.byType(Container, skipOffstage: false),
-      ),
-    );
-    final surface =
-        parents.firstWhere((box) => box.decoration is BoxDecoration);
-    final decoration = surface.decoration! as BoxDecoration;
-    expect(decoration.color, isNull);
-    expect(decoration.gradient, isNull);
-    expect(decoration.border, isNull);
-    expect(surface.padding, EdgeInsets.zero);
+    // Between the bubble and the clip, nothing that paints or insets. Since
+    // 1200 the bubble's surface is a DecoratedBox and a Padding of its own
+    // rather than a Container, and a bare message gets neither — so this
+    // asks every box the bubble wraps the video in, not one Container.
+    Iterable<T> around<T extends Widget>() => tester.widgetList<T>(
+          find.descendant(
+            of: find.byType(MessageBubble, skipOffstage: false),
+            matching: find.ancestor(
+              of: video,
+              matching: find.byType(T, skipOffstage: false),
+            ),
+            skipOffstage: false,
+          ),
+        );
+    for (final box in around<DecoratedBox>()) {
+      final decoration = box.decoration;
+      if (decoration is! BoxDecoration) continue;
+      expect(decoration.color, isNull);
+      expect(decoration.gradient, isNull);
+      expect(decoration.border, isNull);
+    }
+    for (final pad in around<Padding>()) {
+      expect(pad.padding, EdgeInsets.zero);
+    }
+    expect(find.byType(ClipRRect, skipOffstage: false), findsWidgets,
+        reason: 'still clipped to its circle');
     await tester.pumpWidget(const SizedBox());
   });
 }

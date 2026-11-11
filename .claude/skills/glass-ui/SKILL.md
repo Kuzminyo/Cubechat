@@ -62,7 +62,8 @@ All of it lives in `lib/core/theme/glass.dart` and `glass_tier.dart`.
 - **A conversation's islands share one backdrop read.** Header, pinned bar and
   composer sit inside a `BackdropGroup` the chat screen sets up
   (`AppBlur.groupedPanes`), so three panes cost one read of what is behind them.
-  Panes elsewhere, and `FloatingGlass`, still filter on their own. The islands
+  A `FloatingGlass` inside the conversation shares that read since 1200; panes
+  on every other screen still filter on their own. The islands
   keep blurring through a route slide on purpose — turning it off flickers,
   reported twice.
 - **The nav bar no longer blurs.**

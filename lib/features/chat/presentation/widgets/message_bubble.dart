@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:saver_gallery/saver_gallery.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -576,9 +578,16 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     curve: const Interval(0, 0.45, curve: Curves.easeOut),
   );
 
+  /// Whether this bubble was built to rise in. Decided once: the rise's
+  /// wrappers are in the tree for the life of a bubble that has them, and
+  /// absent for the life of one that does not — which is nearly all of them,
+  /// since only a message just sent rises.
+  late final bool _entering;
+
   @override
   void initState() {
     super.initState();
+    _entering = widget.animateEntry;
     _c = AnimationController(
       vsync: this,
       // Telegram's pace for a sent message: quick to clear the field, slow
@@ -1411,7 +1420,6 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     await tags.setTag(widget.message.id, emoji);
   }
 
-
   /// The message [wireId] quotes, resolved from this chat's list, or null if
   /// it's not in memory (e.g. cleared history or arrived out of order).
   Message? _resolveQuoted(String wireId) {
@@ -1756,6 +1764,159 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     }
   }
 
+  /// The row a bubble sits in, as 1200 builds it: the same gestures, band,
+  /// swipe and rise as the 1199 row at the end of [_buildBubble], in fewer
+  /// widgets. Per plain text bubble that row was 44 elements (theirs) and 59
+  /// (ours, with the tick's switcher); see
+  /// `test/chat_open_element_budget_test.dart` for what it is now.
+  ///
+  ///  * **One gesture detector instead of three.** The row's
+  ///    [GestureDetector], the swipe's [RawGestureDetector] inside it and a
+  ///    second double-tap detector around the bubble — which did what the
+  ///    row's own double-tap already did, on a smaller target — are one
+  ///    [RawGestureDetector] with the same recognizers, the swipe's first,
+  ///    as it was when it sat innermost. One difference: a swipe can now
+  ///    start anywhere on the message's line, as the hold and the double-tap
+  ///    already could, not only on the bubble.
+  ///  * **The swipe in one render object.** [_SwipeShift] moves the row by
+  ///    `_dragX` and paints the reply arrow itself, where a
+  ///    [ValueListenableBuilder], a [Stack] and a [Transform] stood — and a
+  ///    frame of the gesture repaints instead of rebuilding.
+  ///  * **The band in one render object.** [_RowBand] fades the jump and
+  ///    selection colour in and out exactly as the [AnimatedContainer] did,
+  ///    without the [Container], [Padding] and [ColoredBox] under it.
+  ///  * **The rise only where something rises.** [_RiseIn] and the fade
+  ///    under it wrap a bubble built with [MessageBubble.animateEntry] and
+  ///    nothing else; and the [KeyedSubtree] that carried no key is gone.
+  ///  * **The column under the bubble** only where a read-by chip can go.
+  Widget _leanRow({
+    required Message message,
+    required bool mine,
+    required bool circle,
+    required bool selecting,
+    required bool selected,
+    required bool highlighted,
+    required Widget bubble,
+  }) {
+    // Inert while selecting, so a photo's own tap cannot win the arena and
+    // open the viewer when the row was meant to tick.
+    final Widget inert = IgnorePointer(ignoring: selecting, child: bubble);
+    // Only our own channel posts carry a read-by chip — "who has seen mine"
+    // is the question people ask, and only a channel has more than one
+    // reader to count. Decided by what the message is, so the chip's first
+    // reader does not re-parent the bubble.
+    final readByRoom =
+        mine && (widget.chatId.startsWith('#') || message.readBy.isNotEmpty);
+    final row = Row(
+      // Ours on the right, circles included. A circle grows away from its
+      // own edge when tapped, the way Telegram's does, so an outgoing one
+      // opens leftwards across the screen rather than jumping to the other
+      // side of it.
+      mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,
+      children: [
+        if (selecting) ...[
+          Icon(
+            selected
+                ? Icons.check_circle_rounded
+                : Icons.radio_button_unchecked_rounded,
+            size: 20,
+            color:
+                selected ? AppColors.brandPrimary : AppColors.textOnGlassFaint,
+          ),
+          const SizedBox(width: 8),
+        ],
+        ConstrainedBox(
+          // A tapped circle is allowed past the usual three quarters: it
+          // grows to most of the screen, and a cap meant for text would
+          // squeeze it. See [VideoBubble.circleExpanded].
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.sizeOf(context).width * (circle ? 1.0 : 0.75),
+          ),
+          child: !readByRoom
+              ? inert
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    inert,
+                    if (message.readBy.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: _ReadByChip(
+                          label: AppLocalizations.of(context)
+                              .chatReadByCount(message.readBy.length),
+                          onTapAt: _showActions,
+                        ),
+                      ),
+                  ],
+                ),
+        ),
+      ],
+    );
+
+    // The hold, the right button, the tick while selecting, the double-tap
+    // and the swipe — what the row's detector and the swipe's did, and why,
+    // is written at the 1199 row below.
+    final onDoubleTap = selecting || !_canReact ? null : _quickReact;
+    final Widget gestures = RawGestureDetector(
+      behavior: HitTestBehavior.translucent,
+      gestures: <Type, GestureRecognizerFactory>{
+        if (!selecting && _canReply)
+          LeftwardDragRecognizer:
+              GestureRecognizerFactoryWithHandlers<LeftwardDragRecognizer>(
+            LeftwardDragRecognizer.new,
+            (r) => r
+              ..dragStartBehavior = DragStartBehavior.down
+              ..onUpdate = _onSwipeUpdate
+              ..onEnd = ((_) => _onSwipeEnd())
+              ..onCancel = _onSwipeEnd,
+          ),
+        TapGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+          () => TapGestureRecognizer(debugOwner: this),
+          (r) => r
+            ..onTap = selecting
+                ? () => ref
+                    .read(messageSelectionProvider(widget.chatId).notifier)
+                    .toggle(message.id)
+                : null
+            ..onSecondaryTapUp =
+                (d) => _hold(d.globalPosition, selecting: selecting),
+        ),
+        if (onDoubleTap != null)
+          DoubleTapGestureRecognizer:
+              GestureRecognizerFactoryWithHandlers<DoubleTapGestureRecognizer>(
+            () => DoubleTapGestureRecognizer(debugOwner: this),
+            (r) => r.onDoubleTap = onDoubleTap,
+          ),
+        LongPressGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+          () => LongPressGestureRecognizer(debugOwner: this),
+          (r) => r.onLongPressStart =
+              (d) => _hold(d.globalPosition, selecting: selecting),
+        ),
+      },
+      child: _SwipeShift(
+        offset: _dragX,
+        hint: AppColors.brandPrimary,
+        child: row,
+      ),
+    );
+
+    final Widget band = _RowBand(
+      color: selected
+          ? AppColors.brandPrimary.withValues(alpha: 0.22)
+          : highlighted
+              ? AppColors.brandPrimary.withValues(alpha: 0.16)
+              : Colors.transparent,
+      child: gestures,
+    );
+    if (!_entering) return band;
+    return _RiseIn(
+      rise: _rise,
+      child: FadeTransition(opacity: _fade, child: band),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Counted and timed for the frame meter: opening a chat builds every
@@ -1976,19 +2137,28 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           : null,
     );
 
+    // 1199's bubble, for the scripted run's comparison rounds only — see
+    // [TransitionProbe.previousChat]. Everything it switches is marked
+    // `legacy` below and goes with it.
+    final legacy = TransitionProbe.instance.previousChat.value;
+
+    // With no reactions the footer is the clock line itself; the
+    // [_BubbleFooter] around it only ever returned it unchanged.
     Widget footerOf({required bool spread}) => inBubble(
-          _BubbleFooter(
-            reactions: reacted
-                ? _ReactionsRow(
-                    reactions: _shownReactions,
-                    fresh: _freshReactions,
-                    leaving: _leavingReactions.keys.toSet(),
-                    onTap: _canReact ? _toggleReaction : null,
-                  )
-                : null,
-            meta: meta,
-            spread: spread,
-          ),
+          !reacted && !legacy
+              ? meta
+              : _BubbleFooter(
+                  reactions: reacted
+                      ? _ReactionsRow(
+                          reactions: _shownReactions,
+                          fresh: _freshReactions,
+                          leaving: _leavingReactions.keys.toSet(),
+                          onTap: _canReact ? _toggleReaction : null,
+                        )
+                      : null,
+                  meta: meta,
+                  spread: spread,
+                ),
         );
     final footer = footerOf(spread: false);
 
@@ -2020,66 +2190,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     final readingColor = mine && !bare
         ? AppColors.bgDeep.withValues(alpha: 0.7)
         : AppColors.textOnGlass;
-    final bubble = RepaintBoundary(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: radius,
-          boxShadow: bare ? const <BoxShadow>[] : FloatingGlass.shadows,
-        ),
-        child: ClipRRect(
-          borderRadius: radius,
-          child: Container(
-            // A photo or a clip fills its bubble; everything else sits inside
-            // padding.
-            //
-            // A picture framed by fourteen points of tinted glass on every side
-            // reads as a picture *of* a message. Letting it run to the rounded
-            // corners is what every messenger does, and it also buys back the
-            // width: the same photo is drawn larger without the bubble growing.
-            // The rows that keep their inset — an author's name, the caption,
-            // the time — ask for it themselves below.
-            padding: media || circle
-                ? EdgeInsets.zero
-                : const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            // And no border on a photo bubble, which is why its corners looked
-            // broken. `Border.all` paints its stroke *inside* the container, so
-            // the picture sits a pixel in from it and is then clipped by the
-            // ClipRRect at the outer radius: the stroke reads cleanly along the
-            // straight edges and comes apart in every corner. That is the
-            // "обводка плохо сделано, углов нету" in the report.
-            //
-            // Telegram draws no frame around a photo at all, and the reason
-            // carries over — a border exists to give a pane of glass an edge,
-            // and a picture already has one. A clip is a picture that moves and
-            // takes the same answer. Everything else keeps its border.
-            decoration: bare
-                ? const BoxDecoration()
-                : mine
-                    ? BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            AppColors.brandPrimary.withValues(alpha: 0.85),
-                            AppColors.brandSecondary.withValues(alpha: 0.85),
-                          ],
-                        ),
-                        borderRadius: radius,
-                        // No frame around a photo — see the note by `padding`.
-                        border: media
-                            ? null
-                            : Border.all(color: AppColors.glass(0.18)),
-                      )
-                    : BoxDecoration(
-                        color: AppColors.glass(0.10),
-                        borderRadius: radius,
-                        border: media
-                            ? null
-                            : Border.all(color: AppColors.glass(0.16)),
-                      ),
-            child: _FooterAtEnd(
-              footer: footerAtEnd ? footerOf(spread: !mine) : null,
-              child: Column(
+    // The bubble's own column. What goes around it — the footer at its end,
+    // the fill, the clip, and the row with its gestures — is put on after it.
+    final Widget column = Column(
                 // Left inside a bubble, right when there is no bubble and the
                 // message is ours.
                 //
@@ -2373,6 +2486,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     // selecting, where a tap on the row means the tick.
                     _CallRecordBubble(
                       call: call,
+                      ownInk: ownInk,
                       onCall: selecting ||
                               !ref.read(platformCapabilitiesProvider).calls
                           ? null
@@ -2499,30 +2613,20 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                         ),
                       ),
                     ),
-                  if (!metaOnMedia) ...[
+                  // Reactions and the clock on one line, inside the bubble.
+                  //
+                  // They used to be a second row hanging *below* the bubble,
+                  // which is a shape no messenger draws: it detached the
+                  // reaction from the thing reacted to, pushed the next message
+                  // down by a whole row, and left the bubble's own bottom line
+                  // carrying nothing but four characters of time. One line, the
+                  // reaction where it was put and the clock where it always is.
+                  //
+                  // When it is drawn at the right, [_FooterAtEnd] lays it out
+                  // below this column instead — see there.
+                  if (!metaOnMedia && !footerAtEnd) ...[
                     if (!media) const SizedBox(height: 4),
-                    // Reactions and the clock on one line, inside the bubble.
-                    //
-                    // They used to be a second row hanging *below* the bubble,
-                    // which is a shape no messenger draws: it detached the
-                    // reaction from the thing reacted to, pushed the next message
-                    // down by a whole row, and left the bubble's own bottom line
-                    // carrying nothing but four characters of time. One line, the
-                    // reaction where it was put and the clock where it always is.
-                    //
-                    // Held here invisibly when the footer is drawn at the right
-                    // (below), so the bubble is still as wide and as tall as
-                    // the footer needs.
-                    if (footerAtEnd)
-                      Visibility(
-                        visible: false,
-                        maintainSize: true,
-                        maintainAnimation: true,
-                        maintainState: true,
-                        child: footer,
-                      )
-                    else
-                      footer,
+                    footer,
                   ],
                   // The way into what everybody said about this post.
                   //
@@ -2541,12 +2645,142 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                     ),
                   ],
                 ],
+    );
+
+    // Reactions spread across the bubble when drawn, so what is drawn is not
+    // what sizes it: the unspread row goes along as the sizer. Without
+    // reactions the two are the same row, laid out once.
+    final Widget? drawnFooter = footerAtEnd
+        ? reacted
+            ? footerOf(spread: !mine)
+            : footer
+        : null;
+    final Widget? sizer = footerAtEnd && reacted ? footer : null;
+    final double footerGap = media ? 0 : 4;
+
+    // A photo or a clip fills its bubble; everything else sits inside
+    // padding.
+    //
+    // A picture framed by fourteen points of tinted glass on every side reads
+    // as a picture *of* a message. Letting it run to the rounded corners is
+    // what every messenger does, and it also buys back the width: the same
+    // photo is drawn larger without the bubble growing. The rows that keep
+    // their inset — an author's name, the caption, the time — ask for it
+    // themselves below.
+    final padding = media || circle
+        ? EdgeInsets.zero
+        : const EdgeInsets.symmetric(horizontal: 14, vertical: 10);
+    // And no border on a photo bubble, which is why its corners looked broken.
+    // `Border.all` paints its stroke *inside* the container, so the picture
+    // sits a pixel in from it and is then clipped by the ClipRRect at the
+    // outer radius: the stroke reads cleanly along the straight edges and
+    // comes apart in every corner. That is the "обводка плохо сделано, углов
+    // нету" in the report.
+    //
+    // Telegram draws no frame around a photo at all, and the reason carries
+    // over — a border exists to give a pane of glass an edge, and a picture
+    // already has one. A clip is a picture that moves and takes the same
+    // answer. Everything else keeps its border.
+    final decoration = bare
+        ? const BoxDecoration()
+        : mine
+            ? BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.brandPrimary.withValues(alpha: 0.85),
+                    AppColors.brandSecondary.withValues(alpha: 0.85),
+                  ],
+                ),
+                borderRadius: radius,
+                // No frame around a photo — see the note by `padding`.
+                border:
+                    media ? null : Border.all(color: AppColors.glass(0.18)),
+              )
+            : BoxDecoration(
+                color: AppColors.glass(0.10),
+                borderRadius: radius,
+                border:
+                    media ? null : Border.all(color: AppColors.glass(0.16)),
+              );
+
+    final Widget bubble;
+    if (legacy) {
+      bubble = RepaintBoundary(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: radius,
+            boxShadow: bare ? const <BoxShadow>[] : FloatingGlass.shadows,
+          ),
+          child: ClipRRect(
+            borderRadius: radius,
+            child: Container(
+              padding: padding,
+              decoration: decoration,
+              child: _FooterAtEnd(
+                footer: drawnFooter,
+                sizer: sizer,
+                gap: footerGap,
+                child: column,
               ),
             ),
           ),
         ),
-      ),
-    );
+      );
+    } else {
+      // **The same bubble in fewer widgets (1200).** Every element here is
+      // created for every message that scrolls into view — 1.2 ms of
+      // `item.inflate` per bubble on the S24+ (1199), before a letter of it
+      // is measured — so what drew nothing went:
+      //
+      //  * the shadow box: [FloatingGlass.shadows] has been empty for a long
+      //    time, and a decoration of no shadows paints nothing;
+      //  * the clip, on a bubble whose content sits inside padding: the fill
+      //    draws its own rounded corners, and nothing inside reaches them.
+      //    A photo, a clip and a bare message keep it — they run to the edge;
+      //  * [Container], for the two boxes it builds anyway;
+      //  * [_FooterAtEnd], for the render object it returns.
+      //
+      // The decoration is skipped only when it is empty (a bare message) and
+      // the padding only when it is zero (media). Which of these a bubble has
+      // follows from what the message is, so a bubble does not change shape
+      // while it is on screen. `test/chat_open_element_budget_test.dart`
+      // holds the count.
+      Widget body = drawnFooter == null
+          ? column
+          : _FooterBelowAtEnd(
+              gap: footerGap,
+              content: column,
+              footer: drawnFooter,
+              sizer: sizer,
+            );
+      // Plus the border's own width, as [Container] did: it insets its child
+      // by the decoration's padding too, so the hairline never sits under the
+      // text. Left out, every bordered bubble came out 2 pt smaller each way
+      // (caught by `test/bubble_meta_paragraph_test.dart`).
+      final inset = padding.add(decoration.padding);
+      if (inset != EdgeInsets.zero) {
+        body = Padding(padding: inset, child: body);
+      }
+      if (!bare) body = DecoratedBox(decoration: decoration, child: body);
+      if (media || bare) {
+        body = ClipRRect(borderRadius: radius, child: body);
+      }
+      bubble = RepaintBoundary(child: body);
+    }
+
+    if (!legacy) {
+      return _leanRow(
+        message: message,
+        mine: mine,
+        circle: circle,
+        selecting: selecting,
+        selected: selected,
+        highlighted: highlighted,
+        bubble: bubble,
+      );
+    }
 
     return _RiseIn(
       rise: _rise,
@@ -2937,12 +3171,34 @@ class _MapFriendLinkBubble extends StatelessWidget {
 /// A finished call, in the conversation: which way it went, how long it
 /// lasted, and the phone to call again.
 class _CallRecordBubble extends StatelessWidget {
-  const _CallRecordBubble({required this.call, required this.onCall});
+  const _CallRecordBubble({
+    required this.call,
+    required this.onCall,
+    this.ownInk,
+  });
 
   final CallRecord call;
 
   /// Null while the message list is picking messages out.
   final VoidCallback? onCall;
+
+  /// The ink of our own words on our own green fill, or null on theirs.
+  ///
+  /// On our bubble the arrow and its round were brand green on brand green
+  /// and all but vanished, and the label was white while the clock under it
+  /// was already the dark ink — two inks in one bubble. "На мой пузырь сделай
+  /// такой же цвет как текст в смс мой" (2026-11-10): the whole row takes the
+  /// ink our text does.
+  final Color? ownInk;
+
+  /// One width for every call row, so a run of calls lines up.
+  ///
+  /// It was 190-250 and as wide as its label, so "Вихідний", "Вхідний" and
+  /// "Пропущений дзвінок" one under another were three different widths and
+  /// the camera sat in three different places ("звонки в чате пузырь
+  /// выровняй", 2026-11-10). 244 holds the longest Ukrainian label at 15 pt;
+  /// a longer one ellipsises, as it already could at the old maximum.
+  static const double _width = 244;
 
   @override
   Widget build(BuildContext context) {
@@ -2954,7 +3210,14 @@ class _CallRecordBubble extends StatelessWidget {
       (false, true) => (Icons.call_received_rounded, t.previewCallIncoming),
       (false, false) => (Icons.call_missed_rounded, t.previewCallMissed),
     };
-    final tone = missed ? AppColors.danger : AppColors.brandPrimary;
+    final own = ownInk;
+    final tone = own ?? (missed ? AppColors.danger : AppColors.brandPrimary);
+    final labelInk = own ?? (missed ? AppColors.danger : AppColors.textOnGlass);
+    // A step lighter than the label, as the dim tier is on theirs.
+    final durationInk = own?.withValues(alpha: 0.7) ?? AppColors.textOnGlassDim;
+    final callBackInk = onCall == null
+        ? (own?.withValues(alpha: 0.4) ?? AppColors.textOnGlassFaint)
+        : (own ?? AppColors.brandPrimary);
     return Semantics(
       button: onCall != null,
       label: '$label. ${t.callsCallBack}',
@@ -2962,24 +3225,24 @@ class _CallRecordBubble extends StatelessWidget {
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
         onTap: onCall,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 190, maxWidth: 250),
+        child: SizedBox(
+          width: _width,
           child: Padding(
             padding: const EdgeInsets.symmetric(vertical: 2),
             child: Row(
-              mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: tone.withValues(alpha: 0.16),
+                    color: tone.withValues(alpha: own == null ? 0.16 : 0.12),
                   ),
                   child: Icon(icon, size: 20, color: tone),
                 ),
                 const SizedBox(width: 11),
-                Flexible(
+                // Expanded, so the camera is at the right edge of every row.
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
@@ -2989,8 +3252,7 @@ class _CallRecordBubble extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color:
-                              missed ? AppColors.danger : AppColors.textOnGlass,
+                          color: labelInk,
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
                         ),
@@ -3000,7 +3262,7 @@ class _CallRecordBubble extends StatelessWidget {
                         Text(
                           callClock(call.talkedFor),
                           style: TextStyle(
-                            color: AppColors.textOnGlassDim,
+                            color: durationInk,
                             fontSize: 13,
                           ),
                         ),
@@ -3013,9 +3275,7 @@ class _CallRecordBubble extends StatelessWidget {
                 Icon(
                   call.video ? Icons.videocam_rounded : Icons.call_rounded,
                   size: 22,
-                  color: onCall == null
-                      ? AppColors.textOnGlassFaint
-                      : AppColors.brandPrimary,
+                  color: callBackInk,
                 ),
               ],
             ),
@@ -3150,6 +3410,230 @@ class _SwipeReplyHint extends StatelessWidget {
   }
 }
 
+/// A message's row moved sideways by a swipe-to-reply, with the reply arrow
+/// that arrives from the right edge as it goes — in one render object.
+///
+/// It stands where 1199 had a [ValueListenableBuilder] around a [Stack] of a
+/// [Transform.translate] and, past a pixel of travel, a [_SwipeReplyHint]:
+/// three elements and two render objects in every bubble, built for a
+/// gesture most bubbles never see, and rebuilt on every frame of it. This
+/// listens to the offset itself, so a frame of the swipe repaints and
+/// nothing is built. The arrow is drawn as [_SwipeReplyHint] drew it — a
+/// 32 pt disc of [hint] at 18% and a ring at 50% of the arrow's progress,
+/// the arrow at full colour, all of it scaled from 0.7 and faded in by that
+/// same progress — at the row's right edge, centred on its height, and does
+/// not move with the row.
+class _SwipeShift extends SingleChildRenderObjectWidget {
+  const _SwipeShift({
+    required this.offset,
+    required this.hint,
+    required super.child,
+  });
+
+  final ValueListenable<double> offset;
+  final Color hint;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderSwipeShift(offset, hint);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderSwipeShift renderObject) {
+    renderObject
+      ..offset = offset
+      ..hint = hint;
+  }
+}
+
+class _RenderSwipeShift extends RenderProxyBox {
+  _RenderSwipeShift(this._offset, this._hint);
+
+  ValueListenable<double> _offset;
+  set offset(ValueListenable<double> value) {
+    if (identical(value, _offset)) return;
+    if (attached) _offset.removeListener(markNeedsPaint);
+    _offset = value;
+    if (attached) _offset.addListener(markNeedsPaint);
+    markNeedsPaint();
+  }
+
+  Color _hint;
+  set hint(Color value) {
+    if (value == _hint) return;
+    _hint = value;
+    _arrow?.dispose();
+    _arrow = null;
+    markNeedsPaint();
+  }
+
+  /// The arrow glyph, laid out the first time a swipe draws it.
+  TextPainter? _arrow;
+
+  double get _dx => _offset.value;
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    _offset.addListener(markNeedsPaint);
+  }
+
+  @override
+  void detach() {
+    _offset.removeListener(markNeedsPaint);
+    super.detach();
+  }
+
+  @override
+  void dispose() {
+    _arrow?.dispose();
+    super.dispose();
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) =>
+      result.addWithPaintOffset(
+        offset: Offset(_dx, 0),
+        position: position,
+        hitTest: (result, transformed) =>
+            super.hitTestChildren(result, position: transformed),
+      );
+
+  @override
+  void applyPaintTransform(RenderBox child, Matrix4 transform) {
+    transform.translateByDouble(_dx, 0, 0, 1);
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    final child = this.child;
+    if (child != null) context.paintChild(child, offset + Offset(_dx, 0));
+    if (_dx < -1) _paintArrow(context.canvas, offset);
+  }
+
+  void _paintArrow(Canvas canvas, Offset offset) {
+    final progress = (_dx.abs() / _swipeTrigger).clamp(0.0, 1.0);
+    final centre = offset + Offset(size.width - 16, size.height / 2);
+    final arrow = _arrow ??= TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(Icons.reply_rounded.codePoint),
+        style: TextStyle(
+          inherit: false,
+          fontFamily: Icons.reply_rounded.fontFamily,
+          package: Icons.reply_rounded.fontPackage,
+          fontSize: 17,
+          height: 1,
+          color: _hint,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    canvas
+      ..saveLayer(
+        Rect.fromCircle(center: centre, radius: 17),
+        Paint()..color = Color.fromRGBO(0, 0, 0, progress),
+      )
+      ..translate(centre.dx, centre.dy)
+      ..scale(0.7 + 0.3 * progress)
+      ..drawCircle(
+        Offset.zero,
+        16,
+        Paint()..color = _hint.withValues(alpha: 0.18 * progress),
+      )
+      ..drawCircle(
+        Offset.zero,
+        15.5,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = _hint.withValues(alpha: 0.5 * progress),
+      );
+    arrow.paint(canvas, Offset(-arrow.width / 2, -arrow.height / 2));
+    canvas.restore();
+  }
+}
+
+/// The band across a message's row that says "you were brought here" or
+/// "picked" — [AnimatedContainer]'s colour fade and padding, in one render
+/// object instead of four elements and two.
+class _RowBand extends ImplicitlyAnimatedWidget {
+  const _RowBand({required this.color, required this.child})
+      : super(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+        );
+
+  final Color color;
+  final Widget child;
+
+  @override
+  AnimatedWidgetBaseState<_RowBand> createState() => _RowBandState();
+}
+
+class _RowBandState extends AnimatedWidgetBaseState<_RowBand> {
+  ColorTween? _color;
+
+  @override
+  void forEachTween(TweenVisitor<dynamic> visitor) {
+    _color = visitor(
+      _color,
+      widget.color,
+      (dynamic value) => ColorTween(begin: value as Color),
+    ) as ColorTween?;
+  }
+
+  @override
+  Widget build(BuildContext context) => _BandBox(
+        color: _color?.evaluate(animation) ?? widget.color,
+        child: widget.child,
+      );
+}
+
+class _BandBox extends SingleChildRenderObjectWidget {
+  const _BandBox({required this.color, required super.child});
+
+  final Color color;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderBand(color);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderBand renderObject) {
+    renderObject.color = color;
+  }
+}
+
+/// The row's padding, with [color] painted under all of it. Hit-tests as the
+/// [ColoredBox] it replaces did — opaque over its whole box.
+class _RenderBand extends RenderPadding {
+  _RenderBand(this._color)
+      : super(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+        );
+
+  Color _color;
+  set color(Color value) {
+    if (value == _color) return;
+    _color = value;
+    markNeedsPaint();
+  }
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    if (!size.contains(position)) return false;
+    hitTestChildren(result, position: position);
+    result.add(BoxHitTestEntry(this, position));
+    return true;
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    if (_color.a > 0) {
+      context.canvas.drawRect(offset & size, Paint()..color = _color);
+    }
+    super.paint(context, offset);
+  }
+}
+
 /// The bottom line of a bubble: what people reacted with, then the clock.
 ///
 /// A [Row] with the reactions flexible and the meta fixed, so a long run of
@@ -3158,33 +3642,238 @@ class _SwipeReplyHint extends StatelessWidget {
 /// used to be — the meta, right-aligned.
 /// The bubble's column, with its footer drawn against the right edge.
 ///
-/// [child] already holds an invisible copy of [footer] as its last row, which
-/// is what sizes the bubble; this lays the visible one over that row, at the
-/// right. With no [footer] it is just the column.
+/// [child] is the column without the footer; [footer] is laid out below it,
+/// [gap] apart, its bottom-right corner on the bubble's. The bubble is as wide
+/// as the wider of the two. With no [footer] it is just the column.
+///
+/// [sizer], when there is one, is the row that decides the bubble's size and
+/// is never drawn. That is the reactions case: the drawn row spreads across the
+/// bubble (see [_BubbleFooter.spread]), so it cannot be what measures it. Every
+/// bubble without reactions has no sizer, and its footer is laid out once.
+///
+/// **What this replaced.** The column used to carry an invisible copy of the
+/// footer as its last row, with the drawn one laid over it from a [Stack] — on
+/// every bubble, reacted to or not. The clock row is three or four paragraphs
+/// (route badge, lock, time, tick), and on the S24+ (1194, 2026-11-10) its two
+/// copies took more layout than the message text did: `meta.layout` 26-39 ms
+/// against `text.layout` 11-16 ms per 5 s window of scrolling, `meta.inflate`
+/// 11.5-16 ms against 1.6-1.8. The same widget serves both cases so that a
+/// first reaction does not swap the parent and remount the bubble's content.
+///
+/// Measured after, same phone, same 40 bubbles built per scroll window (1196):
+/// `meta.layout` 26.0 → 17.0 ms, `meta.inflate` 11.5 → 7.2, `item.layout`
+/// 50.3 → 42.8, with `text.layout` unchanged at 11.2 as the control. The open
+/// frame is too noisy to show it by itself: the same phone drifted from 22 to
+/// 29 ms a chat open over one evening on unchanged code (1193 vs 1198, scripted
+/// run), so compare open frames only between builds run back to back.
+/// `test/bubble_footer_single_pass_test.dart` holds the geometry the copy
+/// produced.
 class _FooterAtEnd extends StatelessWidget {
-  const _FooterAtEnd({required this.child, this.footer});
+  const _FooterAtEnd({
+    required this.child,
+    this.footer,
+    this.sizer,
+    this.gap = 0,
+  });
 
   final Widget child;
   final Widget? footer;
+  final Widget? sizer;
+  final double gap;
 
   @override
   Widget build(BuildContext context) {
     final footer = this.footer;
     if (footer == null) return child;
-    return Stack(
-      children: [
-        child,
-        // Pinned to both sides and aligned right inside, not given `right`
-        // alone: a lone `right` lays the child out with unbounded width, and
-        // the footer's reactions are a Flexible, which cannot live in that.
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: Align(alignment: Alignment.bottomRight, child: footer),
-        ),
-      ],
+    return _FooterBelowAtEnd(
+      gap: gap,
+      content: child,
+      footer: footer,
+      sizer: sizer,
     );
+  }
+}
+
+/// The layout behind [_FooterAtEnd].
+///
+/// The geometry the old [Stack] produced, rule for rule: the content gets the
+/// loose constraints a stack gives its child; the bottom row — [sizer] if
+/// there is one, else [footer] — whatever width the bubble allows, as a row in
+/// that column did; the box is the wider of the two and their heights plus
+/// [gap]; and [footer] is laid out within that width and placed by its
+/// bottom-right corner, as `Positioned(left: 0, right: 0, bottom: 0)` around
+/// `Align.bottomRight` did. Absolute right, not end, as that alignment was.
+class _FooterBelowAtEnd extends MultiChildRenderObjectWidget {
+  _FooterBelowAtEnd({
+    required this.gap,
+    required Widget content,
+    required Widget footer,
+    Widget? sizer,
+  }) : super(
+          children: [
+            content,
+            footer,
+            // Out of the gestures, as the invisible copy was. Its tickers run
+            // on (it was `maintainAnimation`), so a reaction arriving sizes
+            // the bubble as it grows.
+            if (sizer != null) IgnorePointer(child: sizer),
+          ],
+        );
+
+  final double gap;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderFooterBelowAtEnd(gap);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderFooterBelowAtEnd renderObject,
+  ) {
+    renderObject.gap = gap;
+  }
+}
+
+class _FooterBelowParentData extends ContainerBoxParentData<RenderBox> {}
+
+class _RenderFooterBelowAtEnd extends RenderBox
+    with
+        ContainerRenderObjectMixin<RenderBox, _FooterBelowParentData>,
+        RenderBoxContainerDefaultsMixin<RenderBox, _FooterBelowParentData> {
+  _RenderFooterBelowAtEnd(this._gap);
+
+  double _gap;
+  set gap(double value) {
+    if (value == _gap) return;
+    _gap = value;
+    markNeedsLayout();
+  }
+
+  RenderBox get _content => firstChild!;
+  RenderBox get _footer => childAfter(_content)!;
+  RenderBox? get _sizer => childAfter(_footer);
+
+  /// The row the bubble is measured by.
+  RenderBox get _bottom => _sizer ?? _footer;
+
+  @override
+  void setupParentData(RenderBox child) {
+    if (child.parentData is! _FooterBelowParentData) {
+      child.parentData = _FooterBelowParentData();
+    }
+  }
+
+  BoxConstraints _rowConstraints(double maxWidth) =>
+      BoxConstraints(maxWidth: maxWidth);
+
+  Size _boxFor(BoxConstraints constraints, Size content, Size bottom) =>
+      constraints.constrain(
+        Size(
+          content.width > bottom.width ? content.width : bottom.width,
+          content.height + _gap + bottom.height,
+        ),
+      );
+
+  @override
+  Size computeDryLayout(covariant BoxConstraints constraints) => _boxFor(
+        constraints,
+        _content.getDryLayout(constraints.loosen()),
+        _bottom.getDryLayout(_rowConstraints(constraints.maxWidth)),
+      );
+
+  @override
+  void performLayout() {
+    final content = _content
+      ..layout(constraints.loosen(), parentUsesSize: true);
+    final footer = _footer;
+    final sizer = _sizer;
+    final Size bottom;
+    if (sizer == null) {
+      footer.layout(
+        _rowConstraints(constraints.maxWidth),
+        parentUsesSize: true,
+      );
+      bottom = footer.size;
+      size = _boxFor(constraints, content.size, bottom);
+    } else {
+      sizer.layout(_rowConstraints(constraints.maxWidth), parentUsesSize: true);
+      bottom = sizer.size;
+      size = _boxFor(constraints, content.size, bottom);
+      footer.layout(_rowConstraints(size.width), parentUsesSize: true);
+      (sizer.parentData! as _FooterBelowParentData).offset =
+          Offset(0, size.height - bottom.height);
+    }
+    (content.parentData! as _FooterBelowParentData).offset = Offset.zero;
+    (footer.parentData! as _FooterBelowParentData).offset = Offset(
+      size.width - footer.size.width,
+      size.height - footer.size.height,
+    );
+  }
+
+  @override
+  double computeMinIntrinsicWidth(double height) {
+    final a = _content.getMinIntrinsicWidth(double.infinity);
+    final b = _bottom.getMinIntrinsicWidth(double.infinity);
+    return a > b ? a : b;
+  }
+
+  @override
+  double computeMaxIntrinsicWidth(double height) {
+    final a = _content.getMaxIntrinsicWidth(double.infinity);
+    final b = _bottom.getMaxIntrinsicWidth(double.infinity);
+    return a > b ? a : b;
+  }
+
+  @override
+  double computeMinIntrinsicHeight(double width) =>
+      _content.getMinIntrinsicHeight(width) +
+      _gap +
+      _bottom.getMinIntrinsicHeight(width);
+
+  @override
+  double computeMaxIntrinsicHeight(double width) =>
+      _content.getMaxIntrinsicHeight(width) +
+      _gap +
+      _bottom.getMaxIntrinsicHeight(width);
+
+  @override
+  double? computeDistanceToActualBaseline(TextBaseline baseline) =>
+      _content.getDistanceToActualBaseline(baseline);
+
+  // The sizer is measured and nothing else: not painted, not hit, not read
+  // out — what `Visibility(visible: false, maintainSize: true)` did for it.
+
+  @override
+  bool paintsChild(RenderBox child) => child != _sizer;
+
+  @override
+  void visitChildrenForSemantics(RenderObjectVisitor visitor) {
+    visitor(_content);
+    visitor(_footer);
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    for (final child in [_footer, _content]) {
+      final data = child.parentData! as _FooterBelowParentData;
+      final hit = result.addWithPaintOffset(
+        offset: data.offset,
+        position: position,
+        hitTest: (result, transformed) =>
+            child.hitTest(result, position: transformed),
+      );
+      if (hit) return true;
+    }
+    return false;
+  }
+
+  @override
+  void paint(PaintingContext context, Offset offset) {
+    for (final child in [_content, _footer]) {
+      final data = child.parentData! as _FooterBelowParentData;
+      context.paintChild(child, data.offset + offset);
+    }
   }
 }
 
@@ -3341,14 +4030,14 @@ class _ReactionArrivalState extends State<_ReactionArrival>
     curve: AppMotion.curve,
     reverseCurve: Curves.easeInCubic,
   );
-  late final Animation<double> _scale = Tween<double>(begin: 0.5, end: 1)
-      .animate(
-        CurvedAnimation(
-          parent: _c,
-          curve: AppMotion.pop,
-          reverseCurve: Curves.easeInCubic,
-        ),
-      );
+  late final Animation<double> _scale =
+      Tween<double>(begin: 0.5, end: 1).animate(
+    CurvedAnimation(
+      parent: _c,
+      curve: AppMotion.pop,
+      reverseCurve: Curves.easeInCubic,
+    ),
+  );
 
   @override
   void initState() {
@@ -4175,8 +4864,391 @@ String messageRouteText(
   };
 }
 
-class _BubbleMeta extends StatelessWidget {
+/// The line a bubble ends on: the saved-note tag, the pin, the lock, "edited",
+/// the road the message came by, the time, and on ours the tick.
+///
+/// **One paragraph since 1200**, the icons drawn as glyphs of their own font
+/// inside it. It was a [Row] of three to six widgets — every icon an [Icon]
+/// (six elements and a paragraph of its own), every gap a [SizedBox] — and on
+/// the S24+ this row was the most expensive thing a bubble laid out:
+/// `meta.layout` 26 ms per 5 s of scrolling against 11 ms for the message
+/// text (1194), still 17 ms once the invisible sizing copy was gone (1196).
+/// Each [Icon] is a separate paragraph to shape; this is one.
+///
+/// What it costs in looks: a glyph in a paragraph sits on the baseline,
+/// where the row centred each icon on the line. The Material icon font is
+/// all ascent (512 of 512 units, no descent), so a 12 pt icon's box now ends
+/// on the time's baseline instead of 1.5 pt under it — the pin, the lock and
+/// the tick ride about 2 pt higher against the digits than they did, the
+/// 10.5 pt road mark about 1.3 pt. Sizes, colours, the 4 pt gaps (letter
+/// spacing after the glyph) and the line's height are as they were; the
+/// scripted run's `chat-1199` rounds still draw the old row, so the two can
+/// be put side by side.
+///
+/// The tick still pops when it changes. At rest it is in the paragraph; for
+/// the length of a pop it steps out into a box of its own beside the line,
+/// baseline-aligned so it lands exactly where the paragraph puts it, and
+/// steps back in when the pop is over. A screenful of bubbles at rest holds
+/// no switcher, no stack and no transitions for it — the [ValuePop] it
+/// replaces kept all three on every one of our bubbles.
+class _BubbleMeta extends StatefulWidget {
   const _BubbleMeta({
+    required this.message,
+    this.pinned = false,
+    this.onMedia = false,
+    this.onOwnFill = false,
+    this.tag,
+  });
+
+  final Message message;
+
+  /// See [_BubbleMetaRow1199.onOwnFill].
+  final bool onOwnFill;
+
+  /// See [_BubbleMetaRow1199.tag].
+  final String? tag;
+
+  /// True when this is the chat's pinned message.
+  final bool pinned;
+
+  /// See [_BubbleMetaRow1199.onMedia].
+  final bool onMedia;
+
+  /// Distinct tint for a "read" tick so it reads apart from plain delivery —
+  /// the theme's, shared with the chat list.
+  static const _readColor = AppColors.readTick;
+
+  @override
+  State<_BubbleMeta> createState() => _BubbleMetaState();
+}
+
+class _BubbleMetaState extends State<_BubbleMeta>
+    with SingleTickerProviderStateMixin {
+  /// The row's [SizedBox] gaps, now letter spacing after the item before.
+  static const double _gap = 4;
+
+  /// Made the first time the tick changes under this bubble, which most
+  /// bubbles never see.
+  AnimationController? _pop;
+  late CurvedAnimation _popIn;
+  late CurvedAnimation _popOut;
+
+  /// The tick being replaced, shrinking away under the new one during a pop.
+  InlineSpan? _leaving;
+
+  /// [ValuePop]'s numbers, so the pop looks as it did.
+  static final _grow = Tween<double>(begin: 0.6, end: 1);
+
+  /// What decides whether the tick has changed — the same pair [ValuePop]
+  /// was keyed on.
+  static (MessageStatus, bool) _tickKey(Message m) =>
+      (m.status, m.route == MessageRoute.queued);
+
+  @override
+  void didUpdateWidget(_BubbleMeta old) {
+    super.didUpdateWidget(old);
+    if (!widget.message.isMine ||
+        _tickKey(old.message) == _tickKey(widget.message)) {
+      return;
+    }
+    final duration = AppMotion.duration(context, AppMotion.control);
+    if (duration == Duration.zero) return;
+    _leaving = _tick(
+      old.message,
+      onOwnFill: old.onOwnFill,
+      onMedia: old.onMedia,
+      t: AppLocalizations.of(context),
+    ).$1;
+    var pop = _pop;
+    if (pop == null) {
+      pop = _pop = AnimationController(vsync: this)
+        ..addStatusListener((status) {
+          if (status == AnimationStatus.completed && mounted) {
+            setState(() => _leaving = null);
+          }
+        });
+      _popIn = CurvedAnimation(parent: pop, curve: AppMotion.pop);
+      _popOut = CurvedAnimation(
+        parent: ReverseAnimation(pop),
+        curve: Curves.easeInCubic,
+      );
+    }
+    pop
+      ..duration = duration
+      ..forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    if (_pop case final pop?) {
+      _popIn.dispose();
+      _popOut.dispose();
+      pop.dispose();
+    }
+    super.dispose();
+  }
+
+  /// The ink for everything in this row, given what it is drawn on.
+  static Color _ink(
+    double onBubble, {
+    required bool onMedia,
+    required bool onOwnFill,
+  }) =>
+      onMedia
+          ? Colors.white.withValues(alpha: 0.95)
+          : onOwnFill
+              ? AppColors.bgDeep.withValues(alpha: onBubble)
+              : AppColors.ink(onBubble);
+
+  /// [icon] as a run of text in its own font.
+  ///
+  /// [Icon] draws with `height: 1` and the box centred; here the 12 pt ones
+  /// take `height: 0.75`, so the glyph claims no more of the line above the
+  /// baseline than Inter's 11 pt time does (0.969 em ascent, 10.7 pt) and the
+  /// line keeps the height the row had. The glyph itself is drawn the same
+  /// size either way.
+  ///
+  /// No `semanticsLabel` on the span: what a screen reader hears is the
+  /// line's own label, put together in [build] in the same order — the words
+  /// the [Icon]s' labels said, without a private-use character in the middle
+  /// of the paragraph's text for anything that reads it as text.
+  static TextSpan _glyph(
+    IconData icon, {
+    required double size,
+    required Color color,
+    double after = 0,
+  }) =>
+      TextSpan(
+        text: String.fromCharCode(icon.codePoint),
+        style: TextStyle(
+          inherit: false,
+          fontFamily: icon.fontFamily,
+          package: icon.fontPackage,
+          fontFamilyFallback: icon.fontFamilyFallback,
+          fontSize: size,
+          height: size > 11 ? 0.75 : 1,
+          leadingDistribution: TextLeadingDistribution.even,
+          color: color,
+          letterSpacing: after,
+        ),
+      );
+
+  /// [text] in [style], with [after] of space following its last character.
+  static void _words(
+    List<InlineSpan> into,
+    String text,
+    TextStyle style, {
+    double after = 0,
+  }) {
+    if (after == 0 || text.isEmpty) {
+      into.add(TextSpan(text: text, style: style));
+      return;
+    }
+    final chars = text.characters;
+    if (chars.length > 1) {
+      into.add(TextSpan(text: chars.skipLast(1).toString(), style: style));
+    }
+    into.add(
+      TextSpan(
+        text: chars.last,
+        style: style.copyWith(letterSpacing: after),
+      ),
+    );
+  }
+
+  /// The tick, and what it says.
+  static (TextSpan, String) _tick(
+    Message message, {
+    required bool onOwnFill,
+    required bool onMedia,
+    required AppLocalizations t,
+  }) {
+    // Two different waits, which used to share one clock: a message on its
+    // way right now, and one that found no road at all and is held until
+    // Bluetooth or the internet comes back. The second can last hours, and
+    // "always show whether it is waiting for a connection or delivered" was
+    // asked for in so many words.
+    final queued = message.route == MessageRoute.queued;
+    final glyph = _glyph(
+      switch (message.status) {
+        MessageStatus.sending =>
+          queued ? Icons.cloud_off_rounded : Icons.schedule_rounded,
+        MessageStatus.delivered => Icons.done_rounded,
+        MessageStatus.read => Icons.done_all_rounded,
+        MessageStatus.failed => Icons.error_outline_rounded,
+      },
+      size: 12,
+      color: switch (message.status) {
+        MessageStatus.failed => AppColors.danger,
+        // On our fill the read pair is the full dark, the delivered tick a
+        // shade lighter: the light blue vanished into the green.
+        MessageStatus.read =>
+          onOwnFill ? AppColors.bgDeep : _BubbleMeta._readColor,
+        _ => _ink(
+            onOwnFill ? 0.6 : 0.85,
+            onMedia: onMedia,
+            onOwnFill: onOwnFill,
+          ),
+      },
+    );
+    return (
+      glyph,
+      switch (message.status) {
+        MessageStatus.sending =>
+          queued ? t.chatWaitingForConnection : t.chatSending,
+        MessageStatus.delivered => t.chatDelivered,
+        MessageStatus.read => t.chatRead,
+        MessageStatus.failed => '!',
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = widget;
+    if (TransitionProbe.instance.previousChat.value) {
+      return _BubbleMetaRow1199(
+        message: w.message,
+        pinned: w.pinned,
+        onMedia: w.onMedia,
+        onOwnFill: w.onOwnFill,
+        tag: w.tag,
+      );
+    }
+    final t = AppLocalizations.of(context);
+    final message = w.message;
+    final mine = message.isMine;
+    Color ink(double onBubble) =>
+        _ink(onBubble, onMedia: w.onMedia, onOwnFill: w.onOwnFill);
+    final spans = <InlineSpan>[];
+    // What the line says out loud, item by item, as the row's widgets did.
+    final said = <String>[];
+
+    if (w.tag case final tag?) {
+      _words(spans, tag, const TextStyle(fontSize: 12), after: _gap);
+      said.add(tag);
+    }
+    if (w.pinned) {
+      spans.add(
+        _glyph(
+          Icons.push_pin_rounded,
+          size: 12,
+          color: ink(mine ? 0.8 : 0.55),
+          after: _gap,
+        ),
+      );
+      said.add(t.chatPinnedTitle);
+    }
+    if (message.forwardSecret) {
+      spans.add(
+        _glyph(
+          Icons.lock_clock_rounded,
+          size: 12,
+          color: ink(mine ? 0.8 : 0.55),
+          after: _gap,
+        ),
+      );
+      said.add('forward secret');
+    }
+    if (message.editedAt != null) {
+      _words(
+        spans,
+        t.chatEdited,
+        TextStyle(fontSize: 11, color: ink(mine ? 0.7 : 0.45)),
+        after: _gap,
+      );
+      said.add(t.chatEdited);
+    }
+    // Which way this message came — see [routeBadgeFor]. Small and as dim as
+    // the clock: a fact for whoever looks, not a status to read.
+    if (routeBadgeFor(message) case final badge?) {
+      final hops = badge.hops;
+      spans.add(
+        _glyph(
+          switch (badge.kind) {
+            RouteBadgeKind.bluetooth => Icons.bluetooth_rounded,
+            RouteBadgeKind.mesh => Icons.hub_rounded,
+            RouteBadgeKind.internet => Icons.public_rounded,
+          },
+          size: 10.5,
+          color: ink(mine ? 0.7 : 0.45),
+          after: hops != null ? 1 : _gap,
+        ),
+      );
+      said.add(messageRouteText(t, badge));
+      if (hops != null) {
+        _words(
+          spans,
+          '$hops',
+          TextStyle(fontSize: 11, color: ink(mine ? 0.7 : 0.45)),
+          after: _gap,
+        );
+        said.add('$hops');
+      }
+    }
+    final time = formatBubbleTime(context, message.sentAt);
+    _words(
+      spans,
+      time,
+      TextStyle(fontSize: 11, color: ink(mine ? 0.8 : 0.5)),
+      after: mine ? _gap : 0,
+    );
+    said.add(time);
+
+    final pop = _pop;
+    final popping = pop != null && (pop.isAnimating || _leaving != null);
+    final (tick, tickSays) =
+        _tick(message, onOwnFill: w.onOwnFill, onMedia: w.onMedia, t: t);
+    if (mine && !popping) {
+      spans.add(tick);
+      said.add(tickSays);
+    }
+    final line = Text.rich(
+      TextSpan(children: spans),
+      semanticsLabel: said.join(' '),
+    );
+    if (!mine || !popping) return line;
+
+    // The tick changed while this bubble was on screen — the one moment the
+    // icon is news. Out of the paragraph for the length of the pop.
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        line,
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            if (_leaving case final leaving?)
+              ExcludeSemantics(
+                child: FadeTransition(
+                  opacity: _popOut,
+                  child: ScaleTransition(
+                    scale: _grow.animate(_popOut),
+                    child: Text.rich(leaving),
+                  ),
+                ),
+              ),
+            FadeTransition(
+              opacity: _popIn,
+              child: ScaleTransition(
+                scale: _grow.animate(_popIn),
+                child: Text.rich(tick, semanticsLabel: tickSays),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// The clock row as 1199 drew it: one widget per item. Kept only for the
+/// scripted run's `chat-1199` rounds — see [TransitionProbe.previousChat] —
+/// and goes when that comparison has been read.
+class _BubbleMetaRow1199 extends StatelessWidget {
+  const _BubbleMetaRow1199({
     required this.message,
     this.pinned = false,
     this.onMedia = false,
@@ -4312,8 +5384,7 @@ class _BubbleMeta extends StatelessWidget {
                 MessageStatus.failed => AppColors.danger,
                 // On our fill the read pair is the full dark, the delivered
                 // tick a shade lighter: the light blue vanished into the green.
-                MessageStatus.read =>
-                  onOwnFill ? AppColors.bgDeep : _readColor,
+                MessageStatus.read => onOwnFill ? AppColors.bgDeep : _readColor,
                 _ => _ink(onOwnFill ? 0.6 : 0.85),
               },
               semanticLabel: switch (message.status) {

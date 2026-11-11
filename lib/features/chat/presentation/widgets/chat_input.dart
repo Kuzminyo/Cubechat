@@ -1164,25 +1164,24 @@ class _VoiceButtonState extends State<_VoiceButton> {
       curve: Curves.easeInOutCubic,
       builder: (context, t, _) {
         final showCircle = t > 0.5;
+        // One transform: the far half's un-mirroring is the second rotation
+        // of the same matrix, about the same centre. It was a nested
+        // [Transform] that sat at identity on every composer at rest.
+        final turn = Matrix4.identity()
+          ..setEntry(3, 2, 0.0016)
+          ..rotateY(t * math.pi);
+        if (showCircle) turn.rotateY(math.pi);
         return Transform(
           alignment: Alignment.center,
-          transform: Matrix4.identity()
-            ..setEntry(3, 2, 0.0016)
-            ..rotateY(t * math.pi),
-          child: Transform(
-            alignment: Alignment.center,
-            transform: showCircle
-                ? (Matrix4.identity()..rotateY(math.pi))
-                : Matrix4.identity(),
-            child: _circle(
-              context,
-              // The round camera distinguishes video messages from gallery
-              // attachments and shares the view-once icon's outline weight.
-              icon: showCircle
-                  ? const CircleVideoIcon()
-                  : const Icon(Icons.mic_rounded),
-              filled: widget.active,
-            ),
+          transform: turn,
+          child: _circle(
+            context,
+            // The round camera distinguishes video messages from gallery
+            // attachments and shares the view-once icon's outline weight.
+            icon: showCircle
+                ? const CircleVideoIcon()
+                : const Icon(Icons.mic_rounded),
+            filled: widget.active,
           ),
         );
       },

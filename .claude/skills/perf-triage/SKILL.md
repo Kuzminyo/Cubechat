@@ -70,7 +70,9 @@ Do not re-propose these; they are in the tree.
   the chat screen). Scripted run, frames over 8.3 ms per chat open: separate
   14.1, grouped 8.9, no blur 1.1; close frames over 16.7 ms 2.6 / 0.9 / 0.6.
   The islands keep blurring through a slide on purpose (off flickers). What
-  remains is the gaussian itself. `FloatingGlass` panes are still not grouped.
+  remains is the gaussian itself. `FloatingGlass` panes join that group inside
+  a conversation since 1200 (not measured on a phone yet: compare the
+  `chat-1199` rows of a scripted run) and stay separate everywhere else.
 - **Measure transitions with the scripted run** (Diagnostics → **tap the title
   seven times** for developer mode, since 1066 → Transitions → a chat name):
   fixed waits, variants taking turns, rows tagged `[bench,…]`. The frame, CPU

@@ -7,6 +7,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/bubble_meta.dart';
+
 /// Which way a message travelled, as the small mark beside its time. The data
 /// was on every message already; what is pinned here is when the mark shows
 /// and when it must not claim anything.
@@ -80,25 +82,36 @@ void main() {
   }
 
   testWidgets('the bubble carries the mark beside its time', (tester) async {
-    // findsWidgets, not one: the bubble holds an invisible copy of its footer
-    // to size itself (see _FooterAtEnd), so the time row is built twice.
+    // A glyph in the clock line's one paragraph since 1200, not an Icon — and
+    // in exactly one paragraph, now that the footer is built once.
     await pumpBubble(tester, msg(mine: false, route: MessageRoute.bluetooth));
-    expect(find.byIcon(Icons.bluetooth_rounded), findsWidgets);
+    expect(bubbleGlyph(Icons.bluetooth_rounded), findsOneWidget);
 
     await pumpBubble(tester, msg(mine: true, route: MessageRoute.internet));
-    expect(find.byIcon(Icons.public_rounded), findsWidgets);
+    expect(bubbleGlyph(Icons.public_rounded), findsOneWidget);
 
     await pumpBubble(
       tester,
       msg(mine: false, route: MessageRoute.mesh, hops: 3),
     );
-    expect(find.byIcon(Icons.hub_rounded), findsWidgets);
-    expect(find.text('3'), findsWidgets);
+    expect(bubbleGlyph(Icons.hub_rounded), findsOneWidget);
+    // The count straight after the mark, in the same line.
+    final hub = String.fromCharCode(Icons.hub_rounded.codePoint);
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is RichText &&
+            w.text
+                .toPlainText(includeSemanticsLabels: false)
+                .contains('${hub}3'),
+      ),
+      findsOneWidget,
+    );
 
     await pumpBubble(tester, msg(mine: false));
-    expect(find.byIcon(Icons.bluetooth_rounded), findsNothing);
-    expect(find.byIcon(Icons.public_rounded), findsNothing);
-    expect(find.byIcon(Icons.hub_rounded), findsNothing);
+    expect(bubbleGlyph(Icons.bluetooth_rounded), findsNothing);
+    expect(bubbleGlyph(Icons.public_rounded), findsNothing);
+    expect(bubbleGlyph(Icons.hub_rounded), findsNothing);
   });
 
   test('a mesh hop count below two says nothing worth a number', () {

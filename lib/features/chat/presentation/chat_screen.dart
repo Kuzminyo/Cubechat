@@ -855,6 +855,17 @@ class _PillIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final touch = theme.platform == TargetPlatform.android ||
+        theme.platform == TargetPlatform.iOS;
+    if (touch && !TransitionProbe.instance.previousChat.value) {
+      return _TouchPillButton(
+        icon: icon,
+        onPressed: onPressed,
+        color: color,
+        tooltip: tooltip,
+      );
+    }
     return IconButton(
       icon: Icon(icon, color: color, size: 20),
       onPressed: onPressed,
@@ -863,6 +874,90 @@ class _PillIconButton extends StatelessWidget {
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints.tightFor(width: 38, height: 38),
       splashRadius: 22,
+    );
+  }
+}
+
+/// [_PillIconButton] on a phone: the same box, tooltip and press tint, without
+/// the machinery an [IconButton] builds for states a touch screen has no use
+/// for or this theme does not draw.
+///
+/// Counted in `test/chat_open_element_budget_test.dart`: the header was 246
+/// elements on opening a chat (1199), and most of them were its two buttons —
+/// a [Material] with its ink layer, an [InkWell] with focus, actions and mouse
+/// regions, the theme and text-style animations around them — all to show,
+/// under `NoSplash`, one tint while a finger is down. Hover and keyboard focus
+/// are what is given up, which is why a computer keeps the [IconButton].
+///
+/// The tint appears and goes at once, where the ink faded over a moment.
+class _TouchPillButton extends StatefulWidget {
+  const _TouchPillButton({
+    required this.icon,
+    required this.onPressed,
+    required this.color,
+    this.tooltip,
+  });
+
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final Color color;
+  final String? tooltip;
+
+  @override
+  State<_TouchPillButton> createState() => _TouchPillButtonState();
+}
+
+class _TouchPillButtonState extends State<_TouchPillButton> {
+  bool _pressed = false;
+
+  void _press(bool down) {
+    if (_pressed != down) setState(() => _pressed = down);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final enabled = widget.onPressed != null;
+    // What the [IconButton] measured: the 38 points asked of it came out 30
+    // under the compact density's -8, inside a tap target of 48 - 8 where the
+    // theme pads targets.
+    const face = 30.0;
+    final target = theme.materialTapTargetSize == MaterialTapTargetSize.padded
+        ? 40.0
+        : face;
+    final Widget disc = SizedBox.square(
+      dimension: face,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          // Material 3's pressed overlay for a standard icon button.
+          color: _pressed
+              ? theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.1)
+              : null,
+        ),
+        child: Center(
+          child: Icon(widget.icon, color: widget.color, size: 20),
+        ),
+      ),
+    );
+    final tooltip = widget.tooltip;
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: enabled ? (_) => _press(true) : null,
+        onTapUp: enabled ? (_) => _press(false) : null,
+        onTapCancel: enabled ? () => _press(false) : null,
+        onTap: widget.onPressed,
+        child: SizedBox.square(
+          dimension: target,
+          child: Center(
+            child:
+                tooltip == null ? disc : Tooltip(message: tooltip, child: disc),
+          ),
+        ),
+      ),
     );
   }
 }
