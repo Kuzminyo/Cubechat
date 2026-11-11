@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:cubechat/core/theme/app_theme.dart';
 import 'package:cubechat/core/util/timed_subtree.dart';
-import 'package:cubechat/core/util/transition_probe.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
 import 'package:cubechat/features/chat/models/message.dart';
 import 'package:cubechat/features/chat/presentation/chat_screen.dart';
@@ -77,8 +76,6 @@ void main() {
     Hive.init(Directory.systemTemp.createTempSync('open_census').path);
   });
 
-  tearDown(() => TransitionProbe.instance.previousChat.value = false);
-
   Future<ProviderContainer> open(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1170, 2532);
     tester.view.devicePixelRatio = 3;
@@ -125,14 +122,14 @@ void main() {
             tip: tester.getRect(find.byTooltip(tip)),
         };
 
-    TransitionProbe.instance.previousChat.value = true;
-    var container = await open(tester);
-    final old = boxes();
-    await close(tester, container);
-
-    TransitionProbe.instance.previousChat.value = false;
-    container = await open(tester);
-    expect(boxes(), old);
+    final container = await open(tester);
+    // Where the Material IconButtons 1199 had put them, to the pixel: this
+    // test compared the two on every run while the old header was kept for the
+    // phone's comparison run, and the buttons are 30 pt faces at 21 and 339.
+    expect(boxes(), {
+      'Back': const Rect.fromLTRB(21, 17, 51, 47),
+      'Search': const Rect.fromLTRB(339, 17, 369, 47),
+    });
     await close(tester, container);
   });
 

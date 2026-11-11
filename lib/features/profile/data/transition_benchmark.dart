@@ -21,10 +21,6 @@ enum BenchVariant {
   /// flipping rather than naming one side keeps the comparison when the
   /// default moves, which it did in 1164.
   otherUnderlay,
-
-  /// The conversation as 1199 built it — see [TransitionProbe.previousChat].
-  /// Its rows carry `chat-1199`; the rows without it are 1200's.
-  previousChat,
 }
 
 /// Opens and closes one conversation from the chat list, the same way every
@@ -89,26 +85,24 @@ class TransitionBenchmark {
   /// list painted underneath answered what that is in 1063 (6.7 frames to
   /// 0.4). Keeping it painted against a scroll answered in 1164 (off stage
   /// won), so [BenchVariant.otherUnderlay] sits out of [variants] until it is
-  /// asked again. What is asked now (1200) is whether the lighter bubbles,
-  /// header and grouped panes buy anything on the phone: 1200 against the
-  /// 1199 paths it still carries — eight rounds of each, with a scroll in
-  /// every one.
+  /// asked again.
+  ///
+  /// 1201 compared the lighter bubbles, header and grouped panes against the
+  /// 1199 paths on the phone, eight rounds of each: open build p95 5.3 against
+  /// 6.8 ms and p99 17.5 against 21.1, raster the same ~9.3, close and scroll
+  /// unchanged. 1202 asked whether one of the open chat's three blurs (header,
+  /// composer, the scroll-down button) is what holds that raster up, by taking
+  /// each away in turn: it is not. Open raster p95 whole 8.9 ms, without the
+  /// header's 9.9, without the composer's 9.8, and with a control that
+  /// removed nothing 9.2 — no removal came in under the whole, and the control
+  /// moved as much as the rest. Both old paths went with their answers.
   static const int defaultRounds = 8;
 
-  /// The variants a run takes turns between, in this order.
-  ///
-  /// 1201 answered the bubbles question (build p95 5.3 against 6.8 ms, raster
-  /// the same ~9.3). 1202 asked whether one of the open chat's three blurs
-  /// (header, composer, the scroll-down button) is what holds that raster up,
-  /// by taking each away in turn, eight rounds of each: it is not. Open raster
-  /// p95 whole 8.9 ms, without the header's 9.9, without the composer's 9.8,
-  /// and with a control that removed nothing 9.2 - no blur removal came in
-  /// under the whole, and the control moved as much as the rest. The open's
-  /// ~9 ms of raster is not the filters; the variants went with the answer.
-  static const List<BenchVariant> variants = [
-    BenchVariant.asIs,
-    BenchVariant.previousChat,
-  ];
+  /// The variants a run takes turns between, in this order. One, until the
+  /// next question brings a second: a run is then eight identical rounds,
+  /// which is what to compare one build's open against another's, run back to
+  /// back.
+  static const List<BenchVariant> variants = [BenchVariant.asIs];
 
   bool _touched = false;
 
@@ -128,7 +122,6 @@ class TransitionBenchmark {
     final wasInstant = probe.instantTransitions.value;
     final wasBlur = AppBlur.panes;
     final wasUnderlay = probe.keepUnderlay.value;
-    final wasPrevious = probe.previousChat.value;
     final total = rounds * variants.length;
     progress.value = 'starting';
     _touched = false;
@@ -147,7 +140,6 @@ class TransitionBenchmark {
       probe
         ..placeholderMedia.value = false
         ..instantTransitions.value = false
-        ..previousChat.value = v == BenchVariant.previousChat
         ..keepUnderlay.value =
             v == BenchVariant.otherUnderlay ? !wasUnderlay : wasUnderlay;
     }
@@ -189,7 +181,6 @@ class TransitionBenchmark {
       AppBlur.panes = wasBlur;
       probe
         ..scripted = false
-        ..previousChat.value = wasPrevious
         ..keepUnderlay.value = wasUnderlay
         ..placeholderMedia.value = wasPlaceholders
         ..instantTransitions.value = wasInstant;
@@ -251,8 +242,7 @@ class TransitionBenchmark {
     DebugLog.instance.log(
       'NAV-COST',
       'blur layers in the open chat: $all, grouped: $grouped '
-          '[${where.join(' | ')}] '
-          '(previousChat=${TransitionProbe.instance.previousChat.value})',
+          '[${where.join(' | ')}]',
     );
   }
 

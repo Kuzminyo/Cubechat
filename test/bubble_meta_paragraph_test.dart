@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:cubechat/core/util/transition_probe.dart';
 import 'package:cubechat/features/chat/models/message.dart';
 import 'package:cubechat/features/chat/presentation/widgets/message_bubble.dart';
 import 'package:cubechat/l10n/app_localizations.dart';
@@ -86,7 +85,6 @@ Rect _pane(WidgetTester tester) => tester.getRect(
 
 void main() {
   setUpAll(_loadFonts);
-  tearDown(() => TransitionProbe.instance.previousChat.value = false);
 
   testWidgets('at rest the road, the time and the tick are one paragraph',
       (tester) async {
@@ -144,36 +142,33 @@ void main() {
         reason: 'one glyph for another: the line does not change size');
   });
 
+  // The row of widgets 1199 drew was kept beside the paragraph for the phone's
+  // comparison run, and this test put the two side by side: the pane within
+  // 0.5 pt in both directions and the line's four edges within 0.5 pt, in
+  // Inter and the icon font, ours and theirs. The row is gone, so the numbers
+  // it agreed with are written down here (measured on 1200, 2026-11-11).
+  const measured = {
+    // pane width, pane height, line left, top, right, bottom — the line
+    // relative to the pane's top left.
+    true: (105.02, 62.0, 34.99, 35.0, 90.02, 51.0),
+    false: (105.02, 62.0, 50.74, 35.0, 90.02, 51.0),
+  };
   for (final mine in [true, false]) {
     final who = mine ? 'ours' : 'theirs';
     testWidgets('$who: the bubble is the size the row of widgets made it',
         (tester) async {
-      TransitionProbe.instance.previousChat.value = true;
       await _pump(tester, _ours(MessageStatus.read, mine: mine));
-      expect(find.byIcon(Icons.bluetooth_rounded), findsOneWidget,
-          reason: 'the 1199 row, for the comparison run');
-      final old = _pane(tester);
-      final oldRow = tester.getRect(
-        find
-            .ancestor(of: find.text('10:11'), matching: find.byType(Row))
-            .first,
-      );
-
-      TransitionProbe.instance.previousChat.value = false;
-      // A different key, so the bubble is built afresh in the new shape.
-      await _pump(tester, _ours(MessageStatus.read, mine: mine, id: 'm2'));
-      final now = _pane(tester);
+      final pane = _pane(tester);
       final line = tester.getRect(bubbleClock('10:11'));
-      // Measured in Inter and the icon font on 1200: the panes identical,
-      // the line within 0.3 pt of the row at its left edge.
-      expect(now.height, closeTo(old.height, 0.5),
+      final (width, height, left, top, right, bottom) = measured[mine]!;
+      expect(pane.height, closeTo(height, 0.5),
           reason: 'the line keeps the height the row had');
-      expect(now.width, closeTo(old.width, 0.5),
+      expect(pane.width, closeTo(width, 0.5),
           reason: 'the gaps are the row\'s 4 pt, as letter spacing');
-      expect(line.top, closeTo(oldRow.top, 0.5));
-      expect(line.bottom, closeTo(oldRow.bottom, 0.5));
-      expect(line.right, closeTo(oldRow.right, 0.5));
-      expect(line.left, closeTo(oldRow.left, 0.5));
+      expect(line.left - pane.left, closeTo(left, 0.5));
+      expect(line.top - pane.top, closeTo(top, 0.5));
+      expect(line.right - pane.left, closeTo(right, 0.5));
+      expect(line.bottom - pane.top, closeTo(bottom, 0.5));
     });
   }
 }

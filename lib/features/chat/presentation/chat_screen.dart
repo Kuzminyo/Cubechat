@@ -858,7 +858,7 @@ class _PillIconButton extends StatelessWidget {
     final theme = Theme.of(context);
     final touch = theme.platform == TargetPlatform.android ||
         theme.platform == TargetPlatform.iOS;
-    if (touch && !TransitionProbe.instance.previousChat.value) {
+    if (touch) {
       return _TouchPillButton(
         icon: icon,
         onPressed: onPressed,

@@ -8,7 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 /// How the chat screen found the experiments as each open was built.
-typedef _Seen = ({bool underlay, bool blur, bool previous});
+typedef _Seen = ({bool underlay, bool blur});
 
 class _Chat extends StatefulWidget {
   const _Chat(this.seen);
@@ -26,7 +26,6 @@ class _ChatState extends State<_Chat> {
     widget.seen.add((
       underlay: TransitionProbe.instance.keepUnderlay.value,
       blur: AppBlur.panes,
-      previous: TransitionProbe.instance.previousChat.value,
     ));
   }
 
@@ -84,7 +83,7 @@ void main() {
     }
   }
 
-  const asIs = (underlay: false, blur: true, previous: false);
+  const asIs = (underlay: false, blur: true);
 
   testWidgets('every variant takes its turn, and everything is put back',
       (tester) async {
@@ -105,15 +104,12 @@ void main() {
     expect(seen, [
       asIs, // warm-up, unmeasured
       asIs,
-      (underlay: false, blur: true, previous: true), // 1199's conversation
     ]);
     expect(
       TransitionProbe.instance.summary.map((row) => row.name),
-      contains(contains('chat-1199')),
-      reason: 'the old rounds are filed under their own tag',
+      contains(contains('bench')),
+      reason: 'the rounds are filed under the scripted run\'s tag',
     );
-    expect(TransitionProbe.instance.previousChat.value, isFalse,
-        reason: 'the run leaves the new code on');
     expect(find.textContaining('hands off'), findsNothing);
     expect(find.text('diagnostics'), findsOneWidget);
     expect(_scrolls, greaterThan(0),

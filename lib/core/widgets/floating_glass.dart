@@ -6,7 +6,6 @@ import '../theme/colors.dart';
 import '../theme/glass.dart';
 import '../util/frame_stats.dart';
 import '../util/motion.dart';
-import '../util/transition_probe.dart';
 import '../util/ui_activity.dart';
 
 /// A single levitating pane of smoked glass — the same treatment the floating
@@ -96,8 +95,9 @@ class FloatingGlass extends StatelessWidget {
   /// above it, `BackdropFilter.grouped` finds no key, and the pane filters
   /// alone exactly as it did — which is what keeps this from being the
   /// app-wide grouping reverted above. Argued from 1061's numbers for the
-  /// islands, **not measured on a phone for these panes**: the scripted run's
-  /// `chat-1199` rows are the old behaviour, taking turns with the new.
+  /// islands, **not measured on a phone for these panes on their own**: in the
+  /// 1202 scripted run all three of the open chat's blurs were grouped and
+  /// taking any one away left the open's raster (~9 ms) where it was.
   final bool blur;
 
   /// Long-press reporting the global press point, so a caller can anchor a
@@ -260,11 +260,11 @@ class FloatingGlass extends StatelessWidget {
                             UiActivity.instance.isNavigating.value) {
                           return pane!;
                         }
-                        // Same widget type either way, so the comparison
-                        // run flips the render object rather than remounting
-                        // the pane. See [blur] for where this groups.
-                        return AppBlur.groupedPanes &&
-                                !TransitionProbe.instance.previousChat.value
+                        // Same widget type either way, so flipping
+                        // [AppBlur.groupedPanes] updates the render object
+                        // rather than remounting the pane. See [blur] for
+                        // where this groups.
+                        return AppBlur.groupedPanes
                             ? BackdropFilter.grouped(
                                 filter: AppBlur.pane,
                                 child: pane,
