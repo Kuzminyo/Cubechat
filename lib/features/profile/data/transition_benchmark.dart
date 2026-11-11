@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/theme/glass.dart';
 import '../../../core/util/debug_log.dart';
+import '../../../core/util/frame_stats.dart';
 import '../../../core/util/transition_probe.dart';
 
 /// One way of opening the chat in a scripted run.
@@ -122,6 +123,9 @@ class TransitionBenchmark {
     final wasInstant = probe.instantTransitions.value;
     final wasBlur = AppBlur.panes;
     final wasUnderlay = probe.keepUnderlay.value;
+    final stats = FrameStats.instance;
+    final wasMeasuring = stats.isRunning;
+    final wasReportOverUs = stats.reportOverUs;
     final total = rounds * variants.length;
     progress.value = 'starting';
     _touched = false;
@@ -155,6 +159,14 @@ class TransitionBenchmark {
         ..resetSummary()
         ..scripted = true
         ..arm(true);
+      // The frame meter times the chat's list, header and composer, but only
+      // while it is listening, and prints a frame only past 16.7 ms. The open
+      // chat's first frame is 17-21 ms of build, so the run listens and
+      // prints from 12 ms: raster sits at ~10 ms, below it, and cannot crowd
+      // the once-a-second limit out of the frame this is after.
+      stats
+        ..start()
+        ..reportOverUs = 12000;
       for (var i = 0; i < total; i++) {
         final variant = variants[i % variants.length];
         apply(variant);
@@ -185,6 +197,8 @@ class TransitionBenchmark {
         ..placeholderMedia.value = wasPlaceholders
         ..instantTransitions.value = wasInstant;
       if (!wasArmed) probe.arm(false);
+      stats.reportOverUs = wasReportOverUs;
+      if (!wasMeasuring) stats.stop();
       DebugLog.instance.log(
         'BENCH',
         finished

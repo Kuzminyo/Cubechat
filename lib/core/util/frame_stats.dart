@@ -397,7 +397,7 @@ class FrameStats {
   /// a lot of them, and a 200-line buffer that fills with its own reporting is
   /// a buffer that has evicted the evidence.
   void _reportIfSlow(int buildUs, int rasterUs, Map<String, int> thisFrame) {
-    if (buildUs < _reportUs && rasterUs < _reportUs) return;
+    if (buildUs < reportOverUs && rasterUs < reportOverUs) return;
     _slowSinceReport++;
     final now = DateTime.now();
     final last = _lastReport;
@@ -510,6 +510,11 @@ class FrameStats {
   /// Flooding is handled by the once-a-second limit below rather than by the
   /// threshold, which is what lets this be low enough to be useful.
   static const int _reportUs = 16700;
+
+  /// What a frame must cost, build or raster, to be reported. [_reportUs]
+  /// except while the scripted run lowers it to read the first frame of every
+  /// open, which sits at 17-21 ms and is reported by chance at that threshold.
+  int reportOverUs = _reportUs;
 
   DateTime? _lastReport;
 
