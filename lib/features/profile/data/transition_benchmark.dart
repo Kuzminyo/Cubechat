@@ -96,6 +96,15 @@ class TransitionBenchmark {
   static const int defaultRounds = 8;
 
   /// The variants a run takes turns between, in this order.
+  ///
+  /// 1201 answered the bubbles question (build p95 5.3 against 6.8 ms, raster
+  /// the same ~9.3). 1202 asked whether one of the open chat's three blurs
+  /// (header, composer, the scroll-down button) is what holds that raster up,
+  /// by taking each away in turn, eight rounds of each: it is not. Open raster
+  /// p95 whole 8.9 ms, without the header's 9.9, without the composer's 9.8,
+  /// and with a control that removed nothing 9.2 - no blur removal came in
+  /// under the whole, and the control moved as much as the rest. The open's
+  /// ~9 ms of raster is not the filters; the variants went with the answer.
   static const List<BenchVariant> variants = [
     BenchVariant.asIs,
     BenchVariant.previousChat,
@@ -221,10 +230,17 @@ class TransitionBenchmark {
   void _logBlurLayers() {
     var all = 0;
     var grouped = 0;
+    final where = <String>[];
     void visit(RenderObject node) {
       if (node is RenderBackdropFilter) {
         all++;
         if (node.backdropKey != null) grouped++;
+        // Which island it is, by size and place: top left and width x height.
+        if (node.attached && node.hasSize) {
+          final at = node.localToGlobal(Offset.zero);
+          where.add('${at.dx.round()},${at.dy.round()} '
+              '${node.size.width.round()}x${node.size.height.round()}');
+        }
       }
       node.visitChildren(visit);
     }
@@ -235,6 +251,7 @@ class TransitionBenchmark {
     DebugLog.instance.log(
       'NAV-COST',
       'blur layers in the open chat: $all, grouped: $grouped '
+          '[${where.join(' | ')}] '
           '(previousChat=${TransitionProbe.instance.previousChat.value})',
     );
   }
