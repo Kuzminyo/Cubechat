@@ -17,7 +17,9 @@ import '../models/message.dart';
 ///
 /// A sticker is named by the emoji it was filed under, which is the only name
 /// it has; see [Message.stickerMarkerFor].
-String messagePreview(Message message, AppLocalizations t, {
+String messagePreview(
+  Message message,
+  AppLocalizations t, {
   bool hideOffensive = false,
 }) {
   if (hideOffensive) return t.filteredMessage;
@@ -59,21 +61,21 @@ String messageContentPreview(Message message, AppLocalizations t) {
     final emoji = message.stickerEmoji;
     return emoji == null ? t.stickerLabel : '$emoji ${t.stickerLabel}';
   }
-  if (message.isCircle) return '◉ ${t.circleMessage}';
+  if (message.isCircle) return '$previewCircleLead ${t.circleMessage}';
   switch (message.kind) {
     case MessageKind.image:
       // A caption is a better preview than the word "photo", when there is one.
       final caption = message.imageCaption;
       return caption == null || caption.isEmpty
-          ? '📷 ${t.previewPhoto}'
-          : '📷 $caption';
+          ? '$previewPhotoLead ${t.previewPhoto}'
+          : '$previewPhotoLead $caption';
     case MessageKind.audio:
-      return '🎤 ${t.previewVoice}';
+      return '$previewVoiceLead ${t.previewVoice}';
     case MessageKind.file:
       final name = message.fileName;
-      return '📎 ${name == null || name.isEmpty ? t.previewFile : name}';
+      return '$previewFileLead ${name == null || name.isEmpty ? t.previewFile : name}';
     case MessageKind.poll:
-      return '📊 ${message.text}';
+      return '$previewPollLead ${message.text}';
     case MessageKind.text:
       return _textPreview(message.text, t);
   }
@@ -93,8 +95,9 @@ String? _theirReactionTo(Message message) {
   return null;
 }
 
-/// The emoji a preview line opens with for a call, a position, a map invitation
-/// and a contact card.
+/// The emoji a preview line opens with for a call, a position, a map
+/// invitation, a contact card, a photo, a voice note, a file, a poll and a
+/// circle.
 ///
 /// Emoji in the string, because the same string is a notification body and a
 /// line in the send queue, where nothing else can be drawn. A chat list row
@@ -104,6 +107,11 @@ const String previewCallLead = '📞';
 const String previewLocationLead = '📍';
 const String previewMapLead = '🗺';
 const String previewContactLead = '👤';
+const String previewPhotoLead = '📷';
+const String previewVoiceLead = '🎤';
+const String previewFileLead = '📎';
+const String previewPollLead = '📊';
+const String previewCircleLead = '◉';
 
 /// Words, or the name of whatever is riding inside them.
 ///

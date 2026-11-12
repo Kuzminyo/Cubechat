@@ -17,6 +17,8 @@ import '../data/messages_controller.dart';
 import '../data/pinned_controller.dart';
 import 'widgets/message_bubble.dart';
 import '../models/message.dart';
+import '../domain/message_preview.dart';
+import 'widgets/preview_line.dart';
 
 /// Every pinned message in one conversation, as a screen of its own.
 ///
@@ -668,10 +670,9 @@ class _PinnedRow extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
+                  child: PreviewLine(
                     _preview(message, AppLocalizations.of(context)),
                     maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: AppColors.textOnGlass,
                       fontSize: 14,
@@ -697,20 +698,9 @@ class _PinnedRow extends StatelessWidget {
 
   /// Same rules as the pinned bar's one-liner: a media message says what it is
   /// when it has no caption worth showing.
-  static String _preview(Message m, AppLocalizations t) {
-    if (m.isCircle) return '◉ ${t.circleMessage}';
-    final text = m.text.trim();
-    switch (m.kind) {
-      case MessageKind.image:
-        return text.isEmpty || text.startsWith('image/') ? '📷 Photo' : text;
-      case MessageKind.audio:
-        return '🎤 Voice message';
-      case MessageKind.file:
-        return '📎 ${m.fileName ?? 'File'}';
-      case MessageKind.poll:
-        return '📊 $text';
-      case MessageKind.text:
-        return text;
-    }
-  }
+  static String _preview(Message m, AppLocalizations t) =>
+      // The shared preview, which says it in the reader's language and with
+      // the marks the list draws as icons. This copy had its own English
+      // words ("📷 Photo", "🎤 Voice message").
+      messageContentPreview(m, t);
 }

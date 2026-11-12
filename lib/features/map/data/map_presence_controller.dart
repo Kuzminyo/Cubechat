@@ -117,6 +117,40 @@ class MapPresenceController extends Notifier<int> {
   static bool roundAllowed({required bool slow, required bool force}) =>
       !slow || force;
 
+  /// Worse than this says nothing about where the phone is. The worst honest
+  /// beacon in two 2026-11-09 logs was ±2272 m; a coarse network guess came
+  /// in at ±18379 and an unknown one at ±65535 (the field's ceiling), and
+  /// those went to every friend.
+  static const int _worstAccuracyMetres = 5000;
+
+  /// A fix this sharp is believed however far it says the phone went. It is
+  /// also what lets a real position take over after a bad one got through.
+  static const int _trustedAccuracyMetres = 1000;
+
+  /// An airliner. Anything faster, on a fix that is not sharp, is the platform
+  /// handing over a point on the other side of the world: pins jumped by
+  /// 10,663 km and back, several times in each of those logs.
+  static const double _fastestMetresPerSecond = 300;
+
+  /// Whether a position is fit to appear on a friend's map. Applies to a
+  /// forced round too: a poke asks for a beacon, not for this one.
+  static bool fixIsBelievable({
+    required int accuracyMetres,
+    double? metresFromLast,
+    Duration? sinceLast,
+  }) {
+    if (accuracyMetres > _worstAccuracyMetres) return false;
+    if (accuracyMetres <= _trustedAccuracyMetres) return true;
+    if (metresFromLast == null || sinceLast == null) return true;
+    final reachable = _trustedAccuracyMetres +
+        _fastestMetresPerSecond * sinceLast.inSeconds;
+    return metresFromLast <= reachable;
+  }
+
+  /// Set while positions are being refused, so the log says so once per spell
+  /// the way [_heldForSlowLink] does.
+  bool _refusingFixes = false;
+
   /// Set while rounds are being held, so the log says so once per spell
   /// instead of once per 45-second tick.
   bool _heldForSlowLink = false;
@@ -545,6 +579,27 @@ class MapPresenceController extends Notifier<int> {
     if (_sending || !_shouldShare) return;
     final peers = _audience();
     if (peers.isEmpty) return;
+
+    // Before the bookkeeping, like the slow-link hold below: a refused fix is
+    // neither a dead round nor a sent one, and must not become the place the
+    // next fix is measured from. No coordinates in the line, only the size of
+    // the doubt.
+    final lastAt = _lastSentAt;
+    if (!fixIsBelievable(
+      accuracyMetres: fix.accuracyMetres,
+      metresFromLast: _lastSentLat == null ? null : _metresFromLastSent(fix),
+      sinceLast: lastAt == null ? null : DateTime.now().difference(lastAt),
+    )) {
+      if (!_refusingFixes) {
+        _refusingFixes = true;
+        DebugLog.instance.log(
+          'MAP',
+          'not sharing an implausible position (±${fix.accuracyMetres} m)',
+        );
+      }
+      return;
+    }
+    _refusingFixes = false;
 
     // On a slow link the map waits.
     //

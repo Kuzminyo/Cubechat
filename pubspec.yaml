@@ -1,7 +1,7 @@
 name: cubechat
 description: Encrypted peer-to-peer messaging over Bluetooth mesh.
 publish_to: 'none'
-version: 1.0.4+1210
+version: 1.0.4+1211
 
 environment:
   sdk: ^3.6.0
@@ -183,6 +183,9 @@ dependency_overrides:
     path: third_party/photo_manager
   flutter_webrtc:
     path: third_party/flutter_webrtc
+  # Its libopus linked for 16 KB pages; see that folder's CUBECHAT_PATCH.md.
+  opus_flutter_android:
+    path: third_party/opus_flutter_android
 
 dev_dependencies:
   flutter_lints: ^4.0.0

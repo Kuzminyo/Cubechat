@@ -1093,10 +1093,9 @@ packages:
   opus_flutter_android:
     dependency: "direct main"
     description:
-      name: opus_flutter_android
-      sha256: "9e5b71f5d959e1ee3b5faf7e1e893aabe7955d3a234c83f02462d801a5218497"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/opus_flutter_android"
+      relative: true
+    source: path
     version: "3.0.1"
   opus_flutter_ios:
     dependency: "direct main"

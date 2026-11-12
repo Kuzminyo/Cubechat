@@ -86,7 +86,8 @@ void main() {
       (tester) async {
     await pump(tester, _record(outgoing: true, seconds: 65));
     expect(find.text('Outgoing call'), findsOneWidget);
-    expect(find.text('1:05'), findsOneWidget);
+    // The time it happened and how long, in words, on the second line.
+    expect(find.textContaining('1 minute'), findsOneWidget);
 
     await tester.tap(find.text('Outgoing call'));
     await tester.pump(const Duration(milliseconds: 400));

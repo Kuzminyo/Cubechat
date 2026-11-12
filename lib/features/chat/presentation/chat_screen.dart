@@ -110,6 +110,7 @@ import '../../../core/routing/page_transitions.dart';
 import '../../../core/widgets/glass_sheet.dart';
 import '../../../core/widgets/glass_toast.dart';
 import 'media_preview_screen.dart';
+import 'widgets/preview_line.dart';
 
 /// True when [id] is a BLE device id (an Android MAC or an iOS UUID) rather
 /// than the 64-char pubkey-hex the Chats list routes with. Only the former can
@@ -3742,10 +3743,8 @@ class _PinnedBar extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 1),
-                    Text(
+                    PreviewLine(
                       preview,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: AppColors.textOnGlass,
                         fontSize: 13,
@@ -5954,10 +5953,8 @@ class _ReplyComposeBar extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 1),
-                  Text(
+                  PreviewLine(
                     target.preview,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: AppColors.textOnGlass,
                       fontSize: 13,

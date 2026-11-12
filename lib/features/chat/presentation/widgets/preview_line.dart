@@ -4,10 +4,12 @@ import '../../../../core/theme/colors.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../domain/message_preview.dart';
 
-/// What a preview line opens with when it opens with one of the four emoji
+/// What a preview line opens with when it opens with one of the marks
 /// [messagePreview] uses, as an icon of the app's own set.
 ///
-/// "эмодзи звонков поменяй на иконки нормальные" (2026-11-11): the telephone in
+/// "эмодзи звонков поменяй на иконки нормальные" (2026-11-11), and then
+/// "чтобы нигде в приложении по интерфейсу их не было" (2026-11-12) — photo,
+/// voice, file, poll and circle as well. The telephone in
 /// the chat list was the system's colour emoji, a different size and a
 /// different weight from every other mark on the row, and it said "call" for a
 /// missed one, an outgoing one and an answered one alike.
@@ -26,8 +28,9 @@ import '../../domain/message_preview.dart';
     IconData Function(String rest) icon, {
     bool Function(String rest)? alert,
   }) {
-    if (!preview.startsWith('$emoji ')) return null;
-    final rest = preview.substring(emoji.length + 1);
+    // Alone, too: a comment's quote of a photo is the mark and nothing else.
+    if (preview != emoji && !preview.startsWith('$emoji ')) return null;
+    final rest = preview == emoji ? '' : preview.substring(emoji.length + 1);
     return (icon: icon(rest), alert: alert?.call(rest) ?? false, rest: rest);
   }
 
@@ -42,7 +45,12 @@ import '../../domain/message_preview.dart';
       ) ??
       lead(previewLocationLead, (_) => Icons.place_rounded) ??
       lead(previewMapLead, (_) => Icons.map_rounded) ??
-      lead(previewContactLead, (_) => Icons.person_rounded);
+      lead(previewContactLead, (_) => Icons.person_rounded) ??
+      lead(previewPhotoLead, (_) => Icons.photo_rounded) ??
+      lead(previewVoiceLead, (_) => Icons.mic_rounded) ??
+      lead(previewFileLead, (_) => Icons.attach_file_rounded) ??
+      lead(previewPollLead, (_) => Icons.poll_rounded) ??
+      lead(previewCircleLead, (_) => Icons.radio_button_checked_rounded);
 }
 
 /// A one-line preview, with an icon where [messagePreview] put an emoji.

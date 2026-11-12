@@ -15,6 +15,7 @@ import '../../../peers/data/known_peers_controller.dart';
 import '../../../profile/data/relay_settings_controller.dart';
 import '../../data/send_queue.dart';
 import '../../domain/message_preview.dart';
+import 'preview_line.dart';
 
 /// "N messages waiting for a connection", above the chat list — only while
 /// there are any.
@@ -150,12 +151,19 @@ class _SendQueueSheet extends ConsumerWidget {
                                   overflow: TextOverflow.ellipsis,
                                   style: AppTypography.rowTitle,
                                 ),
-                                Text(
-                                  '${time.format(item.message.sentAt)} · '
-                                  '${messagePreview(item.message, t)}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: AppTypography.supporting,
+                                Row(
+                                  children: [
+                                    Text(
+                                      '${time.format(item.message.sentAt)} · ',
+                                      style: AppTypography.supporting,
+                                    ),
+                                    Flexible(
+                                      child: PreviewLine(
+                                        messagePreview(item.message, t),
+                                        style: AppTypography.supporting,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),

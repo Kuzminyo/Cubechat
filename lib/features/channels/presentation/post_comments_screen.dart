@@ -14,6 +14,8 @@ import '../../chat/models/message.dart';
 import '../../chat/presentation/widgets/chat_input.dart';
 import '../../peers/presentation/widgets/peer_avatar.dart';
 import 'channel_viewer_bar.dart';
+import '../../chat/domain/message_preview.dart';
+import '../../chat/presentation/widgets/preview_line.dart';
 
 /// The comments on one post, and nothing else.
 ///
@@ -96,14 +98,14 @@ class _PostCommentsScreenState extends ConsumerState<_PostCommentsScreen> {
   }
 
   static String _preview(Message m) {
-    if (m.isCircle) return '◉';
+    if (m.isCircle) return previewCircleLead;
     final text = m.text.trim();
     return switch (m.kind) {
       MessageKind.image =>
-        text.isEmpty || text.startsWith('image/') ? '📷' : text,
-      MessageKind.audio => '🎤',
-      MessageKind.file => '📎',
-      MessageKind.poll => '📊 $text',
+        text.isEmpty || text.startsWith('image/') ? previewPhotoLead : text,
+      MessageKind.audio => previewVoiceLead,
+      MessageKind.file => previewFileLead,
+      MessageKind.poll => '$previewPollLead $text',
       MessageKind.text => text,
     };
   }
@@ -149,8 +151,7 @@ class _PostCommentsScreenState extends ConsumerState<_PostCommentsScreen> {
                             child: Text(
                               t.channelCommunityOpen,
                               textAlign: TextAlign.center,
-                              style:
-                                  TextStyle(color: AppColors.textOnGlassDim),
+                              style: TextStyle(color: AppColors.textOnGlassDim),
                             ),
                           ),
                         )
@@ -164,8 +165,7 @@ class _PostCommentsScreenState extends ConsumerState<_PostCommentsScreen> {
                               ),
                             )
                           : ListView.builder(
-                              padding:
-                                  const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                              padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
                               itemCount: comments.length,
                               itemBuilder: (context, i) {
                                 final comment = comments[i];
@@ -225,10 +225,9 @@ class _PostCard extends StatelessWidget {
           left: BorderSide(color: AppColors.brandPrimary, width: 3),
         ),
       ),
-      child: Text(
+      child: PreviewLine(
         _PostCommentsScreenState._preview(post),
         maxLines: 4,
-        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           color: AppColors.textOnGlass,
           fontSize: 14,

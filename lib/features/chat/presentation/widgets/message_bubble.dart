@@ -60,7 +60,6 @@ import '../../domain/message_route_badge.dart';
 import '../../../../core/util/haptics.dart';
 import '../../../call/data/call_controller.dart';
 import '../../../call/domain/call_record.dart';
-import '../../../call/presentation/call_screen.dart' show callClock;
 import '../../data/pinned_controller.dart';
 import '../../data/reaction_emoji_controller.dart';
 import '../../../map/data/map_friend_link.dart';
@@ -91,6 +90,7 @@ import 'everyone_dialog.dart';
 import 'pin_scope.dart';
 import 'voice_bubble.dart';
 import 'transcription_button.dart';
+import 'preview_line.dart';
 
 /// How far a bubble follows a leftward drag before it stops moving, and how far
 /// it has to travel for the release to mean "reply".
@@ -1484,10 +1484,9 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
                   fontWeight: FontWeight.w600,
                 ),
               ),
-            Text(
+            PreviewLine(
               preview,
               maxLines: 2,
-              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: AppColors.textOnGlassDim,
                 fontSize: 13,
@@ -2200,7 +2199,11 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
     // no bubble to have a corner, its column can be as wide as a reply quote
     // above it, and the clock belongs by the picture — at the right of ours
     // already, and against the left of theirs (bare_bubble_alignment_test).
-    final footerAtEnd = !metaOnMedia && !_showsComments && !bare;
+    // A call says its own time on its second line, the way the call rows of
+    // every phone do ("вот такие хочу пузыри звонков", 2026-11-12), so it has
+    // no clock row of its own unless somebody reacted to it.
+    final callLine = !reacted && tryParseCallRecord(message.text) != null;
+    final footerAtEnd = !metaOnMedia && !_showsComments && !bare && !callLine;
 
     // The colour of what is read *about* a message — a transcript, a
     // translation. It was the dim tier, white at 0.6, which on our own bubble
@@ -2507,6 +2510,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
           // selecting, where a tap on the row means the tick.
           _CallRecordBubble(
             call: call,
+            at: message.sentAt,
             ownInk: ownInk,
             onCall: selecting || !ref.read(platformCapabilitiesProvider).calls
                 ? null
@@ -2639,7 +2643,7 @@ class _MessageBubbleState extends ConsumerState<MessageBubble>
         //
         // When it is drawn at the right, [_FooterBelowAtEnd] lays it out
         // below this column instead — see there.
-        if (!metaOnMedia && !footerAtEnd) ...[
+        if (!metaOnMedia && !footerAtEnd && !callLine) ...[
           if (!media) const SizedBox(height: 4),
           footer,
         ],
@@ -2980,11 +2984,15 @@ class _MapFriendLinkBubble extends StatelessWidget {
 class _CallRecordBubble extends StatelessWidget {
   const _CallRecordBubble({
     required this.call,
+    required this.at,
     required this.onCall,
     this.ownInk,
   });
 
   final CallRecord call;
+
+  /// When it happened, said on the row's second line.
+  final DateTime at;
 
   /// Null while the message list is picking messages out.
   final VoidCallback? onCall;
@@ -3006,11 +3014,26 @@ class _CallRecordBubble extends StatelessWidget {
   /// выровняй", 2026-11-10). 244 holds the longest Ukrainian label at 15 pt;
   /// a longer one ellipsises, as it already could at the old maximum.
   ///
-  /// 220 since 1208 ("пузырь ... вызовов не такие длинные", 2026-11-11): the
-  /// round is 36 and the label 14 pt, which is what 220 holds the longest
-  /// label at (36 + 10 + ~146 + 8 + 20), 24 pt shorter than before.
+  /// 220 since 1208 ("пузырь ... вызовов не такие длинные", 2026-11-11), 24
+  /// shorter than before. With the round gone (1211) the longest label at
+  /// 16 pt bold still fits: ~173 + 12 + the 26 pt phone.
   static const double _width = 220;
 
+  /// How long, in words: "26 хвилин", "1 година 5 хвилин", "42 секунди".
+  static String _spoken(Duration d, AppLocalizations t) {
+    if (d.inMinutes < 1) return t.autoDeleteSeconds(d.inSeconds);
+    if (d.inHours < 1) return t.autoDeleteMinutes(d.inMinutes);
+    final minutes = d.inMinutes.remainder(60);
+    final hours = t.autoDeleteHours(d.inHours);
+    return minutes == 0 ? hours : '$hours ${t.autoDeleteMinutes(minutes)}';
+  }
+
+  /// Laid out as a phone lays out a call it lists ("вот такие типо хочу
+  /// пузыри звонков, и такого ж варианта пропущенные", 2026-11-12, with a
+  /// screenshot): what it was in bold, then the direction, the time and how
+  /// long, then the way to call back at the right. The round behind the arrow
+  /// is gone — the arrow is small and on the second line, where it is read
+  /// with the time rather than as an icon of its own.
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
@@ -3022,16 +3045,18 @@ class _CallRecordBubble extends StatelessWidget {
       (false, false) => (Icons.call_missed_rounded, t.previewCallMissed),
     };
     final own = ownInk;
-    final tone = own ?? (missed ? AppColors.danger : AppColors.brandPrimary);
     final labelInk = own ?? (missed ? AppColors.danger : AppColors.textOnGlass);
     // A step lighter than the label, as the dim tier is on theirs.
-    final durationInk = own?.withValues(alpha: 0.7) ?? AppColors.textOnGlassDim;
+    final detailInk = own?.withValues(alpha: 0.7) ?? AppColors.textOnGlassDim;
     final callBackInk = onCall == null
         ? (own?.withValues(alpha: 0.4) ?? AppColors.textOnGlassFaint)
-        : (own ?? AppColors.brandPrimary);
+        : (own ?? AppColors.textOnGlass);
+    final time = formatBubbleTime(context, at);
+    final detail =
+        call.answered ? '$time, ${_spoken(call.talkedFor, t)}' : time;
     return Semantics(
       button: onCall != null,
-      label: '$label. ${t.callsCallBack}',
+      label: '$label. $detail. ${t.callsCallBack}',
       excludeSemantics: true,
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
@@ -3042,17 +3067,7 @@ class _CallRecordBubble extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 2),
             child: Row(
               children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: tone.withValues(alpha: own == null ? 0.16 : 0.12),
-                  ),
-                  child: Icon(icon, size: 19, color: tone),
-                ),
-                const SizedBox(width: 10),
-                // Expanded, so the camera is at the right edge of every row.
+                // Expanded, so the phone is at the right edge of every row.
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -3064,28 +3079,36 @@ class _CallRecordBubble extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: labelInk,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                      if (call.answered) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          callClock(call.talkedFor),
-                          style: TextStyle(
-                            color: durationInk,
-                            fontSize: 13,
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          // The label's ink, red on a missed call — the
+                          // colour is the one thing that tells a missed call
+                          // from the others at a glance.
+                          Icon(icon, size: 16, color: labelInk),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              detail,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: detailInk, fontSize: 13),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 12),
                 // The way it will call back: a video call again with video.
                 Icon(
                   call.video ? Icons.videocam_rounded : Icons.call_rounded,
-                  size: 20,
+                  size: 26,
                   color: callBackInk,
                 ),
               ],

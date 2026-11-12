@@ -477,6 +477,12 @@ abstract class _OneWayDragRecognizer extends HorizontalDragGestureRecognizer {
   /// 1 for rightward, -1 for leftward.
   final int wantedSign;
 
+  /// How far a finger goes before its direction is trusted. Under the
+  /// phone's touch slop (8 on the S24+), so the angle is read before a
+  /// vertical scroll can claim the drag; far enough that the jitter of a
+  /// finger landing is not read as a direction.
+  static const double _earlyTravel = 6;
+
   Offset? _origin;
   bool _decided = false;
   bool _gaveUp = false;
@@ -495,7 +501,26 @@ abstract class _OneWayDragRecognizer extends HorizontalDragGestureRecognizer {
     final origin = _origin;
     if (!_decided && origin != null && event is PointerMoveEvent) {
       final dx = event.position.dx - origin.dx;
-      if (dx.abs() >= computeHitSlop(event.kind, gestureSettings)) {
+      final dy = event.position.dy - origin.dy;
+      // **Decided by the angle, early.** A swipe to reply that drifts a
+      // little upward used to scroll the conversation instead ("иногда влево
+      // делаю, но чуть вверх уходит — уходит вверх, а не влево",
+      // 2026-11-12): this waited for the touch slop in x while the list
+      // waited for the same slop in y, and a thumb's arc gets there in y
+      // first. Now a drag that has travelled [_earlyTravel] and is at least
+      // as much sideways as up or down is settled on the spot — taken if it
+      // goes our way, handed back if it does not — before the list's slop.
+      // One that is mostly vertical is left alone, and the list has it.
+      if ((event.position - origin).distance >= _earlyTravel &&
+          dx.abs() >= dy.abs()) {
+        _decided = true;
+        if (dx.sign != wantedSign) {
+          _gaveUp = true;
+          resolve(GestureDisposition.rejected);
+          return;
+        }
+        resolve(GestureDisposition.accepted);
+      } else if (dx.abs() >= computeHitSlop(event.kind, gestureSettings)) {
         _decided = true;
         if (dx.sign != wantedSign) {
           _gaveUp = true;
