@@ -167,7 +167,14 @@ void main() {
   /// The settings sit at the end of a lazily built list, under the fixed talk
   /// panel: off screen, and so not built at all, on the test's 800x600.
   Future<void> scrollToEnd(WidgetTester tester) async {
-    await tester.drag(find.byType(ListView), const Offset(0, -2000));
+    // From near the top of the list: the talk panel floats over its lower
+    // half, and a drag that starts on the panel does not scroll what is
+    // under it.
+    final list = tester.getRect(find.byType(ListView));
+    await tester.dragFrom(
+      Offset(list.center.dx, list.top + 40),
+      const Offset(0, -2000),
+    );
     await tester.pumpAndSettle();
   }
 

@@ -137,6 +137,7 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
       },
     );
     final active = state.active;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measurePanel());
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -154,11 +155,18 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
       ),
       body: SafeArea(
         top: false,
-        child: Column(
+        // The panel floats over the list, as the composer floats over a
+        // conversation, so what scrolls under it is what its glass is made
+        // of ("задний фон должен быть как остров", 2026-11-11). Under a
+        // Column the list ended above it and the island stood on bare
+        // background, a dark slab rather than glass. The list's bottom padding
+        // is the panel's measured height, so the last row can still be
+        // scrolled clear of it.
+        child: Stack(
           children: [
-            Expanded(
+            Positioned.fill(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                padding: EdgeInsets.fromLTRB(16, 4, 16, 16 + _panelHeight),
                 children: [
                   if (active is RadioContact) ...[
                     _Label(text: t.radioDirectLabel),
@@ -244,17 +252,40 @@ class _RadioScreenState extends ConsumerState<RadioScreen> {
                 ],
               ),
             ),
-            _TalkPanel(
-              state: state,
-              reason: _reason,
-              onOff: () => _radio.select(null),
-              onPress: () => unawaited(_press()),
-              onRelease: _release,
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: KeyedSubtree(
+                key: _panelKey,
+                child: _TalkPanel(
+                  state: state,
+                  reason: _reason,
+                  onOff: () => _radio.select(null),
+                  onPress: () => unawaited(_press()),
+                  onRelease: _release,
+                ),
+              ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  final GlobalKey _panelKey = GlobalKey();
+
+  /// The talk panel's height, read after layout; the list pads by it.
+  double _panelHeight = 0;
+
+  void _measurePanel() {
+    if (!mounted) return;
+    final box = _panelKey.currentContext?.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return;
+    final height = box.size.height;
+    if ((height - _panelHeight).abs() > 0.5) {
+      setState(() => _panelHeight = height);
+    }
   }
 }
 
