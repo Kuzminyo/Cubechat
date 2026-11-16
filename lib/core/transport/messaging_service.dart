@@ -18,7 +18,8 @@ import '../../features/channels/data/channel_avatars_controller.dart';
 import '../../features/channels/data/channel_descriptions_controller.dart';
 import '../models/channel.dart';
 import '../models/channel_member.dart';
-import '../../features/chat/data/conversation_settings_controller.dart';
+import '../models/conversation_settings.dart';
+import '../models/file_transfer_task.dart';
 import '../../features/chat/data/send_queue.dart';
 import '../../features/chat/data/held_media.dart';
 import '../../features/chat/data/pinned_controller.dart';
@@ -29,7 +30,6 @@ import '../../features/moderation/domain/profanity.dart';
 import '../../features/moderation/data/ban_list_controller.dart';
 import '../../features/moderation/data/hidden_authors.dart';
 import '../models/message.dart';
-import '../../features/files/data/file_transfer_controller.dart';
 import '../../features/peers/data/removed_contacts_controller.dart';
 import '../../features/peers/data/peer_avatars_controller.dart';
 import '../../features/peers/data/peer_discovery_controller.dart';
@@ -92,7 +92,9 @@ import 'inbound/inbound.dart';
 import 'inbound/incoming_messages.dart';
 import 'ports/channel_directory.dart';
 import 'ports/channel_roster.dart';
+import 'ports/conversation_prefs.dart';
 import 'ports/conversations.dart';
+import 'ports/file_transfers.dart';
 import 'ports/peer_directory.dart';
 import 'ports/stranger_pruning.dart';
 import 'radio_tuning.dart';
@@ -2070,7 +2072,7 @@ class MessagingService {
       // wants the opposite, and only they can know that.
       if (!transient &&
           _ref
-              .read(conversationSettingsControllerProvider.notifier)
+              .read(conversationPrefsProvider)
               .prefersRelay(canonicalId) &&
           await _whileTextOnRelay(
             () => _sendOverNostr(relayPeer, wireBytes, wakesPeer: true),
@@ -2406,7 +2408,7 @@ class MessagingService {
     }
 
     final transferId = _hexOf(fileId);
-    final transfers = _ref.read(fileTransferControllerProvider.notifier);
+    final transfers = _ref.read(fileTransfersProvider);
     // A re-send: how many chunks the first slicing of this id made, read off
     // the persisted row before [register] writes 0 over it. It outlives a
     // restart of this phone, which [_relaySlicedSlow] does not — see
@@ -2415,7 +2417,7 @@ class MessagingService {
     if (reuseMediaId != null) {
       await transfers.loaded;
       previousTotal = _ref
-          .read(fileTransferControllerProvider)[transferId]
+          .read(fileTransferTasksProvider)[transferId]
           ?.totalUnits;
     }
     transfers.register(
@@ -2554,7 +2556,7 @@ class MessagingService {
       // waiting out a dropout must not go out for a file nobody wants now.
       bool fileWanted() {
         final status =
-            _ref.read(fileTransferControllerProvider)[transferId]?.status;
+            _ref.read(fileTransferTasksProvider)[transferId]?.status;
         return status != null &&
             status != FileTransferStatus.canceled &&
             status != FileTransferStatus.paused;
@@ -2694,7 +2696,7 @@ class MessagingService {
       }
       // A pause or a cancel is the user's word on this transfer, and outranks
       // whatever failed underneath it.
-      final now = _ref.read(fileTransferControllerProvider)[transferId]?.status;
+      final now = _ref.read(fileTransferTasksProvider)[transferId]?.status;
       if (now != FileTransferStatus.canceled &&
           now != FileTransferStatus.paused) {
         transfers.setStatus(
@@ -2764,8 +2766,8 @@ class MessagingService {
   }
 
   Future<void> retryFileTransfer(String transferId) async {
-    final transfers = _ref.read(fileTransferControllerProvider.notifier);
-    final task = _ref.read(fileTransferControllerProvider)[transferId];
+    final transfers = _ref.read(fileTransfersProvider);
+    final task = _ref.read(fileTransferTasksProvider)[transferId];
     if (task == null) return;
     // An AirDrop needs the person in reach and their yes; its retry lives on
     // the AirDrop page. Resent from here it would land in a chat.
@@ -3506,7 +3508,7 @@ class MessagingService {
     // [ConversationSettingsController.sharesReadReceiptsWith], which is where
     // "only ever more private" lives.
     if (!_ref
-        .read(conversationSettingsControllerProvider.notifier)
+        .read(conversationPrefsProvider)
         .sharesReadReceiptsWith(canonicalId)) {
       // Both halves of the switch are silent by design — see the ingest side —
       // so without this the setting looks exactly like a broken feature.
@@ -4328,7 +4330,7 @@ class MessagingService {
     // shown our times is not shown our typing either, which is the same
     // question asked a second apart.
     if (!_ref
-        .read(conversationSettingsControllerProvider.notifier)
+        .read(conversationPrefsProvider)
         .sharesLastSeenWith(canonicalId)) {
       return;
     }
@@ -4455,7 +4457,7 @@ class MessagingService {
       on = restricted;
     } else {
       final settings =
-          _ref.read(conversationSettingsControllerProvider.notifier);
+          _ref.read(conversationPrefsProvider);
       await settings.loaded;
       on = settings.forChat(canonicalId).restrictCopying;
     }
@@ -4733,7 +4735,7 @@ class MessagingService {
       return _sendWallpaperChunked(chatId, wallpaper);
     }
     final body = _wallpaperPayload(wallpaper).encode();
-    final settings = _ref.read(conversationSettingsControllerProvider.notifier);
+    final settings = _ref.read(conversationPrefsProvider);
     await settings.loaded;
 
     if (chatId.startsWith('#')) {
@@ -4784,7 +4786,7 @@ class MessagingService {
     final payload = ConversationWallpaperPayload.decode(body);
     final wallpaper = _wallpaperFromPayload(payload);
     final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
-    final settings = _ref.read(conversationSettingsControllerProvider.notifier);
+    final settings = _ref.read(conversationPrefsProvider);
     await settings.loaded;
     await settings.setWallpaper(canonical, wallpaper);
     if (canonical != peerId) await settings.setWallpaper(peerId, wallpaper);
@@ -4818,7 +4820,7 @@ class MessagingService {
     if (!roster.isAdmin(channel.name, me.id)) {
       throw StateError('only an admin can restrict copying in $channelName');
     }
-    final settings = _ref.read(conversationSettingsControllerProvider.notifier);
+    final settings = _ref.read(conversationPrefsProvider);
     await settings.loaded;
     await settings.setRestrictCopying(channel.name, restricted);
     final frame = await _buildChannelFrame(
@@ -8844,7 +8846,7 @@ class MessagingService {
     if (done == null) {
       final completed = (files.progressOf(chunk.fileId) * chunk.total).round();
       _ref
-          .read(fileTransferControllerProvider.notifier)
+          .read(fileTransfersProvider)
           .setProgress(key, completed, chunk.total);
       return;
     }
@@ -8892,8 +8894,8 @@ class MessagingService {
       }
 
       final idHex = _hexOf(manifest.mediaId);
-      final transfers = _ref.read(fileTransferControllerProvider.notifier);
-      if (_ref.read(fileTransferControllerProvider)[idHex]?.source ==
+      final transfers = _ref.read(fileTransfersProvider);
+      if (_ref.read(fileTransferTasksProvider)[idHex]?.source ==
           FileTransferSource.airdrop) {
         // Not the chat's: AirDrop moves it into its own folder, or says the
         // transfer is over and it is not wanted any more.
@@ -8930,7 +8932,7 @@ class MessagingService {
       final target = File('${inbox.path}${Platform.pathSeparator}'
           '${_hexOf(manifest.mediaId).substring(0, 8)}-$safe');
       await assembled.file.rename(target.path);
-      _ref.read(fileTransferControllerProvider.notifier).complete(
+      _ref.read(fileTransfersProvider).complete(
             _hexOf(manifest.mediaId),
             filePath: target.path,
             bytesTotal: assembled.bytes,
@@ -8982,9 +8984,9 @@ class MessagingService {
   /// where a repeat manifest is genuinely wanted: a re-request
   /// ([requestMediaAgain]), which is only sent *because* the file is gone.
   Future<bool> _wantsFile(String mediaIdHex) async {
-    final transfers = _ref.read(fileTransferControllerProvider.notifier);
+    final transfers = _ref.read(fileTransfersProvider);
     await transfers.loaded;
-    final existing = _ref.read(fileTransferControllerProvider)[mediaIdHex];
+    final existing = _ref.read(fileTransferTasksProvider)[mediaIdHex];
     if (existing == null ||
         existing.direction != FileTransferDirection.incoming ||
         existing.status != FileTransferStatus.completed) {
@@ -9100,7 +9102,7 @@ class MessagingService {
 
     if (manifest.kind == MediaKind.file && await _wantsFile(key)) {
       final now = DateTime.now();
-      _ref.read(fileTransferControllerProvider.notifier).register(
+      _ref.read(fileTransfersProvider).register(
             FileTransferTask(
               id: key,
               // Re-requests need the author, not the relay/mesh hop.
@@ -9320,7 +9322,7 @@ class MessagingService {
             mime: manifest.mime,
           );
           final settings =
-              _ref.read(conversationSettingsControllerProvider.notifier);
+              _ref.read(conversationPrefsProvider);
           await settings.loaded;
           await settings.setWallpaper(
             peerId,
@@ -9988,7 +9990,7 @@ class MessagingService {
     // for anybody who has not set a picture, so there is nothing to notice and
     // nothing to explain.
     if (!_ref
-        .read(conversationSettingsControllerProvider.notifier)
+        .read(conversationPrefsProvider)
         .sharesAvatarWith(pubkeyHex)) {
       DebugLog.instance.log(
         'AVATAR',
@@ -10034,7 +10036,7 @@ class MessagingService {
     String chatId,
     ChatWallpaper wallpaper,
   ) async {
-    final settings = _ref.read(conversationSettingsControllerProvider.notifier);
+    final settings = _ref.read(conversationPrefsProvider);
     await settings.setWallpaper(chatId, wallpaper);
 
     final file = File(wallpaper.imagePath!);
@@ -10418,7 +10420,7 @@ class MessagingService {
     // Held for Wi-Fi is not stalled. Asking again would make the sender upload
     // the whole file a second time for chunks already sitting on the relay.
     if (_mediaPaused) return;
-    final tasks = _ref.read(fileTransferControllerProvider);
+    final tasks = _ref.read(fileTransferTasksProvider);
     for (final task in tasks.values) {
       if (task.direction != FileTransferDirection.incoming) continue;
       if (task.status != FileTransferStatus.transferring) continue;
@@ -10580,9 +10582,9 @@ class MessagingService {
     takenBack?.complete();
     final wireId = message.wireId;
     if (wireId != null) {
-      final transfers = _ref.read(fileTransferControllerProvider);
+      final transfers = _ref.read(fileTransferTasksProvider);
       if (transfers.containsKey(wireId)) {
-        _ref.read(fileTransferControllerProvider.notifier).cancel(wireId);
+        _ref.read(fileTransfersProvider).cancel(wireId);
       }
       try {
         await sendDeleteForEveryone(chatId, wireId);
@@ -10785,14 +10787,14 @@ class MessagingService {
     if (_drainingFileQueue || _disposed) return;
     _drainingFileQueue = true;
     try {
-      await _ref.read(fileTransferControllerProvider.notifier).loaded;
+      await _ref.read(fileTransfersProvider).loaded;
       // The await above is a real gap and this runs from a timer, so the
       // container can be torn down inside it. Reading a disposed one throws
       // into the surrounding zone with nobody listening; nothing below is
       // worth doing for a service that has been disposed anyway.
       if (_disposed) return;
       final queued = _ref
-          .read(fileTransferControllerProvider)
+          .read(fileTransferTasksProvider)
           .values
           .where(
             (task) =>
@@ -11179,7 +11181,7 @@ class MessagingService {
       },
     );
     final transfersSub = _ref.listen<Map<String, FileTransferTask>>(
-      fileTransferControllerProvider,
+      fileTransferTasksProvider,
       (_, __) => poke(),
     );
     unawaited((_sendTakenBackSignal ??= Completer<void>()).future.then(poke));
@@ -12003,7 +12005,7 @@ class MessagingService {
   }
 
   Future<void> _greetPeers(List<KnownPeer> peers) async {
-    final settings = _ref.read(conversationSettingsControllerProvider.notifier);
+    final settings = _ref.read(conversationPrefsProvider);
     var sent = 0;
     for (final peer in peers) {
       if (_disposed) return;
@@ -12164,7 +12166,7 @@ class MessagingService {
     } catch (_) {
       return;
     }
-    final settings = _ref.read(conversationSettingsControllerProvider.notifier);
+    final settings = _ref.read(conversationPrefsProvider);
     try {
       final direct =
           _findSessionByPubkeyHex(peerHex)?.isEstablished ?? false;
@@ -12273,7 +12275,7 @@ class MessagingService {
     // needs it. A beacon is a signed frame per recipient either way; what is
     // saved here is the encoding, not the sending.
     Uint8List? hiddenBody;
-    final settings = _ref.read(conversationSettingsControllerProvider.notifier);
+    final settings = _ref.read(conversationPrefsProvider);
     var sent = 0;
     // No cap on somebody at the other end of a live Bluetooth session: the
     // beacon to them is one write on a link that is up anyway, and a cap there
@@ -12452,7 +12454,7 @@ class MessagingService {
         // reason.
         if (body.isEmpty) return;
         final settings =
-            _ref.read(conversationSettingsControllerProvider.notifier);
+            _ref.read(conversationPrefsProvider);
         await settings.loaded;
         await settings.setPeerRestrictsCopying(channelName, body[0] == 0x01);
 
@@ -12467,7 +12469,7 @@ class MessagingService {
 
       case InnerPayloadType.conversationWallpaper:
         final settings =
-            _ref.read(conversationSettingsControllerProvider.notifier);
+            _ref.read(conversationPrefsProvider);
         await settings.loaded;
         await settings.setWallpaper(
           channelName,

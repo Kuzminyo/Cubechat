@@ -75,18 +75,47 @@ CLAUDE.md «подсистемы попутно не выносятся» ост
 - **Медиа и сборка.** Лимиты памяти FS-чанков и ожидание манифеста —
   транспорт по определению.
 
+## Третий заход: порты
+
+Шесть тяжёлых зависимостей транспорта — за портами в
+`core/transport/ports/`: `PeerDirectory` (+ `knownPeersProvider`),
+`Conversations` (+ `messagesProvider`), `ChannelDirectory`, `ChannelRoster`
+(+ `channelRostersProvider`), `ConversationPrefs`, `FileTransfers`
+(+ `fileTransferTasksProvider`). Каждый порт перечисляет ровно то, что
+вызывает транспорт; контроллер фичи сам `implements` порт — адаптеров нет,
+`bindings.dart` отдаёт `ref.watch(controller.notifier)`. Для состояния — по
+провайдеру `ref.watch(controller)`, через него же `_ref.listen`.
+
+В ядро переехали модели, которые торчат из сигнатур: `ChannelMember` (с
+`memberFingerprintOf`), `ChatAutoDelete`/`ChatWallpaper`/
+`ConversationSettings`, `FileTransferTask` и его перечисления —
+со старых мест реэкспорт.
+
+Цена, которую спека предсказывала: транспорт без привязок теперь не
+строится вообще (подписка в конструкторе), поэтому `appBindings` добавлены
+во все тесты, которые поднимают приложение или транспорт (25 файлов), и в
+два инструмента захвата экрана.
+
+Подписки на ростеры идут через производные провайдеры: серия изменений в
+одном синхронном куске может прийти слушателю одним событием. Оба
+слушателя (повтор придержанных кадров, приветствие новых) это переносят.
+
+Цифры: 14 113 строк, `_ref.read` 258, импортов фич 27.
+
 ## Что осталось
 
-- Администрирование, история и состояние комнаты (картинка, описание,
-  adminOnly, обои) — завязаны на «придержать до roster»; переносить вместе с
-  портом `ChannelDirectory`.
+- Хвост из 27 импортов, по одному-трём обращениям каждый: настройки
+  (privacy, relay, discovery, mediaDownload), модерация (banList,
+  hiddenAuthors, profanity), presence/typing/peerActivity/sendingActivity,
+  peerAvatars, peripheral и peerDiscovery, readMarkers, pinned,
+  messageRequests и strangerGate, heldMedia, mediaSendProgress, sendQueue,
+  airdrop (receive, navigation), callRules, channelAvatars и
+  channelDescriptions, removedContacts. Большинство — тот же приём: порт или
+  модель в ядро. Храповик дойдёт до 0 после них.
+- Администрирование, история и состояние комнаты — входящие всё ещё у
+  транспорта (завязаны на «придержать до roster»).
 - Аватары, voiceLevels, albumHint, viewOnceConsumed, обои 1:1 — у первых
   трёх отложенное состояние делится с финализацией медиа.
-- Порты `PeerDirectory`, `ChannelDirectory`, `FileTransfers` для того, что
-  транспорт читает сам на отправке и в объявлениях: `knownPeers` (36
-  методов), `messages` (33), `channel` (28), `channelRoster` (21),
-  `conversationSettings` (14), `fileTransfer` (10). Храповик опустится до 0
-  только после них.
 - Проверка на телефонах по чек-листу ниже — **не делалась**.
 
 ## Зачем

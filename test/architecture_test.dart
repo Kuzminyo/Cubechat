@@ -19,7 +19,7 @@ const _featureImportsAllowed = <String, int>{
   // (room posts and administration, media, presence, avatars) read feature
   // controllers directly. Each one moved behind a port or into a module
   // takes its import with it.
-  'lib/core/transport/messaging_service.dart': 29,
+  'lib/core/transport/messaging_service.dart': 27,
 };
 
 final _featureImport = RegExp(

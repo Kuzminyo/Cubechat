@@ -4,14 +4,18 @@ import '../core/transport/inbound/inbound.dart';
 import '../core/transport/inbound/incoming_messages.dart';
 import '../core/transport/ports/channel_directory.dart';
 import '../core/transport/ports/channel_roster.dart';
+import '../core/transport/ports/conversation_prefs.dart';
 import '../core/transport/ports/conversations.dart';
+import '../core/transport/ports/file_transfers.dart';
 import '../core/transport/ports/peer_directory.dart';
 import '../core/transport/ports/stranger_pruning.dart';
 import '../features/channels/data/channel_controller.dart';
 import '../features/channels/data/channel_roster_controller.dart';
 import '../features/channels/data/channels_inbound.dart';
 import '../features/chat/data/chat_inbound.dart';
+import '../features/chat/data/conversation_settings_controller.dart';
 import '../features/chat/data/messages_controller.dart';
+import '../features/files/data/file_transfer_controller.dart';
 import '../features/peers/data/known_peers_controller.dart';
 import '../features/peers/data/peers_inbound.dart';
 import '../features/peers/data/stranger_pruning.dart';
@@ -61,5 +65,14 @@ final List<Override> appBindings = [
   ),
   channelRosterProvider.overrideWith(
     (ref) => ref.watch(channelRosterControllerProvider.notifier),
+  ),
+  conversationPrefsProvider.overrideWith(
+    (ref) => ref.watch(conversationSettingsControllerProvider.notifier),
+  ),
+  fileTransferTasksProvider.overrideWith(
+    (ref) => ref.watch(fileTransferControllerProvider),
+  ),
+  fileTransfersProvider.overrideWith(
+    (ref) => ref.watch(fileTransferControllerProvider.notifier),
   ),
 ];
