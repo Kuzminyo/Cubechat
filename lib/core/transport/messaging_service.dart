@@ -17,6 +17,7 @@ import '../models/channel.dart';
 import '../models/channel_member.dart';
 import '../models/chat_history.dart';
 import '../models/conversation_settings.dart';
+import '../models/discovered_peer.dart';
 import '../models/file_transfer_task.dart';
 import '../models/peer_activity.dart';
 import '../models/message.dart';
@@ -2198,6 +2199,8 @@ class MessagingService {
         // handshake in front of it takes longer than a person waits before
         // pressing send.
         wakeRelays();
+        // And the road that may be standing right next to us.
+        unawaited(_dialRecipientInRange(canonicalId));
         // Leave status as sending (pending), not failed.
       }
     } catch (e, st) {
@@ -13813,6 +13816,67 @@ class MessagingService {
   /// Needs no timer of its own — the scanner re-asks at every window boundary
   /// and the sweep at every scan emission, so both relax on their own once the
   /// chase window closes.
+  /// When each address was last dialled for a queued text — the same 25 s the
+  /// discovery controller's auto-connect waits between tries, so a burst of
+  /// sends is one dial and not one per message.
+  final Map<String, DateTime> _deliveryDialAt = {};
+  static const _deliveryDialCooldown = Duration(seconds: 25);
+
+  /// Addresses [_dialRecipientInRange] would have dialled, recorded instead of
+  /// dialling when a test sets this.
+  @visibleForTesting
+  List<String>? debugDeliveryDials;
+
+  /// A text to [canonicalId] just went into the queue: if the scanner can see
+  /// them right now, dial them instead of waiting for it to come round again.
+  ///
+  /// The queue used to wait for the next scan result — the auto-connect that
+  /// chases queued mail runs on nothing else — and an idle scan sleeps 54 s
+  /// between windows ([BleConstants.scanGapIdle]). Field log of 2026-11-16,
+  /// build 1212, two phones side by side with no internet: the sender
+  /// resolved the contact in a scan at 18:25:35, queued the text at 18:25:39,
+  /// and dialled at 18:26:03 only because Bluetooth had been switched off and
+  /// on. A handshake from either side flushes the queue, so the dial is all
+  /// that was missing; the rest of the path is unchanged.
+  Future<void> _dialRecipientInRange(String canonicalId) async {
+    if (_disposed || hasSessionWithPubkey(canonicalId)) return;
+    DiscoveredPeer? seen;
+    for (final p in _ref.read(nearbyPeersProvider)) {
+      if (p.resolvedPubkeyHex != canonicalId) continue;
+      // Freshest sighting: an address they rotated away from stays in the
+      // list until it goes stale, and dialling it costs a connect timeout.
+      if (seen == null || p.lastSeen.isAfter(seen.lastSeen)) seen = p;
+    }
+    if (seen == null || hasLinkOrPendingTo(seen.id)) return;
+    final now = DateTime.now();
+    _deliveryDialAt
+        .removeWhere((_, t) => now.difference(t) >= _deliveryDialCooldown);
+    if (_deliveryDialAt.containsKey(seen.id)) return;
+    _deliveryDialAt[seen.id] = now;
+    DebugLog.instance.log(
+      'MESH',
+      '${_short(canonicalId)} is in scan range — dialling ${seen.id} for the '
+          'queued text',
+    );
+    final dials = debugDeliveryDials;
+    if (dials != null) {
+      dials.add(seen.id);
+      return;
+    }
+    try {
+      await connectAsInitiatorWithRetry(
+        deviceId: seen.id,
+        displayName: _ref.read(knownPeersProvider)[canonicalId]?.displayName ??
+            seen.advertisedName,
+      );
+    } catch (e) {
+      // The queue still holds the text; the scan-driven auto-connect and the
+      // relays are where it goes from here, exactly as before.
+      DebugLog.instance
+          .log('MESH', 'dial for queued text to ${seen.id} failed: $e');
+    }
+  }
+
   bool get hasFreshPendingDelivery {
     final newest = _store.newestStoredAt;
     if (newest == null) return false;

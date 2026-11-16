@@ -151,7 +151,7 @@ class InboundHarness {
       linkId,
       Frame(type: FrameType.transport, payload: env.encode()).encode(),
     );
-    await pumpEventQueue();
+    await drainEventQueue();
     return msgId;
   }
 
@@ -191,7 +191,7 @@ class InboundHarness {
       linkId,
       Frame(type: FrameType.transport, payload: env.encode()).encode(),
     );
-    await pumpEventQueue();
+    await drainEventQueue();
     return msgId;
   }
 }
@@ -224,7 +224,8 @@ Future<void> closeTestHive(Directory dir) async {
 }
 
 /// Lets the microtasks and zero-delay timers a frame set off run out.
-Future<void> pumpEventQueue({int times = 20}) async {
+/// Not `pumpEventQueue`, which `flutter_test` exports under the same name.
+Future<void> drainEventQueue({int times = 20}) async {
   for (var i = 0; i < times; i++) {
     await Future<void>.delayed(Duration.zero);
   }
