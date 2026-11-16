@@ -44,6 +44,19 @@
 
 - (void)capturer:(RTC_OBJC_TYPE(RTCVideoCapturer) *)capturer
     didCaptureVideoFrame:(RTC_OBJC_TYPE(RTCVideoFrame) *)frame {
+#if TARGET_OS_IPHONE
+  // CubeChat: RTCCameraVideoCapturer stamps each frame with a rotation taken
+  // from UIDevice's *physical* orientation, though the app's interface is
+  // locked to portrait. Tilting the phone past 45 degrees — leaning back,
+  // reaching for something — turned the picture a quarter turn on both ends
+  // and back again. The rotation is metadata only: re-stamping it copies no
+  // pixels. Portrait is _90 for both lenses in the capturer's own table.
+  if (_holdsPortrait && frame.rotation != RTCVideoRotation_90) {
+    frame = [[RTC_OBJC_TYPE(RTCVideoFrame) alloc] initWithBuffer:frame.buffer
+                                                        rotation:RTCVideoRotation_90
+                                                     timeStampNs:frame.timeStampNs];
+  }
+#endif
   os_unfair_lock_lock(&_lock);
   for (id<ExternalVideoProcessingDelegate> processor in _processors) {
     frame = [processor onFrame:frame];

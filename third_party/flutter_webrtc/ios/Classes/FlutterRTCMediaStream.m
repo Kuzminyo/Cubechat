@@ -487,6 +487,10 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
 #endif
       
     VideoProcessingAdapter *videoProcessingAdapter = [[VideoProcessingAdapter alloc] initWithRTCVideoSource:videoSource];
+#if TARGET_OS_IPHONE
+    // CubeChat: the interface is portrait-only, so the picture is too.
+    videoProcessingAdapter.holdsPortrait = YES;
+#endif
     self.videoCapturer = [[RTCCameraVideoCapturer alloc] initWithDelegate:videoProcessingAdapter];
       
     AVCaptureDeviceFormat* selectedFormat = [self selectFormatForDevice:videoDevice
@@ -514,13 +518,17 @@ typedef void (^NavigatorUserMediaSuccessCallback)(RTCMediaStream* mediaStream);
       [videoDevice unlockForConfiguration];
     }
 
+    __weak FlutterWebRTCPlugin* weakSelf = self;
+    __weak RTCCameraVideoCapturer* startedCapturer = self.videoCapturer;
     [self.videoCapturer startCaptureWithDevice:videoDevice
                                         format:selectedFormat
                                            fps:selectedFps
                              completionHandler:^(NSError* error) {
                                if (error) {
                                  NSLog(@"Start capture error: %@", [error localizedDescription]);
+                                 return;
                                }
+                               [weakSelf stabilizeCapture:startedCapturer];
                              }];
 
     NSString* trackUUID = [[NSUUID UUID] UUIDString];

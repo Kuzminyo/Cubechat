@@ -159,6 +159,14 @@ class WebRtcCallMedia implements CallMedia {
   /// a fifth for the rest. Raise both together, and the server's
   /// `bps-capacity` with them — that is a decision about the bill.
   static const int videoMaxBitrate = 800000;
+
+  /// The top step's frame rate. **Not 60** (asked for on 2026-11-16, kept at
+  /// 30): at the relayed [videoMaxBitrate] 60 frames halve the bits each one
+  /// gets, so the face goes blocky to buy motion a talking head barely has;
+  /// most Android front cameras stop at 30 at 720p anyway; and the encoder's
+  /// work is pixels times frames, so 60 doubles the top step's 27.6 Mpx/s —
+  /// the very number a warm phone in a video call is about. Smoothness was
+  /// won lower down instead: see [videoLimits] and [_capVideo].
   static const int videoMaxFramerate = 30;
 
   /// The ceiling when the call is direct — the mode a person turns on
@@ -176,6 +184,17 @@ class WebRtcCallMedia implements CallMedia {
   /// the picture down first — fewer pixels, fewer frames, a lower ceiling —
   /// keeps the voice whole on a poor link. Recovery is as slow as the
   /// audio's (eight healthy reports in a row), so it does not pump.
+  ///
+  /// **Pixels go before frames (2026-11-16).** The steps were 30/24/15 fps;
+  /// they are 30/30/20. A face at 480p that moves smoothly reads better on a
+  /// phone than a sharper one that judders, and the steps below the top are
+  /// where a picture spends a bad connection. Heat stays bounded by the top
+  /// step: the encoder's work is width × height × fps, 27.6 Mpx/s at 720p30,
+  /// and the middle step is 12.3 (was 9.8) and the bottom 4.6 (was 3.5) — no
+  /// step costs more than a good link already did. The bits per frame drop
+  /// by a fifth on the middle step (0.037 → 0.029 bit/px); WebRTC, held to
+  /// the frame rate by [_capVideo], answers that with fewer pixels rather
+  /// than fewer frames. The test pins the bound.
   static ({int bitrate, int fps, double scale}) videoLimits(
     int audioStep, {
     required bool relayed,
@@ -183,8 +202,8 @@ class WebRtcCallMedia implements CallMedia {
     final ceiling = relayed ? videoMaxBitrate : videoDirectMaxBitrate;
     return switch (audioStep) {
       32000 => (bitrate: ceiling, fps: videoMaxFramerate, scale: 1.0),
-      24000 => (bitrate: ceiling * 45 ~/ 100, fps: 24, scale: 1.5),
-      _ => (bitrate: ceiling * 20 ~/ 100, fps: 15, scale: 2.0),
+      24000 => (bitrate: ceiling * 45 ~/ 100, fps: 30, scale: 1.5),
+      _ => (bitrate: ceiling * 20 ~/ 100, fps: 20, scale: 2.0),
     };
   }
 
@@ -879,6 +898,15 @@ class WebRtcCallMedia implements CallMedia {
       final parameters = sender.parameters;
       final encodings = parameters.encodings;
       if (encodings == null || encodings.isEmpty) return;
+      // WebRTC's default for a camera is `balanced`, which under a bandwidth
+      // or CPU limit lowers the frame rate as well as the size — down to 15
+      // fps once it has stepped to 640x480 in its own default table. With
+      // our relayed ceiling that limit is often met, and the result was a
+      // picture that stuttered rather than softened. Keep the frames; let
+      // the size give. Both native sides of the vendored plugin read it
+      // (`updateRtpParameters` on Android, `updateRtpParameters:` on iOS).
+      parameters.degradationPreference =
+          RTCDegradationPreference.MAINTAIN_FRAMERATE;
       for (final encoding in encodings) {
         encoding.maxBitrate = limits.bitrate;
         encoding.maxFramerate = limits.fps;

@@ -15,4 +15,9 @@
 
 - (RTCVideoSource* _Nonnull) source;
 
+/// CubeChat: every camera frame leaves as portrait (RTCVideoRotation_90),
+/// whatever the phone's physical tilt. See CUBECHAT_PATCH.md, "A call's
+/// picture holds still when the phone tilts".
+@property(nonatomic, assign) BOOL holdsPortrait;
+
 @end

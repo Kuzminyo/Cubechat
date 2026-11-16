@@ -296,11 +296,34 @@
                                                           message:@"Error while switching camera"
                                                           details:error]);
                              } else {
+                               [self stabilizeCapture:self.videoCapturer];
                                result([NSNumber numberWithBool:self._usingFrontCamera]);
                              }
                            }];
 }
 
+
+- (void)stabilizeCapture:(RTCCameraVideoCapturer*)capturer {
+#if TARGET_OS_IPHONE
+  // CubeChat: RTCCameraVideoCapturer never sets a stabilization mode, so an
+  // iPhone sent every hand tremor while Android's Camera2Session already
+  // turns on OIS, or EIS without it (chooseStabilizationMode, checked in the
+  // 125.6422.03 AAR). Standard, not cinematic: cinematic buffers more frames
+  // and a call is live. Standard crops the field a little and adds a frame or
+  // two of latency on the ISP — not measured yet; see the patch note.
+  // Called again after a flip: a new device input brings a new connection.
+  for (AVCaptureOutput* output in capturer.captureSession.outputs) {
+    AVCaptureConnection* connection = [output connectionWithMediaType:AVMediaTypeVideo];
+    if (connection == nil) continue;
+    if (connection.isVideoStabilizationSupported) {
+      connection.preferredVideoStabilizationMode = AVCaptureVideoStabilizationModeStandard;
+      NSLog(@"cubechat: video stabilization standard requested");
+    } else {
+      NSLog(@"cubechat: video stabilization not offered by this format");
+    }
+  }
+#endif
+}
 
 - (AVCaptureDevice*)findDeviceForPosition:(AVCaptureDevicePosition)position {
   if (position == AVCaptureDevicePositionUnspecified) {

@@ -39,5 +39,9 @@
 
 - (nullable AVCaptureDevice*)findDeviceForPosition:(AVCaptureDevicePosition)position;
 
+/// CubeChat: ask the running capture for standard video stabilization where
+/// its format offers it. See CUBECHAT_PATCH.md.
+- (void)stabilizeCapture:(nullable RTCCameraVideoCapturer*)capturer;
+
 
 @end

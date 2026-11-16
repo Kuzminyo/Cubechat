@@ -59,9 +59,39 @@ camera start froze the app for 328-569 ms (`[STALL]`, three calls of three).
 The call is gone. Its result was never used, and a camera that fails still
 reports through the handler it already has.
 
+## A call's picture holds still when the phone tilts (2026-11-16)
+
+iOS only, in `ios/Classes/` and the identical `common/darwin/Classes/`; the
+Mac copy is untouched (no tilt, no stabilization there).
+
+- **Portrait, always.** `RTCCameraVideoCapturer` (inside the `WebRTC-SDK`
+  binary, not patchable here) stamps each frame's rotation from
+  `UIDevice.orientation` — the phone's physical tilt — while the app's
+  interface is locked to portrait (`main.dart`). Leaning back past 45° turned
+  the picture a quarter turn on both screens and back. The round-message
+  camera had the same bug and the same fix: use the locked orientation, not
+  the live one (`camera_android_camerax/CUBECHAT_PATCH.md`).
+  `VideoProcessingAdapter.holdsPortrait`, set for camera capture in
+  `getUserVideo`, re-stamps every frame `RTCVideoRotation_90` — metadata, no
+  pixel copy. Someone who deliberately holds the phone sideways now sends a
+  sideways face, as their own portrait-locked screen already shows them.
+  Android needs nothing: `Camera2Session` takes the rotation from the display,
+  which the lock keeps at 0.
+- **Stabilization.** The capturer never sets a mode, so an iPhone sent every
+  tremor. `stabilizeCapture:` (`CameraUtils.m`) asks each video connection
+  for `AVCaptureVideoStabilizationModeStandard` where the format supports it,
+  after the first start and after every flip (a new input, a new
+  connection). Standard rather than cinematic, which buffers more frames.
+  Android's `Camera2Session.chooseStabilizationMode` already turns on OIS, or
+  EIS without it — checked by disassembling the 125.6422.03 AAR.
+
+Not measured on a phone yet: the latency standard stabilization adds, and
+whether the front lens of a given iPhone offers it at 720p (the log says
+`cubechat: video stabilization …` either way).
+
 ## Upgrading
 
-Take the new version from the pub cache, reapply all five changes (including
+Take the new version from the pub cache, reapply all six changes (including
 the Windows and macOS trees above, from the new version), and check:
 
 ```bash

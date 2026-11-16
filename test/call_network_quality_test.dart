@@ -125,4 +125,19 @@ void main() {
     expect(low.fps, lessThan(reduced.fps));
     expect(low.scale, greaterThan(reduced.scale));
   });
+
+  test('no step of the picture makes the encoder work harder than the top', () {
+    // The encoder's cost is pixels a second; frames were raised on the lower
+    // steps on the promise that this never exceeds a good link's 720p30.
+    double work(({int bitrate, int fps, double scale}) l) =>
+        (1280 / l.scale) * (720 / l.scale) * l.fps;
+    for (final relayed in [true, false]) {
+      final top = work(WebRtcCallMedia.videoLimits(32000, relayed: relayed));
+      for (final step in [24000, 16000]) {
+        final limits = WebRtcCallMedia.videoLimits(step, relayed: relayed);
+        expect(work(limits), lessThanOrEqualTo(top));
+        expect(limits.fps, greaterThanOrEqualTo(20));
+      }
+    }
+  });
 }
