@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cubechat/core/crypto/identity_service.dart';
-import 'package:cubechat/core/identity/account_key_rotation.dart';
+import 'package:cubechat/app/account_key_rotation.dart';
 import 'package:cubechat/core/notifications/push_registration.dart';
 import 'package:cubechat/core/transport/inner_payload.dart';
 import 'package:cubechat/core/transport/messaging_service.dart';

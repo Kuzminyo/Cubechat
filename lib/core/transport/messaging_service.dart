@@ -18,9 +18,8 @@ import '../../features/channels/data/channel_avatars_controller.dart';
 import '../../features/channels/data/channel_controller.dart';
 import '../../features/channels/data/channel_descriptions_controller.dart';
 import '../../features/channels/data/channel_roster_controller.dart';
-import '../../features/channels/models/channel.dart';
+import '../models/channel.dart';
 import '../../features/chat/data/conversation_settings_controller.dart';
-import '../../features/chat/data/message_farewell.dart';
 import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/send_queue.dart';
 import '../../features/chat/data/held_media.dart';
@@ -33,7 +32,7 @@ import '../../features/moderation/domain/profanity.dart';
 import '../../features/moderation/data/filter_settings.dart';
 import '../../features/moderation/data/ban_list_controller.dart';
 import '../../features/moderation/data/hidden_authors.dart';
-import '../../features/chat/models/message.dart';
+import '../models/message.dart';
 import '../../l10n/app_localizations.dart';
 import '../locale/locale_controller.dart';
 import '../../features/files/data/file_transfer_controller.dart';
@@ -50,7 +49,7 @@ import '../../features/peers/data/presence_controller.dart';
 import '../../features/peers/data/peer_activity.dart';
 import '../../features/peers/data/sending_activity.dart';
 import '../../features/peers/data/typing_controller.dart';
-import '../../features/peers/models/known_peer.dart';
+import '../models/known_peer.dart';
 import '../../features/profile/data/discovery_settings_controller.dart';
 import '../../features/airdrop/data/airdrop_receive_controller.dart';
 import '../../features/airdrop/presentation/airdrop_navigation.dart';
@@ -79,7 +78,6 @@ import '../util/app_lifecycle.dart';
 import '../util/cost_meter.dart';
 import '../util/cpu_probe.dart';
 import '../util/debug_log.dart';
-import '../radio_spike.dart';
 import '../util/platform_capabilities.dart';
 import '../util/platform_info.dart';
 import 'announcement.dart';
@@ -103,6 +101,8 @@ import 'frame_fragment.dart';
 import 'file_reassembly.dart';
 import 'image_reassembly.dart';
 import 'mtu_budget.dart';
+import 'inbound/inbound.dart';
+import 'inbound/incoming_messages.dart';
 import 'inner_payload.dart';
 import 'channel_poll.dart';
 import '../util/media_storage.dart';
@@ -583,9 +583,6 @@ class MessagingService {
   /// sixty-four, and levels whose audio never arrives are worth even less than
   /// a hint whose photos never arrive.
   static const int _maxPendingVoiceLevels = 64;
-
-  /// Attributions that arrived before the message they belong to.
-  final Map<String, _HeldAttribution> _pendingForwardedFrom = {};
 
   /// FS media chunks that arrived before their manifest (so before we could
   /// derive the key). Keyed by mediaId hex; flushed once the manifest lands.
@@ -4315,7 +4312,8 @@ class MessagingService {
   /// Gated on [PrivacySettings.shareLastSeen], the same switch presence uses,
   /// rather than a second one. It is the same question — how much of my
   /// liveness do I leak — and the same symmetric bargain: turn it off and you
-  /// stop seeing other people's typing too (see [_ingestTyping]).
+  /// stop seeing other people's typing too (see `PeersInbound` in
+  /// `features/peers/data/peers_inbound.dart`).
   /// [kind] says which activity, and null ends whichever was showing.
   ///
   /// One byte, in the body this frame always had — see [PeerActivity] for why
@@ -4386,41 +4384,6 @@ class MessagingService {
 
   void _endSendingMedia(String canonicalId, PeerActivity kind) =>
       _sendingActivity.end(canonicalId, kind);
-
-  /// A peer is writing to us — or has stopped.
-  void _ingestTyping({
-    required String peerId,
-    required Uint8List? senderPub,
-    required Uint8List body,
-    DateTime? sentAt,
-  }) {
-    if (body.isEmpty) return;
-    final canonicalId = senderPub != null ? _hexOf(senderPub) : peerId;
-    final controller = _ref.read(typingControllerProvider.notifier);
-    final kind = PeerActivity.fromWire(body[0]);
-    if (kind == null) {
-      // A stop is applied whatever its age. It can only take the indicator
-      // down, and taking it down late is better than leaving it up. A byte a
-      // later build sends and this one does not know lands here too, on
-      // purpose — see [PeerActivity.fromWire].
-      controller.clear(canonicalId);
-      return;
-    }
-
-    // "I am writing" is a claim about this second, and it was being believed
-    // whenever it happened to arrive.
-    //
-    // The notice was stamped with our own clock, so one held on a relay came
-    // out of the backlog looking new. Reported as the indicator appearing
-    // while nobody was typing, and a log of a relay reconnect shows the shape
-    // of it: presence beacons in the same burst were stale by two, four, five,
-    // six and seven minutes. Presence filters those; this did not, so a
-    // seven-minute-old keystroke lit the line for its full eight seconds.
-    final now = DateTime.now();
-    final stamp = (sentAt == null || sentAt.isAfter(now)) ? now : sentAt;
-    if (now.difference(stamp) >= TypingController.ttl) return;
-    controller.record(canonicalId, at: stamp, kind: kind);
-  }
 
   /// Peers we have already told about our copy restriction this run.
   ///
@@ -4934,32 +4897,6 @@ class MessagingService {
             '${adminOnly ? "admin-only" : "open to everyone"} (fanout=$fanout)');
   }
 
-  /// The peer asked that this conversation not be copied or forwarded.
-  ///
-  /// Stored beside our own setting rather than into it, so neither side can
-  /// switch off what the other asked for. Only ever applies to the chat it
-  /// arrived on: like the conversation clear, there is no id in the body that
-  /// could point somewhere else.
-  Future<void> _ingestCopyRestriction({
-    required String peerId,
-    required Uint8List? senderPub,
-    required Uint8List body,
-  }) async {
-    if (body.isEmpty) return;
-    final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
-    final restricted = body[0] == 0x01;
-    final settings = _ref.read(conversationSettingsControllerProvider.notifier);
-    await settings.loaded;
-    await settings.setPeerRestrictsCopying(canonical, restricted);
-    if (canonical != peerId) {
-      await settings.setPeerRestrictsCopying(peerId, restricted);
-    }
-    DebugLog.instance.log(
-        'CHAT',
-        '$canonical asks that this chat is '
-            '${restricted ? "not copied or forwarded" : "copyable again"}');
-  }
-
   /// Ask the peer to delete this conversation on their side too.
   ///
   /// 1:1 only, and best-effort by nature: it is a request their app honours,
@@ -4984,36 +4921,6 @@ class MessagingService {
       DebugLog.instance.log('CHAT', 'conversation clear failed: $e');
       return false;
     }
-  }
-
-  /// The peer deleted this conversation and asked us to do the same.
-  ///
-  /// Only ever clears the one chat it arrived on, and only from a sender the
-  /// signature already identified — there is no id in the body to point
-  /// somewhere else with.
-  Future<void> _ingestConversationClear({
-    required String peerId,
-    required Uint8List? senderPub,
-    DateTime? sentAt,
-  }) async {
-    final messages = _ref.read(messagesControllerProvider.notifier);
-    final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
-    // Bounded by the moment the clear was sent, which is what keeps a second
-    // delivery of it from taking anything — see [clearForChatUpTo]. Clamped
-    // to now for the same reason presence clamps: the stamp is the sender's
-    // `created_at`, a claim rather than a fact, and one dated in the future
-    // would erase messages that have not been written yet.
-    //
-    // Falling back to now with no stamp is the BLE path, which has no backlog
-    // to replay and so behaves exactly as it did.
-    final now = DateTime.now();
-    final upTo = (sentAt == null || sentAt.isAfter(now)) ? now : sentAt;
-    await messages.clearForChatUpTo(canonical, upTo);
-    if (canonical != peerId) await messages.clearForChatUpTo(peerId, upTo);
-    DebugLog.instance.log(
-      'CHAT',
-      '$canonical cleared the conversation here (up to $upTo)',
-    );
   }
 
   /// Burn a view-once photo here, and tell the other side to burn theirs.
@@ -5332,120 +5239,6 @@ class MessagingService {
       }
     } catch (e) {
       DebugLog.instance.log('PIN', 'pin send failed: $e');
-    }
-  }
-
-  /// A pin/unpin from the other side of a 1:1 chat, applied to the same buckets
-  /// their messages land in.
-  void _ingestPeerPin({
-    required String peerId,
-    required Uint8List? senderPub,
-    required Uint8List body,
-  }) {
-    final MessagePin p;
-    try {
-      p = MessagePin.decode(body);
-    } catch (e) {
-      DebugLog.instance.log('PIN', 'drop pin from $peerId: $e');
-      return;
-    }
-    final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
-    final target = TransportEnvelope.hashHex(p.targetMsgId);
-    final buckets =
-        canonical != peerId ? <String>[canonical, peerId] : <String>[canonical];
-    _applyPinToBuckets(buckets, target: target, pinned: p.op == PinOp.pin);
-  }
-
-  void _applyPinToBuckets(
-    List<String> buckets, {
-    required String target,
-    required bool pinned,
-  }) {
-    final pins = _ref.read(pinnedControllerProvider.notifier);
-    for (final b in buckets) {
-      if (pinned) {
-        unawaited(pins.pin(b, target));
-      } else {
-        unawaited(pins.unpin(b, wireId: target));
-      }
-    }
-    DebugLog.instance
-        .log('PIN', '${pinned ? 'pinned' : 'unpinned'} $target from peer');
-  }
-
-  /// An inbound "delete for everyone" from a peer, applied to their message.
-  void _ingestPeerDelete({
-    required String peerId,
-    required Uint8List? senderPub,
-    required Uint8List body,
-  }) {
-    final MessageDelete del;
-    try {
-      del = MessageDelete.decode(body);
-    } catch (e) {
-      DebugLog.instance.log('EDIT', 'drop delete from $peerId: $e');
-      return;
-    }
-    final target = TransportEnvelope.hashHex(del.targetMsgId);
-    final messages = _ref.read(messagesControllerProvider.notifier);
-    final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
-
-    // Play it out rather than snap it away. This is the deletion nobody asked
-    // for and the one most likely to be watched happening, so a row that
-    // simply ceases to exist between two frames reads as the app losing a
-    // message rather than as the sender withdrawing it.
-    //
-    // The wire carries a hash, not a local id, so the row has to be found
-    // before it can be marked; if it is not here, there is nothing to animate
-    // and the delete still runs.
-    void remove() {
-      messages.deleteFromPeer(canonical, target);
-      if (canonical != peerId) messages.deleteFromPeer(peerId, target);
-    }
-
-    final stored = _ref.read(messagesControllerProvider);
-    final localId = [
-      ...?stored[canonical],
-      if (canonical != peerId) ...?stored[peerId],
-    ].where((m) => m.wireId == target).map((m) => m.id).toSet();
-
-    unawaited(
-      _ref
-          .read(messageFarewellProvider(canonical).notifier)
-          .dismiss(localId, remove),
-    );
-  }
-
-  /// An inbound edit from a peer, applied to their own message only.
-  void _ingestPeerEdit({
-    required String peerId,
-    required Uint8List? senderPub,
-    required Uint8List body,
-    String? signedProof,
-  }) {
-    final MessageEdit edit;
-    try {
-      edit = MessageEdit.decode(body);
-    } catch (e) {
-      DebugLog.instance.log('EDIT', 'drop edit from $peerId: $e');
-      return;
-    }
-    final target = TransportEnvelope.hashHex(edit.targetMsgId);
-    final messages = _ref.read(messagesControllerProvider.notifier);
-    final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
-    messages.editFromPeer(
-      canonical,
-      target,
-      edit.text,
-      signedProof: signedProof,
-    );
-    if (canonical != peerId) {
-      messages.editFromPeer(
-        peerId,
-        target,
-        edit.text,
-        signedProof: signedProof,
-      );
     }
   }
 
@@ -6932,7 +6725,61 @@ class MessagingService {
         return;
       }
 
+      await _dispatchInbound(
+        InboundContext.room(
+          linkPeerId: peerId,
+          env: env,
+          channel: channel,
+          authorName: authorName,
+          authorId: reactorId,
+          senderEdPub: senderEdPub,
+          route: peerId == _nostrPeerId
+              ? MessageRoute.internet
+              : (incomingHops ?? 2) > 1
+                  ? MessageRoute.mesh
+                  : MessageRoute.bluetooth,
+          routeHops: incomingHops,
+          stamp: _stampFrom(channelSignedAt),
+        ),
+        unpacked.type,
+        unpacked.body,
+      );
+    } catch (e) {
+      DebugLog.instance
+          .log('CHAN', 'drop ${channel.name} frame: malformed inner ($e)');
+    }
+  }
+
+  /// The room payloads the transport still answers itself: posts and polls,
+  /// administration, history, the room's picture and rules, and room media.
+  ///
+  /// Reactions, edits, deletions, pins and read receipts in a room are the
+  /// chat's, in `features/chat/data/chat_inbound.dart`; the registry routes
+  /// them there and never here — see [_inboundRegistry]. The locals keep the
+  /// names the switch had inline in [_handleChannelBody].
+  Future<void> _onRoomPayload(
+    InboundContext inbound,
+    InnerPayloadType type,
+    Uint8List body,
+  ) async {
+    final peerId = inbound.linkPeerId;
+    final env = inbound.env;
+    final channel = inbound.channel!;
+    final authorName = inbound.authorName!;
+    final reactorId = inbound.authorId!;
+    final incomingHops = inbound.routeHops;
+    final unpacked = (type: type, body: body);
+    try {
       switch (unpacked.type) {
+        case InnerPayloadType.reaction:
+        case InnerPayloadType.edit:
+        case InnerPayloadType.delete:
+        case InnerPayloadType.pin:
+        case InnerPayloadType.receipt:
+          // Answered by the chat module; the registry never routes these
+          // here. Listed so this switch stays exhaustive.
+          break;
+
         case InnerPayloadType.text:
           final plaintext = utf8.decode(
             unpadTextPayload(unpacked.body),
@@ -7005,49 +6852,6 @@ class MessagingService {
             _notifyChannel(
                 channel: channel, authorName: authorName, message: message);
           }
-
-        case InnerPayloadType.reaction:
-          final rx = Reaction.decode(unpacked.body);
-          _applyReactionToBuckets([channel.name], rx: rx, reactorId: reactorId);
-
-        case InnerPayloadType.edit:
-          final edit = MessageEdit.decode(unpacked.body);
-          // reactorId is the signer's key fingerprint, and only the author of
-          // the target message may rewrite it.
-          _ref.read(messagesControllerProvider.notifier).editFromPeer(
-                channel.name,
-                TransportEnvelope.hashHex(edit.targetMsgId),
-                edit.text,
-                authorId: reactorId,
-              );
-
-        case InnerPayloadType.delete:
-          final del = MessageDelete.decode(unpacked.body);
-          _ref.read(messagesControllerProvider.notifier).deleteFromPeer(
-                channel.name,
-                TransportEnvelope.hashHex(del.targetMsgId),
-                authorId: reactorId,
-              );
-
-        case InnerPayloadType.pin:
-          final pin = MessagePin.decode(unpacked.body);
-          // Any member may pin in a channel, so no author guard (see sendPin).
-          _applyPinToBuckets(
-            [channel.name],
-            target: TransportEnvelope.hashHex(pin.targetMsgId),
-            pinned: pin.op == PinOp.pin,
-          );
-
-        case InnerPayloadType.receipt:
-          // The local privacy switch controls what this device sends. If a
-          // channel member chooses to send a receipt, applying it only updates
-          // ticks on our own messages.
-          _ingestChannelReceipt(
-            channel: channel,
-            readerId: reactorId,
-            readerName: authorName,
-            body: unpacked.body,
-          );
 
         case InnerPayloadType.channelPoll:
           final poll = ChannelPollPayload.decode(unpacked.body);
@@ -7258,7 +7062,7 @@ class MessagingService {
             authorName: authorName,
             authorId: reactorId,
             manifestBytes: unpacked.body,
-            sentAt: _stampFrom(channelSignedAt),
+            sentAt: inbound.stamp,
           );
 
         case InnerPayloadType.imageChunk:
@@ -7328,120 +7132,6 @@ class MessagingService {
     } catch (e) {
       DebugLog.instance
           .log('CHAN', 'drop ${channel.name} frame: malformed inner ($e)');
-    }
-  }
-
-  /// A read receipt from a peer flips our matching outgoing messages to read.
-  void _ingestReceipt({
-    required String peerId,
-    required Uint8List? senderPub,
-    required Uint8List body,
-  }) {
-    final ReadReceipt r;
-    try {
-      r = ReadReceipt.decode(body);
-    } catch (e) {
-      DebugLog.instance.log('RECEIPT', 'drop receipt from $peerId: $e');
-      return;
-    }
-    if (r.status != ReceiptStatus.read) return;
-    final ids = r.msgIds.map(TransportEnvelope.hashHex).toSet();
-    final messages = _ref.read(messagesControllerProvider.notifier);
-    final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
-    var outcome = messages.markRead(canonical, ids);
-    if (canonical != peerId) outcome += messages.markRead(peerId, ids);
-    // Said out loud, because "the tick never turns blue" has no other evidence
-    // to work from: the frame arriving and the frame *meaning* something are
-    // different failures, and only this line tells them apart.
-    //
-    // Split three ways, because two of them used to look identical and one of
-    // those is not a fault at all. "2 id(s), 1 marked" cost an investigation
-    // on the assumption that a handle had gone missing; the far likelier
-    // reading is the same receipt arriving again from a second relay and
-    // finding the message already read, which is the mechanism working. Only
-    // `unknown` — an id matching nothing we ever sent — is worth chasing, and
-    // it now says so in that word.
-    DebugLog.instance.log(
-      'RECEIPT',
-      'read ack from ${_short(canonical)}: ${ids.length} id(s), '
-          '${outcome.marked} marked'
-          '${outcome.alreadyRead > 0 ? ', ${outcome.alreadyRead} already read' : ''}'
-          '${outcome.unknown > 0 ? ', ${outcome.unknown} UNKNOWN' : ''}',
-    );
-  }
-
-  /// The channel counterpart: record *who* read, rather than flipping a status.
-  ///
-  /// A 1:1 receipt can move [MessageStatus.read] because there is only one
-  /// person it could have come from. A channel has as many readers as hold the
-  /// key and no roster to enumerate them, so the answer to "has this been read"
-  /// is a list of the people who said so — accumulated per reader, exactly the
-  /// way reactions accumulate per reactor.
-  ///
-  /// [readerId] and [readerName] are the ones [_handleChannelBody] already
-  /// derived from the frame's signature, so identity here is as strong as it is
-  /// for authorship: a relay cannot invent a reader.
-  void _ingestChannelReceipt({
-    required Channel channel,
-    required String readerId,
-    required String readerName,
-    required Uint8List body,
-  }) {
-    final ReadReceipt r;
-    try {
-      r = ReadReceipt.decode(body);
-    } catch (e) {
-      DebugLog.instance.log('RECEIPT', 'drop ${channel.name} receipt: $e');
-      return;
-    }
-    if (r.status != ReceiptStatus.read) return;
-    _ref.read(messagesControllerProvider.notifier).applyChannelRead(
-          channel.name,
-          readerId: readerId,
-          readerName: readerName,
-          wireIds: r.msgIds.map(TransportEnvelope.hashHex).toSet(),
-          at: DateTime.now(),
-        );
-  }
-
-  /// A reaction from a peer, applied to both the canonical (pubkey-hex) and
-  /// any open transport-id bucket for that peer.
-  void _ingestPeerReaction({
-    required String peerId,
-    required Uint8List? senderPub,
-    required Uint8List? senderEdPub,
-    required Uint8List body,
-  }) {
-    final Reaction rx;
-    try {
-      rx = Reaction.decode(body);
-    } catch (e) {
-      DebugLog.instance.log('REACT', 'drop reaction from $peerId: $e');
-      return;
-    }
-    final canonical = senderPub != null ? _hexOf(senderPub) : peerId;
-    final reactorId =
-        senderEdPub != null ? _hexOf(senderEdPub).substring(0, 16) : 'them';
-    final buckets =
-        canonical != peerId ? <String>[canonical, peerId] : <String>[canonical];
-    _applyReactionToBuckets(buckets, rx: rx, reactorId: reactorId);
-  }
-
-  void _applyReactionToBuckets(
-    List<String> buckets, {
-    required Reaction rx,
-    required String reactorId,
-  }) {
-    final messages = _ref.read(messagesControllerProvider.notifier);
-    final target = TransportEnvelope.hashHex(rx.targetMsgId);
-    for (final b in buckets) {
-      messages.applyReaction(
-        b,
-        targetWireId: target,
-        emoji: rx.emoji,
-        reactorId: reactorId,
-        add: rx.op == ReactionOp.add,
-      );
     }
   }
 
@@ -8101,6 +7791,81 @@ class MessagingService {
   @visibleForTesting
   int get debugOutboxSize => _outbox.length;
 
+  // -------------------- inbound registry --------------------
+
+  /// One-to-one payloads a feature module answers. Everything else in the
+  /// direct scope is the transport's, in [_onDirectPayload].
+  ///
+  /// The transport claims "every type but these" rather than a list of its
+  /// own, so a new [InnerPayloadType] lands in [_onDirectPayload]'s switch by
+  /// default — and that switch is exhaustive, so forgetting it does not
+  /// compile. Moving a type to a module means adding it here, and the
+  /// registry refuses to start if the two disagree.
+  static const _directByModules = {
+    InnerPayloadType.text,
+    InnerPayloadType.textReply,
+    InnerPayloadType.receipt,
+    InnerPayloadType.reaction,
+    InnerPayloadType.edit,
+    InnerPayloadType.delete,
+    InnerPayloadType.pin,
+    InnerPayloadType.forwardedFrom,
+    InnerPayloadType.conversationClear,
+    InnerPayloadType.copyRestriction,
+    InnerPayloadType.forwardPrivacy,
+    InnerPayloadType.typing,
+  };
+
+  /// Room payloads a feature module answers; the rest are [_onRoomPayload]'s.
+  static const _roomByModules = {
+    InnerPayloadType.reaction,
+    InnerPayloadType.edit,
+    InnerPayloadType.delete,
+    InnerPayloadType.pin,
+    InnerPayloadType.receipt,
+  };
+
+  InboundRegistry? _inbound;
+
+  /// Built on the first frame, not in the constructor: reading the modules
+  /// builds the features' controllers, and a test that never receives
+  /// anything has no reason to bind them. Lives and dies with this service,
+  /// so a wipe or a key rotation that rebuilds the transport rebuilds it too.
+  InboundRegistry _inboundRegistry() => _inbound ??= _buildInboundRegistry();
+
+  InboundRegistry _buildInboundRegistry() {
+    final registry = InboundRegistry()
+      ..on(
+        InboundScope.direct,
+        InnerPayloadType.values.where((t) => !_directByModules.contains(t)),
+        _onDirectPayload,
+        owner: 'transport',
+      )
+      ..on(
+        InboundScope.room,
+        InnerPayloadType.values.where((t) => !_roomByModules.contains(t)),
+        _onRoomPayload,
+        owner: 'transport',
+      );
+    for (final module in _ref.read(inboundModulesProvider)) {
+      module.registerInto(registry);
+    }
+    return registry;
+  }
+
+  Future<void> _dispatchInbound(
+    InboundContext ctx,
+    InnerPayloadType type,
+    Uint8List body,
+  ) =>
+      _inboundRegistry().dispatch(ctx, type, body);
+
+  /// The registry this service dispatches through, with the bound modules —
+  /// for the test that every payload type is answered or deliberately
+  /// dropped, in every scope.
+  @visibleForTesting
+  InboundRegistry debugInboundRegistry() => _inboundRegistry();
+
   // -------------------- inbound dispatch --------------------
 
   /// Single entry point for bytes arriving on any link. [fromCentral] is true
@@ -8736,102 +8501,68 @@ class MessagingService {
         return base64Url.encode(proof).replaceAll('=', '');
       }
 
+      await _dispatchInbound(
+        InboundContext.direct(
+          linkPeerId: peerId,
+          env: env,
+          senderPub: senderPub,
+          senderEdPub: verifiedSenderEdPub,
+          route: incomingRoute,
+          routeHops: incomingHops,
+          sentAt: sentAt,
+          stamp: stamp,
+          forwardSecret: cipher == _cipherX3dh,
+          authorProof: authorProof,
+        ),
+        unpacked.type,
+        unpacked.body,
+      );
+    } catch (e, st) {
+      DebugLog.instance.log('NOISE', 'SealedBox open FAILED for $peerId: $e');
+      debugPrint('$st');
+    }
+  }
+
+  /// The one-to-one payloads the transport still answers itself: media and
+  /// its reassembly, avatars, presence, and the control messages it hands on
+  /// as streams (calls, AirDrop, own devices, key rotation).
+  ///
+  /// What a conversation does with a text, an edit or a reaction is the
+  /// chat's business and lives in `features/chat/data/chat_inbound.dart`;
+  /// forward privacy and typing live in `features/peers/data/peers_inbound.dart`.
+  /// The registry routes those there and never here — see [_inboundRegistry].
+  ///
+  /// The locals keep the names the switch had when it sat inline in
+  /// [_handleTransportFrame], so the cases read as they always did.
+  Future<void> _onDirectPayload(
+    InboundContext inbound,
+    InnerPayloadType type,
+    Uint8List body,
+  ) async {
+    final peerId = inbound.linkPeerId;
+    final senderPub = inbound.senderPub;
+    final verifiedSenderEdPub = inbound.senderEdPub;
+    final incomingRoute = inbound.route;
+    final sentAt = inbound.sentAt;
+    final stamp = inbound.stamp;
+    final unpacked = (type: type, body: body);
+    try {
       switch (unpacked.type) {
         case InnerPayloadType.text:
-          final plaintext = utf8.decode(
-            unpadTextPayload(unpacked.body),
-            allowMalformed: true,
-          );
-          // Stage-0 walkie-talkie spike (spike/ios-ptt): from a known,
-          // non-blocked contact the marker drives PushToTalk and is never
-          // filed as a message; from anyone else it is ordinary text.
-          if (PlatformInfo.isIOS && plaintext.startsWith(RadioSpike.marker)) {
-            final spikeSender = senderPub != null ? _hexOf(senderPub) : peerId;
-            final spikePeer = _ref.read(knownPeersControllerProvider)[spikeSender];
-            if (spikePeer != null && !spikePeer.isBlocked) {
-              unawaited(RadioSpike.instance.incoming(spikePeer.displayName));
-              return;
-            }
-          }
-          // A map beacon is transport wearing a text message's clothes: it
-          // arrives every 45 seconds while their map is open. Filing it in the
-          // conversation would bury the conversation, and — because history is
-          // what read receipts are owed on — would have this device acking a
-          // beacon every 45 seconds, per friend, forever.
-          //
-          // Recognised by [SharedLocation.isBeaconText] rather than by the flag
-          // alone: the flag is recent, and a friend still on an older build
-          // emits the same heartbeat without it. Matching on the shape of the
-          // thing — a position that expires within minutes of being sent —
-          // catches both, and catches nothing a person chose to send, since the
-          // share sheet's shortest window is fifteen minutes.
-          final arrivedAt = DateTime.now();
-          final beacon = SharedLocation.tryParse(plaintext);
-          if (beacon != null &&
-              SharedLocation.isBeaconText(plaintext, arrivedAt)) {
-            _ref.read(mapPresenceStoreProvider.notifier).record(
-                  senderPub != null ? _hexOf(senderPub) : peerId,
-                  beacon,
-                  sentAt: arrivedAt,
-                );
-            return;
-          }
-          DebugLog.instance
-              .log('NOISE', 'RX text from $peerId (${plaintext.length} chars)');
-          final message = Message(
-            id: 'm${DateTime.now().microsecondsSinceEpoch}',
-            chatId: peerId,
-            text: plaintext,
-            sentAt: stamp,
-            isMine: false,
-            forwardSecret: cipher == _cipherX3dh,
-            wireId: TransportEnvelope.hashHex(env.msgId),
-            route: incomingRoute,
-            routeHops: incomingHops,
-            signedProof: authorProof(),
-          );
-          _appendToAllSessionsForSamePeer(senderPub,
-              fallbackPeerId: peerId, message: message);
-
         case InnerPayloadType.textReply:
-          final reply = unpackTextReply(unpacked.body);
-          final plaintext = utf8.decode(
-            unpadTextPayload(reply.paddedText),
-            allowMalformed: true,
-          );
-          final message = Message(
-            id: 'm${DateTime.now().microsecondsSinceEpoch}',
-            chatId: peerId,
-            text: plaintext,
-            sentAt: stamp,
-            isMine: false,
-            forwardSecret: cipher == _cipherX3dh,
-            wireId: TransportEnvelope.hashHex(env.msgId),
-            replyToWireId: TransportEnvelope.hashHex(reply.targetMsgId),
-            route: incomingRoute,
-            routeHops: incomingHops,
-            signedProof: authorProof(),
-          );
-          _appendToAllSessionsForSamePeer(senderPub,
-              fallbackPeerId: peerId, message: message);
-
         case InnerPayloadType.receipt:
-          // The local privacy switch controls what this device sends. If the
-          // peer chooses to send a receipt, applying it only updates ticks on
-          // our own messages.
-          _ingestReceipt(
-            peerId: peerId,
-            senderPub: senderPub,
-            body: unpacked.body,
-          );
-
         case InnerPayloadType.reaction:
-          _ingestPeerReaction(
-            peerId: peerId,
-            senderPub: senderPub,
-            senderEdPub: verifiedSenderEdPub,
-            body: unpacked.body,
-          );
+        case InnerPayloadType.edit:
+        case InnerPayloadType.delete:
+        case InnerPayloadType.pin:
+        case InnerPayloadType.forwardedFrom:
+        case InnerPayloadType.conversationClear:
+        case InnerPayloadType.copyRestriction:
+        case InnerPayloadType.forwardPrivacy:
+        case InnerPayloadType.typing:
+          // Answered by a feature module; the registry never routes these
+          // here. Listed so this switch stays exhaustive.
+          break;
 
         case InnerPayloadType.channelPoll:
           break;
@@ -8844,65 +8575,10 @@ class MessagingService {
         case InnerPayloadType.channelDelete:
           break;
 
-        case InnerPayloadType.forwardPrivacy:
-          if (unpacked.body.length != 1 || unpacked.body[0] > 1) {
-            DebugLog.instance
-                .log('CHAT', 'drop forward-privacy from $peerId: malformed');
-            return;
-          }
-          // Filed under the person, not the road it came in on.
-          //
-          // `peerId` is the transport — a BLE address, or the literal string
-          // `nostr:relay` — and the roster is keyed by pubkey. Written against
-          // the transport, the setting landed on a peer nobody has, the real
-          // one never changed, and the log said `nostr:relay refuses a link
-          // back from a forward`, which is what gave it away. The same
-          // confusion the forward attribution itself had.
-          if (senderPub == null) {
-            DebugLog.instance.log(
-              'CHAT',
-              'drop forward-privacy from $peerId: no sender to attribute it to',
-            );
-            return;
-          }
-          final saysForwardLink = unpacked.body[0] == 0x01;
-          final privacyOwner = _hexOf(senderPub);
-          await _ref
-              .read(knownPeersControllerProvider.notifier)
-              .setAllowsForwardLink(privacyOwner, saysForwardLink);
-          DebugLog.instance.log(
-            'CHAT',
-            '${privacyOwner.substring(0, 8)} '
-                '${saysForwardLink ? 'allows' : 'refuses'} '
-                'a link back from a forward',
-          );
-
         case InnerPayloadType.channelInvite:
           await _ingestChannelInvite(
             peerId: peerId,
             senderEdPub: verifiedSenderEdPub,
-            body: unpacked.body,
-          );
-
-        case InnerPayloadType.edit:
-          _ingestPeerEdit(
-            peerId: peerId,
-            senderPub: senderPub,
-            body: unpacked.body,
-            signedProof: authorProof(),
-          );
-
-        case InnerPayloadType.delete:
-          _ingestPeerDelete(
-            peerId: peerId,
-            senderPub: senderPub,
-            body: unpacked.body,
-          );
-
-        case InnerPayloadType.pin:
-          _ingestPeerPin(
-            peerId: peerId,
-            senderPub: senderPub,
             body: unpacked.body,
           );
 
@@ -8994,48 +8670,12 @@ class MessagingService {
             body: unpacked.body,
           );
 
-        case InnerPayloadType.forwardedFrom:
-          _ingestForwardedFrom(
-            peerId: peerId,
-            senderPub: senderPub,
-            body: unpacked.body,
-          );
-
-        case InnerPayloadType.conversationClear:
-          await _ingestConversationClear(
-            peerId: peerId,
-            senderPub: senderPub,
-            sentAt: sentAt,
-          );
-
-        case InnerPayloadType.copyRestriction:
-          await _ingestCopyRestriction(
-            peerId: peerId,
-            senderPub: senderPub,
-            body: unpacked.body,
-          );
-
         case InnerPayloadType.conversationWallpaper:
           await _ingestConversationWallpaper(
             peerId: peerId,
             senderPub: senderPub,
             body: unpacked.body,
           );
-
-        case InnerPayloadType.typing:
-          // Still gated, and no longer symmetric with presence: hiding your
-          // last-seen time now costs you other people's times, not their
-          // liveness. Typing is left where it was on purpose — it is the
-          // loudest live signal there is, and quietly switching it back on is
-          // not something to do to somebody who asked for less of this.
-          if (_ref.read(privacySettingsProvider).shareLastSeen) {
-            _ingestTyping(
-              peerId: peerId,
-              senderPub: senderPub,
-              body: unpacked.body,
-              sentAt: sentAt,
-            );
-          }
 
         case InnerPayloadType.channelAvatar:
         case InnerPayloadType.channelDescription:
@@ -10172,55 +9812,6 @@ class MessagingService {
         'CHAT',
         'forwarded-from did not go out (the message is unaffected): $e',
       );
-    }
-  }
-
-  /// The attribution from the other side: stamp it on the message if that has
-  /// arrived, and hold it if it has not.
-  void _ingestForwardedFrom({
-    required String peerId,
-    required Uint8List? senderPub,
-    required Uint8List body,
-  }) {
-    final ForwardedFrom hint;
-    try {
-      hint = ForwardedFrom.decode(body);
-    } catch (e) {
-      DebugLog.instance
-          .log('CHAT', 'drop malformed forwarded-from from $peerId: $e');
-      return;
-    }
-    final wireId = TransportEnvelope.hashHex(hint.targetMsgId);
-
-    // Scoped to this peer's buckets, as the voice levels and the album hint
-    // are: nobody gets to write a header onto a message somebody else sent.
-    final messages = _ref.read(messagesControllerProvider.notifier);
-    final targets = <String>{peerId};
-    if (senderPub != null) {
-      targets.add(_hexOf(senderPub));
-      final sessions = _ref.read(chatSessionManagerProvider);
-      for (final entry in sessions.entries) {
-        final other = entry.value.remoteStaticPublicKey;
-        if (other != null && _pubkeyEquals(other, senderPub)) {
-          targets.add(entry.key);
-        }
-      }
-    }
-    final authorId = hint.authorPub == null ? null : _hexOf(hint.authorPub!);
-    var stamped = false;
-    for (final bucket in targets) {
-      stamped |= messages.applyForwardedFrom(
-        bucket,
-        wireId,
-        hint.name,
-        authorId: authorId,
-      );
-    }
-    if (stamped) return;
-
-    _pendingForwardedFrom[wireId] = _HeldAttribution(hint.name, authorId);
-    while (_pendingForwardedFrom.length > _maxPendingVoiceLevels) {
-      _pendingForwardedFrom.remove(_pendingForwardedFrom.keys.first);
     }
   }
 
@@ -13963,150 +13554,20 @@ class MessagingService {
     return true;
   }
 
-  /// Appends [message] into the canonical pubkey-keyed message bucket, plus
-  /// any legacy peerId-keyed buckets that already exist (so a chat opened
-  /// before the handshake completed still sees the messages). The chats list
-  /// reads from KnownPeersController + the pubkey bucket — the peerId
-  /// fan-out is purely for the open-screen case.
+  /// Files a message from one person — a photo, a voice note, a file — in
+  /// their conversation, with a notification. How a conversation is stored
+  /// and what a banner says are the chat's business: see [IncomingMessages]
+  /// and `features/chat/data/chat_inbound.dart`, where this used to be.
   void _appendToAllSessionsForSamePeer(
     Uint8List? pubkey, {
     required String fallbackPeerId,
     required Message message,
   }) {
-    final messages = _ref.read(messagesControllerProvider.notifier);
-    if (pubkey == null) {
-      messages.append(fallbackPeerId, message);
-      return;
-    }
-    final pubkeyHex = _hexOf(pubkey);
-    // Somebody who writes is NOT a contact again, and used to be.
-    //
-    // The old reasoning was that mail is never worth losing to a preference,
-    // and it was sound while removing a contact deleted the conversation with
-    // them: a message from a removed person had nowhere to land, so the
-    // removal had to be undone first. That is no longer true. Removing a
-    // contact keeps the roster entry and the whole conversation now — see
-    // `removeFromContacts` — so their message arrives, is stored, and shows in
-    // the chat list exactly as it always did. Nothing is lost by leaving them
-    // off the Contacts screen.
-    //
-    // What was lost was the decision. Somebody tidied their list, the other
-    // person wrote a week later, and the row came back with no explanation —
-    // which is the same complaint that started this, seen from the other end.
-    //
-    // The way back is a button on their profile, which is where somebody who
-    // wants them back is already looking.
-    // Canonical key (lives forever, used by chats list). A false return means
-    // this exact wireId is already in the chat — a relay backlog replay or a
-    // second delivery path — so there is nothing to fan out and nothing to
-    // notify about either.
-    // An attribution that beat its own message here. Taken rather than read:
-    // this bubble now holds it, and a re-delivery has nothing left to stamp.
-    final held = message.wireId == null
-        ? null
-        : _pendingForwardedFrom.remove(message.wireId);
-    if (held != null) {
-      message = message.copyWith(
-        forwardedFrom: held.name,
-        forwardedFromId: held.authorId,
-      );
-    }
-    if (!messages.append(pubkeyHex, message)) {
-      // Unless it is the file we asked to have again: same id, same bubble, and
-      // the whole point is the new path underneath it.
-      final path = message.filePath;
-      final wireId = message.wireId;
-      if (path != null && wireId != null) {
-        if (messages.restoreFilePath(pubkeyHex, wireId, path)) {
-          DebugLog.instance
-              .log('FILE', 're-sent file $wireId adopted by its bubble');
-          return;
-        }
-      }
-      DebugLog.instance.log(
-        'NOISE',
-        'skip already-stored message ${message.wireId} in $pubkeyHex',
-      );
-      return;
-    }
-
-    // Stored under the pubkey and nowhere else.
-    //
-    // This used to fan the message out to every open session keyed by BLE
-    // address as well, so a chat opened from Nearby — which navigates by
-    // address — would see it. The guard was sound at the moment of writing:
-    // only sessions whose remote static key matched the sender got a copy.
-    //
-    // What it could not guard is *later*. Android rotates its BLE address,
-    // and the same log that shows this fan-out shows one peer arriving under
-    // three different addresses in as many minutes. The bucket keyed by the
-    // old address keeps the old name and is still on disk when that address
-    // belongs to somebody else — which is how a message from one phone landed
-    // in another phone's conversation, and it is precisely the mistake the
-    // wire notes warn about: a peer id is never a stable key.
-    //
-    // Nothing is lost by stopping. The chat screen already prefers the
-    // canonical bucket and only falls back to the transport id while no
-    // session has resolved a pubkey yet — and a message that decrypted has a
-    // session by definition, so by the time one exists the screen is reading
-    // the pubkey.
-    DebugLog.instance.log('NOISE', 'appended to canonical=$pubkeyHex');
-
-    _notifyIncoming(canonicalId: pubkeyHex, message: message);
-  }
-
-  /// Raise a system notification for an inbound message — but only when the
-  /// app isn't in the foreground (otherwise the user is already looking at
-  /// it). Sender name comes from the KnownPeers roster; the preview is a
-  /// short, content-type-aware snippet.
-  void _notifyIncoming(
-      {required String canonicalId, required Message message}) {
-    if (message.isMine) return;
-    // Suppress only when the user is actively reading THIS chat. A message
-    // from someone else (or while on the chats list / nearby / backgrounded)
-    // still pops a notification.
-    if (AppLifecycle.instance.isViewingChat(canonicalId)) return;
-    final known = _ref.read(knownPeersControllerProvider)[canonicalId];
-    // Muted peer: message is stored, but stays silent.
-    if (known?.isMuted ?? false) return;
-    // And a muted room. A channel has no [KnownPeer] to hang a mute on — the
-    // line above can only ever answer for a person — so rooms keep theirs with
-    // the conversation. See [ConversationSettings.muted].
-    if (_ref
-        .read(conversationSettingsControllerProvider.notifier)
-        .isMuted(canonicalId)) {
-      return;
-    }
-    // The English constant this was is the one word on the banner that is not
-    // the sender's own name, so it was also the only word the app got to
-    // choose — and it chose English, on a phone whose every other line was
-    // Ukrainian. The preview below has been localised since it was written;
-    // the title beside it was not.
-    final name = (known?.displayName.isNotEmpty ?? false)
-        ? known!.displayName
-        : _localizations.notificationUnknownSender;
-    // The same line the chat list shows, in the language the app is set to: a
-    // notification used to announce '📷 Photo' for a sticker and, in English,
-    // to somebody using the app in Ukrainian.
-    final preview = messagePreview(
-      message,
-      _localizations,
-      hideOffensive: shouldFilter(
-        message: message,
-        isChannel: false,
-        // The bubble's and the chat list's stranger rule — see [hasWrittenIn].
-        fromContact: hasWrittenIn(
-          _ref.read(messagesControllerProvider)[canonicalId],
-        ),
-        enabled: _ref.read(filterEnabledProvider),
-      ),
-    );
-    unawaited(NotificationService.instance.showMessage(
-      threadKey: canonicalId,
-      title: name,
-      body: preview,
-      senderId: canonicalId,
-    ));
+    _ref.read(incomingMessagesProvider).file(
+          pubkey,
+          fallbackPeerId: fallbackPeerId,
+          message: message,
+        );
   }
 
   /// Adds (or refreshes) the authenticated peer in the in-memory roster so
@@ -14786,13 +14247,6 @@ class _RecentChannelFrame {
 ///
 /// Held by wireId until the bubble turns up — the two travel as separate
 /// payloads on purpose, so either order is ordinary.
-class _HeldAttribution {
-  const _HeldAttribution(this.name, this.authorId);
-
-  final String name;
-  final String? authorId;
-}
-
 /// One thing this device sent a contact or a channel, as
 /// [MessagingService.sentToPeers] reports it: the payload before sealing and
 /// the id it went out under — a text's transport msgId, so the mirror files it

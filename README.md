@@ -644,17 +644,23 @@ GPU hot even while the app sat idle.
 ```
 lib/
 ├── main.dart · app.dart               # entry, MaterialApp.router, lifecycle
-├── core/
+├── app/              # where core meets the features: bindings.dart (what the
+│                     #   transport needs from them), router and shell,
+│                     #   emergency wipe, key rotation, iOS background refresh
+├── core/             # imports no feature (test/architecture_test.dart), bar
+│   │                 #   what is left in messaging_service.dart
 │   ├── crypto/       # Noise (XX, IK), X3DH, SealedBox, SignedPayload, prekeys,
 │   │                 #   channel crypto, identity
 │   ├── transport/    # messaging service, envelope, frame, dedup, store-forward,
 │   │                 #   chat sessions, inner payloads, peer ids, call signal,
-│   │                 #   radio chunks, nostr/ (signer, frame codec, relay
+│   │                 #   radio chunks, inbound/ (the registry features answer
+│   │                 #   payloads through), nostr/ (signer, frame codec, relay
 │   │                 #   protocol + WebSocket relay pool)
+│   ├── models/       # Message, Channel, KnownPeer, DiscoveredPeer
 │   ├── ble/          # scanner, peripheral bridge, permissions, constants
 │   ├── audio/        # Opus voice codec + Ogg container, radio audio
 │   ├── storage/      # encrypted Hive boxes + AES cipher provider
-│   ├── identity/     # nickname, anon naming, emergency wipe
+│   ├── identity/     # nickname, anon naming, avatar
 │   ├── notifications/· locale/ · routing/ · theme/ · widgets/ · desktop/ · util(s)/
 ├── features/
 │   ├── chats/        # chat list, folders, archive, requests, search

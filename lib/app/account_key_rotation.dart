@@ -4,16 +4,16 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../features/cube_id/data/cube_id_controller.dart';
-import '../../features/devices/data/own_devices_controller.dart';
-import '../crypto/identity_service.dart';
-import '../crypto/prekey_service.dart';
-import '../notifications/push_registration.dart';
-import '../transport/chat_session_manager.dart';
-import '../transport/key_rotation.dart';
-import '../transport/messaging_service.dart';
-import '../transport/nostr/nostr_signer.dart';
-import '../util/debug_log.dart';
+import '../core/crypto/identity_service.dart';
+import '../core/crypto/prekey_service.dart';
+import '../core/notifications/push_registration.dart';
+import '../core/transport/chat_session_manager.dart';
+import '../core/transport/key_rotation.dart';
+import '../core/transport/messaging_service.dart';
+import '../core/transport/nostr/nostr_signer.dart';
+import '../core/util/debug_log.dart';
+import '../features/cube_id/data/cube_id_controller.dart';
+import '../features/devices/data/own_devices_controller.dart';
 
 /// How a rotation went: how many contacts it reached before the old keys
 /// were destroyed, of how many there are.

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/ble/ble_constants.dart';
 import 'package:cubechat/core/ble/ble_peripheral.dart';
 import 'package:cubechat/core/crypto/identity_keys.dart';
@@ -130,6 +131,7 @@ void main() {
   Future<(ProviderContainer, MessagingService)> start() async {
     final container = ProviderContainer(
       overrides: [
+        ...appBindings,
         relaySettingsProvider.overrideWith(_Offline.new),
         messagingServiceProvider.overrideWith((ref) {
           final service = MessagingService(ref);
@@ -230,6 +232,7 @@ void main() {
     final peripheral = _Peripheral();
     final container = ProviderContainer(
       overrides: [
+        ...appBindings,
         relaySettingsProvider.overrideWith(_Offline.new),
         blePeripheralProvider.overrideWithValue(peripheral),
         identityProvider.overrideWith((_) async => receiver),

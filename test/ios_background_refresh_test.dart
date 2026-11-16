@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:cubechat/core/notifications/ios_background_refresh.dart';
+import 'package:cubechat/app/ios_background_refresh.dart';
 import 'package:cubechat/core/transport/messaging_service.dart';
 import 'package:cubechat/core/util/location_service.dart';
 import 'package:cubechat/features/map/data/map_presence_controller.dart';

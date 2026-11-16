@@ -4,10 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../features/map/data/map_presence_controller.dart';
-import '../transport/messaging_service.dart';
-import '../util/debug_log.dart';
-import '../util/location_service.dart';
+import '../core/transport/messaging_service.dart';
+import '../core/util/debug_log.dart';
+import '../core/util/location_service.dart';
+import '../features/map/data/map_presence_controller.dart';
 
 /// iOS-only catch-up window, driven by `BGAppRefreshTask` on the native side.
 ///

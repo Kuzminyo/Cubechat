@@ -1,8 +1,58 @@
 # Разделение MessagingService — дизайн
 
-Дата: 2026-11-16. Статус: **предложение**, решений владельца ещё нет (см.
-«Открытые вопросы»). До утверждения действует правило из CLAUDE.md: работа в
-`MessagingService` аддитивна, подсистемы попутно не выносятся.
+Дата: 2026-11-16. Статус: **начато** — владелец сказал делать одним куском;
+первая часть сделана в тот же день, остальное ниже по этапам. Правило из
+CLAUDE.md «подсистемы попутно не выносятся» остаётся: дальше по одному
+домену за изменение.
+
+## Что сделано 2026-11-16
+
+- **Этап 0.** `test/inbound_dispatch_characterization_test.dart` — 24 теста:
+  подписанный, запечатанный кадр идёт через `debugReceiveFrame`, проверяется
+  состояние контроллеров (1:1 и комната). Стенд — `test/support/inbound_harness.dart`.
+  Прошли на старом коде до первой правки и на новом после.
+  `test/architecture_test.dart` — храповик импортов `features/` из `core/`.
+- **Этапы 1–2.** `core/transport/inbound/inbound.dart`: `InboundContext`
+  (собирается транспортом один раз, после всех проверок), `InboundRegistry`
+  (тип × область → один обработчик; второй владелец — `StateError`),
+  `InboundModule`, `inboundModulesProvider`. Оба `switch` в транспорте стали
+  методами `_onDirectPayload` / `_onRoomPayload`, зарегистрированными на
+  «все типы, кроме модульных» (`_directByModules`, `_roomByModules`) — так
+  новый тип по умолчанию попадает в исчерпывающий `switch`, и забыть его по-
+  прежнему не компилируется. `test/inbound_registry_complete_test.dart`
+  проверяет полноту реестра с настоящими привязками.
+- **Порт** `IncomingMessages` (`core/transport/inbound/incoming_messages.dart`)
+  вместо `MessageSink` из плана: транспорт через него раскладывает фото,
+  голосовые и файлы, а раскладка и уведомление живут в чате.
+- **Этап 3, частично.** `features/chat/data/chat_inbound.dart`: в 1:1 text,
+  textReply, receipt, reaction, edit, delete, pin, forwardedFrom,
+  conversationClear, copyRestriction; в комнате reaction, edit, delete, pin,
+  receipt. `features/peers/data/peers_inbound.dart`: forwardPrivacy, typing.
+- **Этап 4.** `app_router`, `app_shell`, `wipe_service`,
+  `account_key_rotation`, `ios_background_refresh` переехали в `lib/app/`.
+  `Message`, `Channel`, `KnownPeer`, `DiscoveredPeer` — в `core/models/`
+  (на старых путях остались реэкспорты, чтобы не трогать 45 файлов).
+- `lib/app/bindings.dart` + `ProviderContainer(overrides: appBindings)` в
+  `main.dart`: тот же контейнер, что у фонового обновления iOS.
+
+Цифры: `messaging_service.dart` 14 831 → 14 285 строк; `_ref.read` 289 →
+270; импортов `features/` в нём 44 → 40; файлов `core/`, импортирующих
+фичи, 7 → 1. Провод не менялся.
+
+Решения по открытым вопросам, принятые при работе: composition root —
+папка `lib/app/`; дубли 1:1 и комнаты **не** сливались (у удаления в 1:1
+есть анимация прощания, в комнате нет — это отличие поведения, а не код);
+порядок этапа 3 — как ниже, но начат с чата, потому что у него был готовый
+шов (`_appendToAllSessionsForSamePeer`).
+
+## Что осталось
+
+- Этап 3 дальше: посты, опросы, администрирование, история и состояние
+  комнаты; медиа; presence, аватары; звонки, AirDrop, свои устройства и смена
+  ключей (последние уже отдаются потоками — их перенос почти механический).
+- Порты `PeerDirectory`, `ChannelDirectory`, `FileTransfers` для того, что
+  транспорт читает сам на отправке. Храповик опустится до 0 только после них.
+- Проверка на телефонах по чек-листу ниже — **не делалась**.
 
 ## Зачем
 
@@ -14,7 +64,7 @@
   `messagesController` (47), `knownPeers` (37), `channelController` (26),
   `channelRoster` (23), `chatSessionManager` (22), `identity` (20),
   `fileTransfer` (15) и `conversationSettings` (12).
-- **50+ импортов из `features/`** в одном файле транспорта. Всего в `core/` их
+- **44 импорта из `features/`** в одном файле транспорта. Всего в `core/` их
   делают семь файлов: `messaging_service`, `ble_scanner`, `wipe_service`,
   `account_key_rotation`, `ios_background_refresh`, `app_router`, `app_shell`.
   Поэтому «ядро» нельзя ни собрать, ни протестировать без всех фич.

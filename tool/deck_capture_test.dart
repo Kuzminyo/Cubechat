@@ -16,7 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cubechat/core/routing/app_router.dart';
+import 'package:cubechat/app/app_router.dart';
 import 'package:cubechat/core/theme/app_theme.dart';
 import 'package:cubechat/core/util/ui_activity.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';

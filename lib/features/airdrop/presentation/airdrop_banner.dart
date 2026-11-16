@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/routing/app_shell.dart';
+import '../../../app/app_shell.dart';
 import '../data/airdrop_controller.dart';
 import 'airdrop_cards.dart';
 import 'airdrop_navigation.dart';

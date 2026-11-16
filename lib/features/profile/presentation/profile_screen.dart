@@ -13,7 +13,7 @@ import '../../../core/ble/background_mode_controller.dart';
 import '../../../core/crypto/identity_service.dart';
 import '../../../core/identity/avatar_controller.dart';
 import '../../../core/identity/nickname_controller.dart';
-import '../../../core/identity/wipe_service.dart';
+import '../../../app/wipe_service.dart';
 import '../../../core/locale/locale_controller.dart';
 import '../../../core/notifications/push_registration.dart';
 import '../../../core/transport/messaging_service.dart';
@@ -24,7 +24,7 @@ import '../../../core/util/haptics.dart';
 import 'package:saver_gallery/saver_gallery.dart';
 
 import '../../../core/desktop/desktop_autostart.dart';
-import '../../../core/identity/account_key_rotation.dart';
+import '../../../app/account_key_rotation.dart';
 import '../../../core/desktop/desktop_presence.dart';
 import '../../../core/widgets/action_strip.dart';
 import '../../../core/widgets/confirm_dialog.dart';

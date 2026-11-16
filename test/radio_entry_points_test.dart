@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:cubechat/core/routing/app_router.dart';
+import 'package:cubechat/app/app_router.dart';
 import 'package:cubechat/core/theme/app_theme.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
 import 'package:cubechat/features/chat/models/message.dart';

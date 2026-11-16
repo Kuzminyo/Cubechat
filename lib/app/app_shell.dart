@@ -5,18 +5,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../features/chats/data/chat_selection_controller.dart';
-import '../../features/chats/presentation/chats_list_screen.dart';
-import '../../features/desktop/desktop_split_view.dart' show DesktopChrome;
-import '../../features/profile/data/nav_bar_controller.dart';
-import '../../l10n/app_localizations.dart';
-import '../util/frame_stats.dart';
-import '../util/haptics.dart';
-import '../util/platform_info.dart';
-import '../theme/colors.dart';
-import '../widgets/aurora_background.dart';
-import '../widgets/bar_glass.dart';
-import '../widgets/unread_badge.dart';
+import '../core/theme/colors.dart';
+import '../core/util/frame_stats.dart';
+import '../core/util/haptics.dart';
+import '../core/util/platform_info.dart';
+import '../core/widgets/aurora_background.dart';
+import '../core/widgets/bar_glass.dart';
+import '../core/widgets/unread_badge.dart';
+import '../features/chats/data/chat_selection_controller.dart';
+import '../features/chats/presentation/chats_list_screen.dart';
+import '../features/desktop/desktop_split_view.dart' show DesktopChrome;
+import '../features/profile/data/nav_bar_controller.dart';
+import '../l10n/app_localizations.dart';
 
 /// Everything the bar needs to draw one destination.
 ///

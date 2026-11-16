@@ -2,39 +2,42 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+/// The body of [method] in [source]: from its signature to the first line
+/// that closes a class member.
+String _body(String source, String method) {
+  final start = source.indexOf(method);
+  expect(start, isNonNegative, reason: '$method was renamed or moved');
+  final end = source.indexOf('\n  }\n', start);
+  expect(end, isNonNegative);
+  return source.substring(start, end);
+}
+
 void main() {
   group('read receipt privacy gate', () {
     late final String source;
 
     setUpAll(() {
+      // Inbound receipts are the chat module's since the transport's switches
+      // became a registry (docs/superpowers/specs/
+      // 2026-11-16-messaging-service-split-design.md).
       source =
-          File('lib/core/transport/messaging_service.dart').readAsStringSync();
+          File('lib/features/chat/data/chat_inbound.dart').readAsStringSync();
     });
 
     test('still ingests peer receipts when our read receipts are off', () {
-      final call =
-          RegExp(r'_ingestReceipt\(\s*peerId: peerId,').firstMatch(source);
-      expect(call, isNotNull);
-
-      final previousCase =
-          source.lastIndexOf('case InnerPayloadType.receipt:', call!.start);
-      expect(previousCase, isNonNegative);
-
-      final receiptBranch = source.substring(previousCase, call.start);
-      expect(receiptBranch, isNot(contains('shareReadReceipts')));
+      // Our switch decides what this phone *sends*. A receipt somebody else
+      // chose to send only moves ticks on our own messages.
+      expect(
+        _body(source, 'void _receipt('),
+        isNot(contains('shareReadReceipts')),
+      );
     });
 
     test('still ingests channel receipts when our read receipts are off', () {
-      final call = RegExp(r'_ingestChannelReceipt\(\s*channel: channel,')
-          .firstMatch(source);
-      expect(call, isNotNull);
-
-      final previousCase =
-          source.lastIndexOf('case InnerPayloadType.receipt:', call!.start);
-      expect(previousCase, isNonNegative);
-
-      final receiptBranch = source.substring(previousCase, call.start);
-      expect(receiptBranch, isNot(contains('shareReadReceipts')));
+      expect(
+        _body(source, 'void _roomReceipt('),
+        isNot(contains('shareReadReceipts')),
+      );
     });
   });
 

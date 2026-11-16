@@ -92,10 +92,12 @@ void main() {
     });
 
     test('the log line names the one worth chasing', () {
-      final service =
-          File('lib/core/transport/messaging_service.dart').readAsStringSync();
-      expect(service, contains('UNKNOWN'));
-      expect(service, contains('already read'));
+      // Written where receipts are ingested — the chat module, since the
+      // transport's switches became a registry.
+      final ingest =
+          File('lib/features/chat/data/chat_inbound.dart').readAsStringSync();
+      expect(ingest, contains('UNKNOWN'));
+      expect(ingest, contains('already read'));
     });
   });
 

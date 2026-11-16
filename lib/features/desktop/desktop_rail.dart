@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/routing/app_shell.dart' show tabSpecFor;
+import '../../app/app_shell.dart' show tabSpecFor;
 import '../../core/theme/colors.dart';
 import '../../l10n/app_localizations.dart';
 import '../chats/presentation/chats_list_screen.dart' show visibleChatsProvider;

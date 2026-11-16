@@ -1,4 +1,4 @@
-import 'package:cubechat/core/routing/app_shell.dart';
+import 'package:cubechat/app/app_shell.dart';
 import 'package:cubechat/core/widgets/floating_glass.dart';
 import 'package:cubechat/features/airdrop/data/airdrop_controller.dart';
 import 'package:cubechat/features/airdrop/domain/airdrop_transfer.dart';

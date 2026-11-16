@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/ble/ble_constants.dart';
 import 'package:cubechat/core/ble/ble_peripheral.dart';
 import 'package:cubechat/core/crypto/identity_keys.dart';
@@ -76,6 +77,7 @@ void main() {
     final senderId = _hex(sender.publicKey);
     final peripheral = _Peripheral();
     final container = ProviderContainer(overrides: [
+      ...appBindings,
       blePeripheralProvider.overrideWithValue(peripheral),
       identityProvider.overrideWith((_) async => receiver),
       relaySettingsProvider.overrideWith(_Offline.new),

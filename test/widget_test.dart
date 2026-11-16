@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:cubechat/app.dart';
-import 'package:cubechat/core/routing/app_shell.dart';
+import 'package:cubechat/app/app_shell.dart';
 import 'package:cubechat/core/widgets/bar_glass.dart';
 import 'package:cubechat/features/profile/presentation/profile_screen.dart';
 import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';

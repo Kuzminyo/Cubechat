@@ -9,8 +9,11 @@ lives in its own repository, Kuzminyo/landing_cubechat — it is not in this tre
 
 `lib/core/` holds transport, crypto, ble, storage, theme and shared widgets.
 `lib/features/<name>/{data,models,domain,presentation}` holds the rest — `data/`
-is Riverpod `Notifier` controllers. `README.md` documents the protocol and the
-threat model in full.
+is Riverpod `Notifier` controllers. `lib/app/` wires the two together:
+`bindings.dart` binds what core declares and features provide, plus the router,
+the wipe and key rotation. Core never imports `lib/app/`, and imports features
+only where `test/architecture_test.dart` still allows it. `README.md` documents
+the protocol and the threat model in full.
 
 Beyond the app:
 
@@ -83,7 +86,13 @@ ships and breaks phones that already have the app installed.
   one when you revert something, too.
 - Measure before optimising. The wins here were GPS and uncapped image decodes,
   not blurs and not signing.
-- `MessagingService` is ~15k lines and reaches every controller through
-  `_ref.read`. Work there is additive; do not extract a subsystem in passing.
+- `MessagingService` is ~14k lines and still reaches most controllers through
+  `_ref.read`. Inbound payloads are dispatched through the registry in
+  `core/transport/inbound/`: a new payload type's handler goes in its feature's
+  `*_inbound.dart` (see `features/chat/data/chat_inbound.dart`), is bound in
+  `lib/app/bindings.dart`, and is listed in `_directByModules` /
+  `_roomByModules` so the transport stops claiming it. Moving more out follows
+  `docs/superpowers/specs/2026-11-16-messaging-service-split-design.md`, one
+  domain per change; do not extract a subsystem in passing.
 - Analyzer runs strict: `strict-casts`, `strict-inference`, `strict-raw-types`,
   `prefer_final_locals`, `require_trailing_commas`.

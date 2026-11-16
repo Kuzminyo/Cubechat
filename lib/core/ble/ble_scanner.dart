@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
-import '../../features/peers/models/discovered_peer.dart';
+import '../models/discovered_peer.dart';
 import '../identity/nickname_controller.dart';
 import '../util/debug_log.dart';
 import '../util/platform_info.dart';

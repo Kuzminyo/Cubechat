@@ -10,8 +10,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'app.dart';
+import 'app/bindings.dart';
 import 'core/desktop/desktop_autostart.dart';
-import 'core/notifications/ios_background_refresh.dart';
+import 'app/ios_background_refresh.dart';
 import 'core/notifications/notification_service.dart';
 import 'core/storage/hive_init.dart';
 import 'core/util/app_build.dart';
@@ -294,7 +295,11 @@ Future<void> main(List<String> args) async {
     limit: const Duration(seconds: 2),
   );
 
-  final container = ProviderContainer();
+  // With the app's bindings: the transport reaches the features that answer
+  // what arrives only through these (see lib/app/bindings.dart), and this is
+  // also the container a background refresh runs in, where a missing one
+  // would lose a message with nobody watching.
+  final container = ProviderContainer(overrides: appBindings);
   IosBackgroundRefresh.instance.install(container);
 
   // Whether a round message stops the phone's music, read before anything can

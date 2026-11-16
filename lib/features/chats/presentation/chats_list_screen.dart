@@ -9,13 +9,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/identity/anon_name.dart';
-import '../../../core/routing/app_router.dart';
+import '../../../app/app_router.dart';
 import '../../../core/routing/shell_coverage.dart';
 import '../../../core/util/ui_activity.dart';
 import '../../../core/routing/branch_pager.dart';
 import '../../../core/util/debug_log.dart';
 import '../../channels/presentation/new_channel_screen.dart';
-import '../../../core/identity/wipe_service.dart';
+import '../../../app/wipe_service.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/widgets/confirm_dialog.dart';
 import '../../../core/util/frame_stats.dart';

@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/identity/nickname_controller.dart';
-import '../../../core/identity/wipe_service.dart';
+import '../../../app/wipe_service.dart';
 import '../../channels/data/channel_controller.dart';
 import '../../channels/data/channel_roster_controller.dart';
 import '../../channels/models/channel.dart';
