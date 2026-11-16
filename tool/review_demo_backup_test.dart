@@ -22,6 +22,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/identity/nickname_controller.dart';
 import 'package:cubechat/core/storage/hive_cipher.dart';
 import 'package:cubechat/features/backup/data/backup_service.dart';
@@ -76,7 +77,7 @@ void main() {
     phone = await Directory.systemTemp.createTemp('cubechat_review_demo_');
     PathProviderPlatform.instance = _Paths(phone.path);
     Hive.init(phone.path);
-    container = ProviderContainer();
+    container = ProviderContainer(overrides: appBindings);
   });
 
   tearDown(() async {

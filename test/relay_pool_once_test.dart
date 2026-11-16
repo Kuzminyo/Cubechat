@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/transport/messaging_service.dart';
 import 'package:cubechat/core/util/debug_log.dart';
 import 'package:cubechat/features/profile/data/relay_settings_controller.dart';
@@ -68,6 +69,7 @@ void main() {
       () async {
     final container = ProviderContainer(
       overrides: [
+        ...appBindings,
         relaySettingsProvider.overrideWith(_StoredOff.new),
         messagingServiceProvider.overrideWith((ref) {
           final service = MessagingService(ref);

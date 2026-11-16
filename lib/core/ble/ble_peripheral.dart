@@ -1,7 +1,14 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'ble_constants.dart';
+
+/// The platform peripheral. Overridden in tests with a fake; read by the
+/// peers feature's controller and by the transport, which writes to centrals
+/// through it.
+final blePeripheralProvider =
+    Provider<BlePeripheral>((_) => MethodChannelBlePeripheral());
 
 /// Peripheral-role contract for the Cubechat mesh.
 ///

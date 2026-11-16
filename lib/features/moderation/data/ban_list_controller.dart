@@ -8,6 +8,7 @@ import 'package:hive/hive.dart';
 
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../../core/transport/ports/moderation.dart';
 import '../../../core/util/debug_log.dart';
 
 /// Public half of the server's Ed25519 signing key. Never trust a downloaded
@@ -142,7 +143,7 @@ Future<Map<String, dynamic>?> _fetchBanList(Uri endpoint) async {
   }
 }
 
-class BanListController extends Notifier<BanList> {
+class BanListController extends Notifier<BanList> implements BanCheck {
   BanListController({
     BanListFetcher? fetcher,
     String publicKeyHex = banListPublicKeyHex,
@@ -166,6 +167,22 @@ class BanListController extends Notifier<BanList> {
 
   @override
   BanList build() => const BanList();
+
+  // The transport's questions, answered by the list as it stands now.
+  @override
+  bool isBannedPeer(
+    String identityHex,
+    List<int>? nostrPubkey, {
+    List<int>? signPublicKey,
+  }) =>
+      state.isBannedPeer(identityHex, nostrPubkey, signPublicKey: signPublicKey);
+
+  @override
+  bool isBannedSigner(List<int> signPublicKey) =>
+      state.isBannedSigner(signPublicKey);
+
+  @override
+  bool isBannedFingerprint(String hex) => state.isBannedFingerprint(hex);
 
   Future<void> _load() async {
     try {

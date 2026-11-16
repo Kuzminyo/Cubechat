@@ -1,0 +1,61 @@
+import '../models/stranger_reach.dart';
+import 'inner_payload.dart';
+
+// Moved from `features/chats/domain/stranger_gate.dart`, which re-exports it:
+// the transport runs this gate on every internet arrival.
+
+/// What to do with a message from somebody who is not a contact.
+///
+/// Only internet arrivals are gated: a phone cannot tell a stranger who found
+/// our @name from one who got our QR card — both arrive over Nostr from an
+/// unknown key — while a Bluetooth neighbour is, by definition, standing
+/// here. A "contact" is someone we have written to, or whose request we
+/// accepted. A request already waiting stays a request whatever the setting
+/// says now, so switching to "nobody" never silently deletes it.
+enum StrangerVerdict { deliver, request, drop }
+
+///
+/// [historyKnown] false means the message store failed to load: "never wrote
+/// to them" is then unknowable, and a real contact must not be thrown away on
+/// a guess — the worst it gets is a request.
+StrangerVerdict strangerVerdict({
+  required StrangerReach reach,
+  required bool viaInternet,
+  required bool wroteToThem,
+  required bool accepted,
+  required bool alreadyPending,
+  bool historyKnown = true,
+  bool fromSelf = false,
+}) {
+  // Our own key, from another device signed in with this account: the
+  // computer telling the phone it has the call. Nobody's contact, and never a
+  // stranger.
+  if (fromSelf) return StrangerVerdict.deliver;
+  if (!viaInternet || wroteToThem || accepted) return StrangerVerdict.deliver;
+  if (alreadyPending) return StrangerVerdict.request;
+  return switch (reach) {
+    StrangerReach.all => StrangerVerdict.deliver,
+    StrangerReach.request => StrangerVerdict.request,
+    StrangerReach.none =>
+      historyKnown ? StrangerVerdict.drop : StrangerVerdict.request,
+  };
+}
+
+/// Whether a frame of [type] from a stranger opens a request.
+///
+/// Only what a person sends: a message, media, a call, a channel invite.
+/// Receipts, typing, presence and reactions must not — a stranger's read
+/// receipt is not a conversation. A type added later answers false until
+/// somebody decides otherwise here; that is the safe side.
+bool opensRequest(InnerPayloadType type) => switch (type) {
+      InnerPayloadType.text ||
+      InnerPayloadType.textReply ||
+      InnerPayloadType.mediaManifest ||
+      InnerPayloadType.imageChunk ||
+      InnerPayloadType.audioChunk ||
+      InnerPayloadType.fileChunk ||
+      InnerPayloadType.callSignal ||
+      InnerPayloadType.channelInvite =>
+        true,
+      _ => false,
+    };

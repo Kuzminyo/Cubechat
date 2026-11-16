@@ -102,18 +102,42 @@ CLAUDE.md «подсистемы попутно не выносятся» ост
 
 Цифры: 14 113 строк, `_ref.read` 258, импортов фич 27.
 
+## Четвёртый заход: хвост, 27 → 0
+
+`core/` больше не импортирует ни одной фичи; храповик в
+`test/architecture_test.dart` пуст и стал запретом.
+
+- **В ядро как есть** (с реэкспортом со старых мест): `call_rules`,
+  `peer_activity`, `sending_activity`, `media_send_progress`, `held_media`,
+  `stranger_gate` и `StrangerReach`, `blePeripheralProvider` (к
+  `BlePeripheral`), `RelaySettings` вместе с `relayStatusProvider` и
+  `slowNetworkProvider` (их публикует транспорт), `PeerPresence`, и
+  `core/models/chat_history.dart` — `savedChatId`/`isSavedChat`,
+  `hasWrittenIn`, `QueuedMessage`/`queuedMessages`.
+- **Порты**, тот же приём — контроллер сам `implements`:
+  `room_extras.dart` (аватары и описания комнат, закрепы, отметки прочтения
+  и подтверждений), `peer_extras.dart` (удалённые контакты, аватары,
+  presence, связи периферии, кто рядом), `moderation.dart` (бан-лист,
+  скрытые авторы, заявки незнакомцев), `privacy_prefs.dart`,
+  `transport_settings.dart` (медиа ждёт Wi-Fi, загрузка настроек,
+  `Discoverability`).
+- `Discoverability` — единственный порт, который отвечает не одна фича, а
+  три (профиль, AirDrop, страница AirDrop на экране): реализация в
+  `lib/app/discoverability.dart`.
+- Ещё 14 тестовых файлов получили `appBindings` — теперь транспорт в
+  конструкторе сразу читает настройки реле.
+
+Цифры: 14 090 строк, `_ref.read` 258, импортов фич в `core/` — 0.
+
 ## Что осталось
 
-- Хвост из 27 импортов, по одному-трём обращениям каждый: настройки
-  (privacy, relay, discovery, mediaDownload), модерация (banList,
-  hiddenAuthors, profanity), presence/typing/peerActivity/sendingActivity,
-  peerAvatars, peripheral и peerDiscovery, readMarkers, pinned,
-  messageRequests и strangerGate, heldMedia, mediaSendProgress, sendQueue,
-  airdrop (receive, navigation), callRules, channelAvatars и
-  channelDescriptions, removedContacts. Большинство — тот же приём: порт или
-  модель в ядро. Храповик дойдёт до 0 после них.
 - Администрирование, история и состояние комнаты — входящие всё ещё у
-  транспорта (завязаны на «придержать до roster»).
+  транспорта (завязаны на «придержать до roster»); теперь через порты, но
+  в самом файле транспорта.
+- Сам `messaging_service.dart` по-прежнему ~14k строк: зависимости
+  разорваны, а размер почти не изменился — отправка, исходящая очередь,
+  медиа и presence живут в нём. Следующий шаг, если он нужен, — дробить уже
+  транспорт изнутри, отдельной спекой.
 - Аватары, voiceLevels, albumHint, viewOnceConsumed, обои 1:1 — у первых
   трёх отложенное состояние делится с финализацией медиа.
 - Проверка на телефонах по чек-листу ниже — **не делалась**.

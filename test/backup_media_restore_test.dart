@@ -12,6 +12,7 @@
 // round-trip did, and that half was fine.
 import 'dart:io';
 
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/storage/hive_cipher.dart';
 import 'package:cubechat/core/util/media_storage.dart';
 import 'package:cubechat/features/backup/data/backup_service.dart';
@@ -45,7 +46,7 @@ void main() {
     phone = await Directory.systemTemp.createTemp('cubechat_media_backup_');
     PathProviderPlatform.instance = _FakePathProvider(phone.path);
     Hive.init(phone.path);
-    container = ProviderContainer();
+    container = ProviderContainer(overrides: appBindings);
   });
 
   tearDown(() async {

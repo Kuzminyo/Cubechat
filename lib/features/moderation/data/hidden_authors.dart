@@ -5,11 +5,15 @@ import 'package:hive/hive.dart';
 
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../../core/transport/ports/moderation.dart';
 
 /// Channel authors are identified by the short signing fingerprint on posts.
 /// Hiding is local and survives restarts; it does not change the shared room.
-class HiddenAuthors extends Notifier<Set<String>> {
+class HiddenAuthors extends Notifier<Set<String>> implements HiddenAuthorCheck {
   static const storageKey = 'moderation.hiddenAuthors';
+
+  @override
+  bool isHidden(String authorId) => state.contains(authorId);
   Box<dynamic>? _box;
   Future<void>? _loading;
   bool _touched = false;

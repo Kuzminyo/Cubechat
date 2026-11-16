@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/crypto/identity_service.dart';
 import 'package:cubechat/app/account_key_rotation.dart';
 import 'package:cubechat/core/notifications/push_registration.dart';
@@ -80,6 +81,7 @@ void main() {
     final sent = <Uint8List>[];
     final container = ProviderContainer(
       overrides: [
+        ...appBindings,
         relaySettingsProvider.overrideWith(_Offline.new),
         pushEnabledProvider.overrideWith(_NoPush.new),
         messagingServiceProvider.overrideWith((ref) {

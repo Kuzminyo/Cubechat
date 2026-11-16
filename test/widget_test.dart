@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:cubechat/app.dart';
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/app/app_shell.dart';
 import 'package:cubechat/core/widgets/bar_glass.dart';
 import 'package:cubechat/features/profile/presentation/profile_screen.dart';
@@ -37,7 +38,7 @@ void main() {
       (WidgetTester tester) async {
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [acceptedTermsOverride],
+        overrides: [...appBindings, acceptedTermsOverride],
         child: const CubechatApp(),
       ),
     );
@@ -55,7 +56,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [acceptedTermsOverride],
+        overrides: [...appBindings, acceptedTermsOverride],
         child: const CubechatApp(),
       ),
     );
@@ -82,6 +83,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...appBindings,
           acceptedTermsOverride,
           mapTileProviderProvider.overrideWithValue(
             NetworkTileProvider(
@@ -129,7 +131,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [acceptedTermsOverride],
+        overrides: [...appBindings, acceptedTermsOverride],
         child: const CubechatApp(),
       ),
     );

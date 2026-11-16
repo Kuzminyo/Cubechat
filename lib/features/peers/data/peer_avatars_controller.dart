@@ -8,6 +8,7 @@ import 'package:hive/hive.dart';
 
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../../core/transport/ports/peer_extras.dart';
 import '../../../core/transport/inner_payload.dart';
 
 /// Avatar thumbnails other people have sent us, keyed by pubkey hex.
@@ -16,7 +17,8 @@ import '../../../core/transport/inner_payload.dart';
 /// bytes are only ever written after [store] has checked them against the
 /// digest from the peer's *signed* announcement, so what is cached here is
 /// always the picture that peer committed to, not merely the one that arrived.
-class PeerAvatarsController extends Notifier<Map<String, Uint8List>> {
+class PeerAvatarsController extends Notifier<Map<String, Uint8List>>
+    implements PeerAvatarStore {
   Box<dynamic>? _box;
   Future<void>? _loading;
 

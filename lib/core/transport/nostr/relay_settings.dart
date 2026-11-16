@@ -1,0 +1,250 @@
+import 'package:flutter/foundation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'websocket_relay_client.dart';
+
+// The relay configuration the transport applies, and the two pieces of relay
+// state it publishes for the UI. Moved from
+// `features/profile/data/relay_settings_controller.dart`, which keeps the
+// controller that stores [RelaySettings] and re-exports all of this.
+
+/// User configuration for the Nostr internet fallback (M6).
+@immutable
+class RelaySettings {
+  const RelaySettings({required this.enabled, required this.urls});
+
+  /// Off by default. cubechat's whole promise is that it needs no servers, so
+  /// touching one is a decision the user makes explicitly: a relay learns your
+  /// Nostr pubkey, your recipient's, and when you talk (never the plaintext).
+  final bool enabled;
+
+  /// Relay endpoints (`wss://…`). Frames are published to all of them; the
+  /// recipient only has to be listening on one.
+  final List<String> urls;
+
+  /// Dropped `wss://relay.damus.io`. Two device logs had it answering
+  /// `rate-limited: you are noting too much` to very nearly every publish, and
+  /// dropping its socket with "not upgraded to websocket" between times. It was
+  /// costing a third of every fan-out — a presence beacon goes to each relay per
+  /// contact — to store nothing at all. A relay that refuses is worse than one
+  /// fewer relay: the recipient only has to be listening on one.
+  /// Added `wss://nostr.mom` on 2026-09-06, because two was one too few.
+  ///
+  /// Both incumbents spent a day failing in turn — `nos.lol` refusing the
+  /// upgrade to a websocket five times in a row with the backoff climbing to
+  /// 32 s, `relay.primal.net` answering 502 — and a phone log from that day
+  /// counted 112 publishes of which **none** were confirmed by both relays and
+  /// 42 went to one. Delivery rested on a single road most of the time, and a
+  /// recipient only has to be listening on one: a third is the whole fix.
+  ///
+  /// Chosen by probe rather than by reputation. Seven candidates were asked for
+  /// their NIP-11 document and given a REQ for kind 1059, six rounds twenty
+  /// seconds apart. What that could settle, it settled — `relay.nostr.band` and
+  /// `relay.nostr.bg` were unreachable, and the rest declared no payment, no
+  /// AUTH and no restricted writes. What it could **not** settle is the thing
+  /// actually being fixed: all seven answered 6/6 from a desktop on a good
+  /// line, including the two that had been dropping sockets on the phone all
+  /// day. So the flapping is not the relays being down for everyone, and no
+  /// probe from here would have found it.
+  ///
+  /// The choice among the survivors is therefore latency (186 ms median, joint
+  /// fastest with `nostr.oxtr.dev`) and independence: a third relay run by the
+  /// same people as one of the first two would buy nothing on the day one
+  /// operator has trouble.
+  ///
+  /// `relay.damus.io` stays out. See above — it was dropped for rate-limiting
+  /// real messages out of a fan-out, and being short of relays is not a reason
+  /// to take back one that refuses.
+  static const defaultUrls = <String>[
+    'wss://nos.lol',
+    'wss://relay.primal.net',
+    'wss://nostr.mom',
+  ];
+
+  /// The relays the push service watches for the doorbell: the default of
+  /// `RELAYS` in `push/src/index.js` (and `push/.env.example`).
+  ///
+  /// **The two lists must agree.** A sleeping phone is woken only by events on
+  /// a relay this list names — `nostr_transport.dart` says so above
+  /// `wakesPeer`: the doorbell works because conversation traffic goes to
+  /// relays on that list. Every other conversation relay carries the text
+  /// and nobody is told. A slow link keeps a single public relay beside ours
+  /// ([WebSocketNostrRelayClient] `_chooseSlowKeep`), and picked by speed
+  /// alone it could be `nostr.mom`: delivered ticks with no notification, and
+  /// a call from a phone on EDGE that did not ring a sleeping iPhone (final
+  /// review of the weak-network branch, 2026-10-20). Change the server's
+  /// list, change this one.
+  static const pushWatchedUrls = <String>[
+    'wss://nos.lol',
+    'wss://relay.primal.net',
+  ];
+
+  /// Where media chunks go, so a burst does not throttle a conversation.
+  ///
+  /// A transfer is one publish per 63 KiB chunk — a photo is a handful of
+  /// events, a video dozens inside a few seconds — and public relays
+  /// rate-limit per connection, answering a burst by throttling everything
+  /// else in it. Keeping the chunks on their own sockets is what stops a
+  /// picture from delaying the sentence sent after it.
+  ///
+  /// Probed on 2026-09-08 rather than chosen by reputation, the same way the
+  /// list above was. Both answer NIP-11, neither asks for payment or AUTH, and
+  /// both are run by operators independent of the three above.
+  /// `relay.snort.social` declares `max_message_length` 524288 — the most
+  /// generous of everything probed — and 300 subscriptions; `nostr.oxtr.dev`
+  /// declares 131072. Those two numbers are load-bearing: they are half of why
+  /// a chunk could be doubled to 63 KiB, and re-probing them is the first
+  /// thing to do if this list ever changes. See [kRelayMediaChunkData].
+  /// `nostr.oxtr.dev` was joint-fastest in the original probe
+  /// and was passed over then only for operator independence, which is exactly
+  /// what makes it right here.
+  /// **Ours first, and the borrowed pair kept behind it.**
+  ///
+  /// `relay.cubechat.tech` is strfry on the droplet that already runs the push
+  /// doorbell — see `relay/README.md`. It exists because the limits on this
+  /// lane are the ones that bite: a photo is tens of events, a circle a few
+  /// dozen, a file hundreds, and a public relay answers that burst by
+  /// throttling everything in the connection. A field log from 2026-09-09 has
+  /// `nostr.oxtr.dev rejected publish: rate limited` three times inside one
+  /// second. On ours the limits are ours to set, and the retention outlives a
+  /// transfer instead of pruning underneath it.
+  ///
+  /// Not *instead of* the pair. One relay is one machine, and a transfer with
+  /// a single road stops when that machine reboots — which it will, because
+  /// somebody has to apply security updates to it.
+  ///
+  /// The honest cost, stated once: everything here is a gift-wrapped frame, so
+  /// what any relay sees is a ciphertext, a recipient tag and a time. Moving
+  /// the lane to our own machine means we see that instead of a stranger, not
+  /// as well as — one fewer observer, and the one that is left is us.
+  /// The one relay every build with lanes listens on, whatever its settings.
+  ///
+  /// Conversation traffic goes to the conversation relays — which are the
+  /// user's to edit — and to this. Without it, two people who had each edited
+  /// their list to relays the other does not use would stop hearing each
+  /// other: until conversation had a lane of its own everything was written to
+  /// every relay, media and map included, and those lists are fixed, so that
+  /// overlap was carrying them by accident. This keeps it on purpose, at one
+  /// write instead of five. It is ours, first in [defaultMediaUrls], so the
+  /// limits it applies are ours to set.
+  static const meetingPointUrl = 'wss://relay.cubechat.tech';
+
+  static const defaultMediaUrls = <String>[
+    // Separate database and socket: pausing this subscription must never pause
+    // text messages on the meeting-point relay at the host root.
+    'wss://relay.cubechat.tech/media',
+    'wss://relay.snort.social',
+    'wss://nostr.oxtr.dev',
+  ];
+
+  /// Where map beacons go.
+  ///
+  /// Not a burst but a drumbeat: a beacon per map friend, for as long as
+  /// sharing is on. A 72-minute field log had **191 of 274 publishes** be map
+  /// beacons — 70% of everything the radio did, to carry 55 kB — so this is
+  /// the lane that most needs to be somewhere else.
+  ///
+  /// Kept apart from [defaultMediaUrls] as well as from conversation: mixing a
+  /// relentless small signal with a rare huge one puts the throttle problem
+  /// back, just between two things nobody is reading.
+  static const defaultLocationUrls = <String>[
+    // offchain.pub rejected our keys by web-of-trust policy in both field
+    // logs (2026-09-09). Use a separate connection to our own relay; NIP-42
+    // authenticates the recipient before either socket can read kind 1059.
+    'wss://relay.cubechat.tech/geo',
+    // relay.nostr.net replaced on 2026-09-14. Both phone logs had it refusing
+    // the upgrade on every attempt ("not upgraded to websocket", backoff
+    // 2 -> 4 -> 8 -> 16 s), which is the state dot blinking amber and red in
+    // the relay screen; from here Cloudflare answered 500 and 525 six times
+    // out of six — its origin is down, not the phones' network. The lane had
+    // one road the whole time.
+    //
+    // Picked by `push/tool/probe_geo_relays.mjs`, which does what this lane
+    // does: publishes a kind-1059 event from a throwaway key and reads it back
+    // by `#p` with no AUTH. Six rounds each: nostr.sathoarder.com 6/6 at a
+    // 280 ms median, nostr.21crypto.ch 6/6 at 345 ms, nostr.data.haus 6/6 at
+    // 687 ms; einundzwanzig wants NIP-05, lopp.social a whitelist,
+    // fountain.fm refuses the kind. None of the three runs the conversation
+    // or media relays.
+    'wss://nostr.sathoarder.com',
+  ];
+
+  /// On by default since 986, which is a deliberate reversal.
+  ///
+  /// It was off, and the reasoning still stands as a description of the cost:
+  /// a relay never sees plaintext, but it does learn which two Nostr keys
+  /// exchanged a frame and when — metadata the Bluetooth mesh never leaks. So
+  /// this is not a free default and it is not being presented as one.
+  ///
+  /// What changed is the other side of the ledger. Off, a message to somebody
+  /// who is not in Bluetooth range does not arrive at all until one of you
+  /// walks into range of the other, and a messenger that silently does not
+  /// deliver is not private, it is broken — which is how it kept being
+  /// reported. The switch is one tap away in the profile, Emergency Wipe still
+  /// turns it back off, and the relay list is still the user's to edit.
+  ///
+  /// Anybody who has already turned it off keeps it off: the settings
+  /// controller falls back on this only when the box has no stored value at
+  /// all.
+  static const initial = RelaySettings(enabled: true, urls: defaultUrls);
+
+  /// True when the fallback should actually run.
+  bool get isActive => enabled && urls.isNotEmpty;
+
+  RelaySettings copyWith({bool? enabled, List<String>? urls}) => RelaySettings(
+        enabled: enabled ?? this.enabled,
+        urls: urls ?? this.urls,
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is RelaySettings &&
+      other.enabled == enabled &&
+      listEquals(other.urls, urls);
+
+  @override
+  int get hashCode => Object.hash(enabled, Object.hashAll(urls));
+}
+
+/// Live connection state per relay, published by the relay pool inside
+/// `MessagingService` (which owns the sockets) and read by the settings
+/// screen. Empty while the fallback is off.
+class RelayStatusController extends Notifier<Map<String, RelayState>> {
+  @override
+  Map<String, RelayState> build() => const {};
+
+  void publish(Map<String, RelayState> states) => state = states;
+
+  void clear() => state = const {};
+}
+
+final relayStatusProvider =
+    NotifierProvider<RelayStatusController, Map<String, RelayState>>(
+  RelayStatusController.new,
+);
+
+/// Whether the relay pool currently calls the link slow — see
+/// [WebSocketNostrRelayClient.isSlow]. Published by `MessagingService` on
+/// every transition of the pool's `slowChanges`, so the UI can say so without
+/// reaching into the sockets. `false` while the fallback is off: with no relay
+/// there is no link to measure.
+class SlowNetworkController extends Notifier<bool> {
+  @override
+  bool build() => false;
+
+  void publish(bool slow) => state = slow;
+}
+
+final slowNetworkProvider = NotifierProvider<SlowNetworkController, bool>(
+  SlowNetworkController.new,
+);
+
+/// The relay settings as they stand — applied by the transport whenever they
+/// change. Bound in `lib/app/bindings.dart` to the profile feature's
+/// controller.
+final relaySettingsStateProvider = Provider<RelaySettings>(
+  (ref) => throw UnimplementedError(
+    'relaySettingsStateProvider is bound in lib/app/bindings.dart; build the '
+    'ProviderContainer with appBindings',
+  ),
+);

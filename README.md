@@ -647,8 +647,8 @@ lib/
 ├── app/              # where core meets the features: bindings.dart (what the
 │                     #   transport needs from them), router and shell,
 │                     #   emergency wipe, key rotation, iOS background refresh
-├── core/             # imports no feature (test/architecture_test.dart), bar
-│   │                 #   what is left in messaging_service.dart
+├── core/             # imports no feature (test/architecture_test.dart);
+│   │                 #   transport/ports/ is what it needs from them
 │   ├── crypto/       # Noise (XX, IK), X3DH, SealedBox, SignedPayload, prekeys,
 │   │                 #   channel crypto, identity
 │   ├── transport/    # messaging service, envelope, frame, dedup, store-forward,

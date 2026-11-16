@@ -9,9 +9,14 @@ import '../../../core/ble/ble_peripheral.dart';
 import '../../../core/ble/ble_permissions.dart';
 import '../../../core/crypto/identity_service.dart';
 import '../../../core/transport/peer_id.dart';
+import '../../../core/transport/ports/peer_extras.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/platform_info.dart';
 import '../../profile/data/discovery_settings_controller.dart';
+
+// [blePeripheralProvider] lives in core beside [BlePeripheral], which the
+// transport talks to directly; re-exported for this file's readers.
+export '../../../core/ble/ble_peripheral.dart' show blePeripheralProvider;
 
 enum PeripheralStatus {
   /// Not started yet.
@@ -62,12 +67,12 @@ class PeripheralState {
   );
 }
 
-final blePeripheralProvider = Provider<BlePeripheral>((_) => MethodChannelBlePeripheral());
 
 final peripheralControllerProvider =
     NotifierProvider<PeripheralController, PeripheralState>(PeripheralController.new);
 
-class PeripheralController extends Notifier<PeripheralState> {
+class PeripheralController extends Notifier<PeripheralState>
+    implements CentralLinks {
   StreamSubscription<BluetoothAdapterState>? _adapterSub;
 
   /// Last name/fingerprint we were asked to advertise, replayed by the adapter

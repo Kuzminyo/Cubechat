@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/transport/inner_payload.dart';
 import 'package:cubechat/core/transport/messaging_service.dart';
 import 'package:cubechat/features/channels/data/channel_avatars_controller.dart';
@@ -47,6 +48,7 @@ void main() {
       () async {
     final container = ProviderContainer(
       overrides: [
+        ...appBindings,
         messagingServiceProvider.overrideWith((ref) {
           final service = MessagingService(ref);
           ref.onDispose(() => unawaited(service.dispose()));

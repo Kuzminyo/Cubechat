@@ -1,3 +1,4 @@
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/routing/branch_pager.dart';
 import 'package:cubechat/core/widgets/glass_card.dart';
 import 'package:cubechat/core/widgets/scroll_hiding_island.dart';
@@ -157,7 +158,7 @@ void main() {
   // The real pages start the Bluetooth scanner and read Hive; the shell is
   // what is under test, so it gets three labels instead.
   Future<ProviderContainer> pump(WidgetTester tester) async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: appBindings);
     addTearDown(container.dispose);
     await tester.pumpWidget(
       UncontrolledProviderScope(
@@ -215,6 +216,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...appBindings,
           airdropControllerProvider.overrideWith(_EmptyAirDrop.new),
           airdropHistoryProvider.overrideWith(_EmptyHistory.new),
           airdropReceiveProvider.overrideWith(_DefaultReceive.new),
@@ -264,6 +266,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...appBindings,
           airdropControllerProvider.overrideWith(_EmptyAirDrop.new),
           airdropHistoryProvider.overrideWith(_EmptyHistory.new),
           airdropReceiveProvider.overrideWith(_DefaultReceive.new),

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/theme/colors.dart';
 import 'package:cubechat/features/backup/presentation/backup_screen.dart';
 import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';
@@ -74,6 +75,7 @@ void main() {
     final handle = tester.ensureSemantics();
     await tester.pumpWidget(
       ProviderScope(
+        overrides: appBindings,
         child: MaterialApp(
           locale: const Locale('en'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,

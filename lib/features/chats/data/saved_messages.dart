@@ -5,19 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/models/chat_history.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/models/message.dart';
 
-/// The reserved chat id for notes to yourself.
-///
-/// `@` cannot collide with either of the other two kinds: a peer chat is keyed
-/// by 64 hex characters, a channel starts with `#`. Reserved rather than
-/// derived from your own pubkey so the notes survive an identity change —
-/// losing everything you saved because a key rotated would be a surprising way
-/// to lose it.
-const String savedChatId = '@saved';
-
-bool isSavedChat(String chatId) => chatId == savedChatId;
+// [savedChatId] and [isSavedChat] live in core — the transport skips the
+// notes-to-self chat too — and are re-exported for this file's readers.
+export '../../../core/models/chat_history.dart' show savedChatId, isSavedChat;
 
 /// Notes to yourself, kept on this device.
 ///

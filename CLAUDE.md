@@ -11,9 +11,12 @@ lives in its own repository, Kuzminyo/landing_cubechat — it is not in this tre
 `lib/features/<name>/{data,models,domain,presentation}` holds the rest — `data/`
 is Riverpod `Notifier` controllers. `lib/app/` wires the two together:
 `bindings.dart` binds what core declares and features provide, plus the router,
-the wipe and key rotation. Core never imports `lib/app/`, and imports features
-only where `test/architecture_test.dart` still allows it. `README.md` documents
-the protocol and the threat model in full.
+the wipe and key rotation. Core imports neither `lib/app/` nor any feature —
+`test/architecture_test.dart` enforces it. What the transport needs from a
+feature is a port in `core/transport/ports/`, implemented by that feature's
+controller. Anything that builds the app or the transport, tests included,
+needs `appBindings`. `README.md` documents the protocol and the threat model in
+full.
 
 Beyond the app:
 
@@ -86,9 +89,10 @@ ships and breaks phones that already have the app installed.
   one when you revert something, too.
 - Measure before optimising. The wins here were GPS and uncapped image decodes,
   not blurs and not signing.
-- `MessagingService` is ~14k lines and still reaches most controllers through
-  `_ref.read`. Inbound payloads are dispatched through the registry in
-  `core/transport/inbound/`: a new payload type's handler goes in its feature's
+- `MessagingService` is ~14k lines and reaches the features only through the
+  ports in `core/transport/ports/`. Inbound payloads are dispatched through
+  the registry in `core/transport/inbound/`: a new payload type's handler goes
+  in its feature's
   `*_inbound.dart` (see `features/chat/data/chat_inbound.dart`), is bound in
   `lib/app/bindings.dart`, and is listed in `_directByModules` /
   `_roomByModules` so the transport stops claiming it. Moving more out follows

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/ble/ble_constants.dart';
 import 'package:cubechat/core/ble/ble_peripheral.dart';
 import 'package:cubechat/core/transport/frame.dart';
@@ -74,7 +75,10 @@ void main() {
 
     peripheral = _FakePeripheral();
     container = ProviderContainer(
-      overrides: [blePeripheralProvider.overrideWithValue(peripheral)],
+      overrides: [
+        ...appBindings,
+        blePeripheralProvider.overrideWithValue(peripheral),
+      ],
     );
     // Constructing the service is what wires its peripheral-event listener.
     container.read(messagingServiceProvider);

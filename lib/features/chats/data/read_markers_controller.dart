@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../../core/transport/ports/room_extras.dart';
 
 /// When the user last *read* each chat, keyed by the same id the chat list uses
 /// (a peer's pubkey-hex, or a `#channel` name).
@@ -18,7 +19,8 @@ import '../../../core/storage/hive_init.dart';
 ///
 /// A purely local preference, so it lives in the shared settings box next to
 /// favourites / background-mode rather than travelling with a peer's identity.
-class ReadMarkersController extends Notifier<Map<String, DateTime>> {
+class ReadMarkersController extends Notifier<Map<String, DateTime>>
+    implements ReadMarkers {
   static const _key = 'read_markers';
 
   Box<dynamic>? _box;
@@ -174,7 +176,8 @@ final readMarkersControllerProvider =
 /// storm fixed — the set is capped, so history beyond it is still cut off by a
 /// single comparison — while making the case that actually happens correct.
 /// [_maxAckedIds] entries is about 40 KB.
-class AckMarkersController extends Notifier<Map<String, DateTime>> {
+class AckMarkersController extends Notifier<Map<String, DateTime>>
+    implements AckMarkers {
   static const _key = 'ack_markers';
   static const _idsKey = 'ack_marker_ids';
 

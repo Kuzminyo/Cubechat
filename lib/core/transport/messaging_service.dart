@@ -13,38 +13,15 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'package:cryptography/cryptography.dart';
 
-import '../../features/call/domain/call_rules.dart';
-import '../../features/channels/data/channel_avatars_controller.dart';
-import '../../features/channels/data/channel_descriptions_controller.dart';
 import '../models/channel.dart';
 import '../models/channel_member.dart';
+import '../models/chat_history.dart';
 import '../models/conversation_settings.dart';
 import '../models/file_transfer_task.dart';
-import '../../features/chat/data/send_queue.dart';
-import '../../features/chat/data/held_media.dart';
-import '../../features/chat/data/pinned_controller.dart';
-import '../../features/chats/data/message_requests_controller.dart';
-import '../../features/chats/data/read_markers_controller.dart';
-import '../../features/chats/domain/stranger_gate.dart';
-import '../../features/moderation/domain/profanity.dart';
-import '../../features/moderation/data/ban_list_controller.dart';
-import '../../features/moderation/data/hidden_authors.dart';
+import '../models/peer_activity.dart';
 import '../models/message.dart';
-import '../../features/peers/data/removed_contacts_controller.dart';
-import '../../features/peers/data/peer_avatars_controller.dart';
-import '../../features/peers/data/peer_discovery_controller.dart';
-import '../../features/peers/data/peripheral_controller.dart';
-import '../../features/peers/data/presence_controller.dart';
-import '../../features/peers/data/peer_activity.dart';
-import '../../features/peers/data/sending_activity.dart';
-import '../../features/peers/data/typing_controller.dart';
 import '../models/known_peer.dart';
-import '../../features/profile/data/discovery_settings_controller.dart';
-import '../../features/airdrop/data/airdrop_receive_controller.dart';
-import '../../features/airdrop/presentation/airdrop_navigation.dart';
-import '../../features/profile/data/media_download_settings_controller.dart';
-import '../../features/profile/data/privacy_settings_controller.dart';
-import '../../features/profile/data/relay_settings_controller.dart';
+import '../models/peer_presence.dart';
 import '../ble/ble_constants.dart';
 import '../ble/ble_peripheral.dart';
 import '../crypto/channel_crypto.dart';
@@ -95,9 +72,21 @@ import 'ports/channel_roster.dart';
 import 'ports/conversation_prefs.dart';
 import 'ports/conversations.dart';
 import 'ports/file_transfers.dart';
+import 'ports/moderation.dart';
+import 'ports/peer_extras.dart';
+import 'ports/room_extras.dart';
 import 'ports/peer_directory.dart';
 import 'ports/stranger_pruning.dart';
+import 'call_rules.dart';
+import 'held_media.dart';
+import 'media_send_progress.dart';
 import 'radio_tuning.dart';
+import 'sending_activity.dart';
+import 'stranger_gate.dart';
+import 'ports/privacy_prefs.dart';
+import 'ports/transport_settings.dart';
+import 'nostr/relay_settings.dart';
+import '../models/stranger_reach.dart';
 import 'inner_payload.dart';
 import 'channel_poll.dart';
 import '../util/media_storage.dart';
@@ -111,7 +100,6 @@ import 'nostr/radio_relay_link.dart';
 import 'nostr/relay_watermark_store.dart';
 import 'nostr/websocket_relay_client.dart';
 import '../crypto/media_fs_cipher.dart';
-import '../../features/chat/data/media_send_progress.dart';
 
 /// Wall-clock deadline for the full Noise XX exchange — initiator + responder
 /// together. If a session is still handshaking after this, we tear it down and
@@ -416,10 +404,10 @@ class MessagingService {
   /// or the AirDrop page itself being on screen: while the page is open this
   /// phone is meant to be found, so a bump with someone not yet a contact can
   /// still start a session.
+  ///
+  /// Three features answer that; `lib/app/discoverability.dart` composes them.
   bool get _discoverableNow =>
-      _ref.read(discoverySettingsProvider).discoverable ||
-      _ref.read(airdropReceiveProvider).everyoneAt(DateTime.now()) ||
-      _ref.read(airdropPageOnScreenProvider);
+      _ref.read(discoverabilityProvider).discoverableNow;
 
   /// Watches an incoming file that has stopped arriving, and asks again.
   ///
@@ -710,8 +698,8 @@ class MessagingService {
   void _wireNostrFallback() {
     unawaited(() async {
       await Future.wait<void>([
-        _ref.read(relaySettingsProvider.notifier).loaded,
-        _ref.read(mediaDownloadSettingsProvider.notifier).loaded,
+        _ref.read(relaySettingsLoadedProvider),
+        _ref.read(mediaDownloadLoadedProvider),
       ]);
       if (_disposed) return;
       try {
@@ -733,11 +721,11 @@ class MessagingService {
         return;
       }
       _ref.listen<bool>(
-        mediaDownloadSettingsProvider,
+        mediaWaitsForWifiProvider,
         (_, __) => _syncMediaSubscriptions(),
       );
       _ref.listen<RelaySettings>(
-        relaySettingsProvider,
+        relaySettingsStateProvider,
         (_, next) => _nostrReconfigure =
             _nostrReconfigure.then((_) => _applyRelaySettings(next)),
         fireImmediately: true,
@@ -747,7 +735,7 @@ class MessagingService {
 
   bool _shouldSubscribeToMedia() {
     if (_mediaResumedByHand) return true;
-    if (!_ref.read(mediaDownloadSettingsProvider)) return true;
+    if (!_ref.read(mediaWaitsForWifiProvider)) return true;
     final hasMobile = _connectivity.contains(ConnectivityResult.mobile);
     final hasUnmetered = _connectivity.contains(ConnectivityResult.wifi) ||
         _connectivity.contains(ConnectivityResult.ethernet);
@@ -1206,7 +1194,7 @@ class MessagingService {
           // contact to tell them nothing. The withheld answer is the one worth
           // catching up, and it is the one that stops working if it does not
           // arrive.
-          if (!_ref.read(privacySettingsProvider).allowForwardLink) {
+          if (!_ref.read(privacyPrefsProvider).allowForwardLink) {
             unawaited(broadcastForwardPrivacy(allowed: false));
           }
         }
@@ -1466,7 +1454,7 @@ class MessagingService {
       }
     }
     // A contact recognised from their advertisement.
-    for (final p in _ref.read(peerDiscoveryControllerProvider).peers) {
+    for (final p in _ref.read(nearbyPeersProvider)) {
       if (p.id != peerId) continue;
       final hex = p.resolvedPubkeyHex;
       if (hex == null) break;
@@ -3553,20 +3541,20 @@ class MessagingService {
     // it was simply being read before it was there. `announceCopyRestriction`
     // learned the same lesson about its own settings box a while ago and has
     // the same `await` two dozen lines up.
-    final readMarkers = _ref.read(readMarkersControllerProvider.notifier);
-    final ackMarkers = _ref.read(ackMarkersControllerProvider.notifier);
+    final readMarkers = _ref.read(readMarkersProvider);
+    final ackMarkers = _ref.read(ackMarkersProvider);
     await readMarkers.loaded;
     await ackMarkers.loaded;
     if (_disposed) return;
 
-    final readUpTo = _ref.read(readMarkersControllerProvider)[canonicalId];
+    final readUpTo = _ref.read(readMarkersProvider).lastReadAt(canonicalId);
     if (readUpTo == null) return;
 
     // Where this chat's receipts got to last time, across restarts — see
-    // [AckMarkersController]. Without it the set below starts empty on every
+    // [AckMarkers]. Without it the set below starts empty on every
     // launch and the whole history is acknowledged again, which is what the
     // freeze on cold start turned out to be.
-    final ackedUpTo = _ref.read(ackMarkersControllerProvider)[canonicalId];
+    final ackedUpTo = ackMarkers.ackedUpTo(canonicalId);
 
     // The oldest message the exact record can vouch for. Null means it vouches
     // for nothing yet, and then the watermark decides everything — which is
@@ -3721,9 +3709,7 @@ class MessagingService {
   /// there instead of from the beginning of the conversation.
   Future<void> _rememberAcked(String canonicalId, DateTime? acked) async {
     if (acked == null) return;
-    await _ref
-        .read(ackMarkersControllerProvider.notifier)
-        .markAcked(canonicalId, acked);
+    await _ref.read(ackMarkersProvider).markAcked(canonicalId, acked);
   }
 
   /// Re-offer every read acknowledgement that has not gone out yet.
@@ -3945,7 +3931,7 @@ class MessagingService {
 
   Future<void> _flushPendingReadReceipts() async {
     if (_disposed) return;
-    if (!_ref.read(privacySettingsProvider).shareReadReceipts) return;
+    if (!_ref.read(privacyPrefsProvider).shareReadReceipts) return;
     if (_flushingReadReceipts) return;
     final slow = isSlowNetwork;
     // On a slow link a text goes first. The round is owed rather than lost:
@@ -4292,7 +4278,7 @@ class MessagingService {
   /// Shortest gap between two "still typing" frames.
   ///
   /// The composer calls [announceTyping] on every keystroke, so without this a
-  /// sentence would be forty frames. Comfortably inside [TypingController.ttl]
+  /// sentence would be forty frames. Comfortably inside `TypingController.ttl`
   /// so the indicator never lapses mid-word.
   static const Duration typingMinInterval = Duration(seconds: 3);
 
@@ -4304,7 +4290,7 @@ class MessagingService {
   /// does not arrive is not worth a log line, let alone a retry — by the time
   /// anything could be retried the fact has changed.
   ///
-  /// Gated on [PrivacySettings.shareLastSeen], the same switch presence uses,
+  /// Gated on [PrivacyPrefs.shareLastSeen], the same switch presence uses,
   /// rather than a second one. It is the same question — how much of my
   /// liveness do I leak — and the same symmetric bargain: turn it off and you
   /// stop seeing other people's typing too (see `PeersInbound` in
@@ -4505,7 +4491,7 @@ class MessagingService {
   /// no server to hold the setting.
   Future<void> broadcastForwardPrivacy({bool? allowed}) async {
     if (_disposed) return;
-    final settings = _ref.read(privacySettingsProvider);
+    final settings = _ref.read(privacyPrefsProvider);
     final on = allowed ?? settings.allowForwardLink;
     final peers = _ref.read(knownPeersProvider);
     var told = 0;
@@ -5198,7 +5184,7 @@ class MessagingService {
     }
     if (target.length != MessagePin.idLen) return;
 
-    final pins = _ref.read(pinnedControllerProvider.notifier);
+    final pins = _ref.read(pinsProvider);
     if (pinned) {
       await pins.pin(chatId, targetWireId);
     } else {
@@ -5760,7 +5746,7 @@ class MessagingService {
     if (!roster.isAdmin(channel.name, me.id)) {
       throw StateError('only an admin can set the picture for $channelName');
     }
-    final avatars = _ref.read(channelAvatarsControllerProvider.notifier);
+    final avatars = _ref.read(channelAvatarsProvider);
     await avatars.loaded;
     // Ours is the room's picture now, so anything of theirs still waiting for
     // its sender to be recognised is out of date — see [_dropHeldChannelState].
@@ -5872,7 +5858,7 @@ class MessagingService {
     }
     final trimmed = text.trim();
     final descriptions =
-        _ref.read(channelDescriptionsControllerProvider.notifier);
+        _ref.read(channelDescriptionsProvider);
     await descriptions.loaded;
     if (!await descriptions.store(channel.name, trimmed)) {
       throw StateError('topic is too long');
@@ -6249,13 +6235,13 @@ class MessagingService {
   /// the decision was made by somebody with the authority to make it.
   Future<void> wipeChannelLocally(String name) async {
     await _ref.read(conversationsProvider).clearForChat(name);
-    await _ref.read(pinnedControllerProvider.notifier).forget(name);
-    await _ref.read(readMarkersControllerProvider.notifier).forget(name);
+    await _ref.read(pinsProvider).forget(name);
+    await _ref.read(readMarkersProvider).forget(name);
     await _ref.read(channelRosterProvider).forget(name);
     await _ref
-        .read(channelDescriptionsControllerProvider.notifier)
+        .read(channelDescriptionsProvider)
         .forget(name);
-    await _ref.read(channelAvatarsControllerProvider.notifier).forget(name);
+    await _ref.read(channelAvatarsProvider).forget(name);
     // Last, because everything above is keyed on the room still being one.
     await _ref.read(channelDirectoryProvider).leave(name);
     DebugLog.instance.log('CHAN', 'wiped $name locally');
@@ -6639,8 +6625,8 @@ class MessagingService {
       if (channelStale && !survivesReplayWindow(unpacked.type)) return;
       final authorName = _resolveAuthorName(senderEdPub);
       final reactorId = _hexOf(senderEdPub).substring(0, 16);
-      if (_ref.read(banListProvider).isBannedFingerprint(reactorId) ||
-          _ref.read(hiddenAuthorsProvider).contains(reactorId)) return;
+      if (_ref.read(banCheckProvider).isBannedFingerprint(reactorId) ||
+          _ref.read(hiddenAuthorCheckProvider).isHidden(reactorId)) return;
       await _ref.read(channelRosterProvider).record(
             channel.name,
             ChannelMember(
@@ -7559,7 +7545,7 @@ class MessagingService {
             .isBlocked(contact.pubkeyHex)) {
       return;
     }
-    if (_ref.read(banListProvider).isBannedFingerprint(fingerprint)) return;
+    if (_ref.read(banCheckProvider).isBannedFingerprint(fingerprint)) return;
     _emitRadio(
       senderId: contact?.pubkeyHex ?? fingerprint,
       groupTag: tagBytes,
@@ -8249,7 +8235,7 @@ class MessagingService {
           (_ref
                   .read(peerDirectoryProvider)
                   .isBlocked(_hexOf(senderPub)) ||
-              _ref.read(banListProvider).isBannedPeer(
+              _ref.read(banCheckProvider).isBannedPeer(
                     _hexOf(senderPub),
                     _ref.read(knownPeersProvider)[_hexOf(senderPub)]
                         ?.nostrPubkey,
@@ -8262,7 +8248,7 @@ class MessagingService {
       // ban on a proven report names only that key, and a sender we cannot
       // place (no `senderPub`) is still signing with it.
       if (verifiedSenderEdPub != null &&
-          _ref.read(banListProvider).isBannedSigner(verifiedSenderEdPub)) {
+          _ref.read(banCheckProvider).isBannedSigner(verifiedSenderEdPub)) {
         DebugLog.instance.log('MESH', 'drop inbound from banned signer');
         return;
       }
@@ -8299,13 +8285,11 @@ class MessagingService {
         // empty. Deciding on those drops accepted strangers under "nobody" or
         // ignores the setting altogether. Awaiting a finished load is a
         // microtask, so the default path costs nothing measurable.
-        await _ref.read(privacySettingsProvider.notifier).loaded;
-        final reach = _ref.read(privacySettingsProvider).strangerReach;
-        final requestsNotifier = _ref.read(messageRequestsProvider.notifier);
-        await requestsNotifier.loaded;
-        final requests = _ref.read(messageRequestsProvider);
-        if (reach != StrangerReach.all ||
-            requests.pending.contains(sender)) {
+        await _ref.read(privacyPrefsProvider).loaded;
+        final reach = _ref.read(privacyPrefsProvider).strangerReach;
+        final requests = _ref.read(messageRequestBookProvider);
+        await requests.loaded;
+        if (reach != StrangerReach.all || requests.isPending(sender)) {
           // "Never wrote to them" must be read from real history, not from a
           // store still loading — or a known contact would be dropped.
           final messages = _ref.read(conversationsProvider);
@@ -8316,8 +8300,8 @@ class MessagingService {
             viaInternet: true,
             wroteToThem:
                 hasWrittenIn(_ref.read(messagesProvider)[sender]),
-            accepted: requests.accepted.contains(sender),
-            alreadyPending: requests.pending.contains(sender),
+            accepted: requests.isAccepted(sender),
+            alreadyPending: requests.isPending(sender),
             historyKnown: !messages.loadFailed,
             fromSelf: _bytesEqual(senderPub, Uint8List.fromList(own.publicKey)),
           );
@@ -8328,9 +8312,7 @@ class MessagingService {
           }
           if (verdict == StrangerVerdict.request &&
               opensRequest(unpacked.type)) {
-            await _ref
-                .read(messageRequestsProvider.notifier)
-                .markPending(sender);
+            await _ref.read(messageRequestBookProvider).markPending(sender);
           }
         }
       }
@@ -9290,7 +9272,7 @@ class MessagingService {
               return;
             }
             await _ref
-                .read(channelAvatarsControllerProvider.notifier)
+                .read(channelAvatarsProvider)
                 .store(room.name, bytes);
             DebugLog.instance.log(
               'CHAN',
@@ -9872,10 +9854,10 @@ class MessagingService {
     if (introductionLiftsRemoval(
       addressedToUs: addressedToUs,
       inRoster: _ref.read(knownPeersProvider)[pubkeyHex] != null,
-      removed: _ref.read(removedContactsControllerProvider).contains(pubkeyHex),
+      removed: _ref.read(removedContactsProvider).isRemoved(pubkeyHex),
     )) {
       await _ref
-          .read(removedContactsControllerProvider.notifier)
+          .read(removedContactsProvider)
           .restore(pubkeyHex);
       DebugLog.instance.log(
         'MESH',
@@ -9916,7 +9898,7 @@ class MessagingService {
         .read(strangerPruningProvider)
         .prune(stillWanted: () => !_disposed);
     if (dropped.isEmpty) return;
-    final avatars = _ref.read(peerAvatarsControllerProvider.notifier);
+    final avatars = _ref.read(peerAvatarStoreProvider);
     for (final id in dropped) {
       _avatarRequested.removeWhere((mark) => mark.startsWith('$id:'));
       unawaited(avatars.forget(id));
@@ -9944,7 +9926,7 @@ class MessagingService {
   /// on every heartbeat), or it is new to us (ask once).
   Future<void> _reconcileAvatar(String pubkeyHex, PeerAnnouncement ann) async {
     if (!ann.isAvatarAware) return; // older build, no claim either way
-    final avatars = _ref.read(peerAvatarsControllerProvider.notifier);
+    final avatars = _ref.read(peerAvatarStoreProvider);
     await avatars.loaded;
 
     final hash = ann.avatarHash;
@@ -10226,7 +10208,7 @@ class MessagingService {
           .log('AVATAR', 'drop from $pubkeyHex: nothing announced to match');
       return;
     }
-    final avatars = _ref.read(peerAvatarsControllerProvider.notifier);
+    final avatars = _ref.read(peerAvatarStoreProvider);
     await avatars.loaded;
     final ok = await avatars.store(pubkeyHex, jpeg, expected);
     DebugLog.instance.log(
@@ -10384,7 +10366,7 @@ class MessagingService {
   /// means a fanout would return 0.
   bool get _hasAnyLink =>
       _clients.values.any((c) => c.isReady) ||
-      _ref.read(peripheralControllerProvider).connectedCentralIds.isNotEmpty;
+      _ref.read(connectedCentralsProvider).isNotEmpty;
 
   bool hasMediaRouteFor(String chatId) => _hasMediaRoute(chatId);
 
@@ -10846,7 +10828,7 @@ class MessagingService {
   /// safe direction for a density estimate to be wrong in.
   int get _linkCount =>
       _clients.values.where((c) => c.isReady).length +
-      _ref.read(peripheralControllerProvider).connectedCentralIds.length;
+      _ref.read(connectedCentralsProvider).length;
 
   /// Hop budget for anything we put on the mesh, scaled to how dense our
   /// corner of it is. See [TransportEnvelope.ttlForLinkCount].
@@ -11915,7 +11897,7 @@ class MessagingService {
     // The switch is part of what a beacon says, so flipping it has to get
     // through this throttle — otherwise "stop showing my times" waits out the
     // next twenty seconds, or the next heartbeat, before anybody is told.
-    final hidden = !_ref.read(privacySettingsProvider).shareLastSeen;
+    final hidden = !_ref.read(privacyPrefsProvider).shareLastSeen;
     final since = _lastPresenceAt;
     // **The opposite answer waits its turn; it is not dropped.** A round in
     // flight used to swallow whatever came next, and the thing that came next
@@ -12129,7 +12111,7 @@ class MessagingService {
   }
 
   /// The last beacon each contact sent us, by their clock: memory only, like
-  /// [PresenceController], and for the same reason.
+  /// `PresenceController`, and for the same reason.
   final Map<String, ({bool online, DateTime at})> _heardPresence = {};
 
   /// When each contact was last told "online" by us.
@@ -12269,7 +12251,7 @@ class MessagingService {
     // tells the other phone you were alive at that moment.
     final body = PresenceBeacon(
       online: online,
-      hideLastSeen: !_ref.read(privacySettingsProvider).shareLastSeen,
+      hideLastSeen: !_ref.read(privacyPrefsProvider).shareLastSeen,
     ).encode();
     // The same beacon with the flag set, minted once and only if somebody
     // needs it. A beacon is a signed frame per recipient either way; what is
@@ -12433,7 +12415,7 @@ class MessagingService {
     _dropHeldChannelState(channelName, type);
     switch (type) {
       case InnerPayloadType.channelAvatar:
-        final avatars = _ref.read(channelAvatarsControllerProvider.notifier);
+        final avatars = _ref.read(channelAvatarsProvider);
         await avatars.loaded;
         if (body.isEmpty) {
           await avatars.forget(channelName);
@@ -12460,7 +12442,7 @@ class MessagingService {
 
       case InnerPayloadType.channelDescription:
         final descriptions =
-            _ref.read(channelDescriptionsControllerProvider.notifier);
+            _ref.read(channelDescriptionsProvider);
         await descriptions.loaded;
         await descriptions.store(
           channelName,
@@ -12856,9 +12838,9 @@ class MessagingService {
     _roomsToIntroduce.clear();
     for (final room in rooms) {
       final picture =
-          _ref.read(channelAvatarsControllerProvider.notifier).forChannel(room);
+          _ref.read(channelAvatarsProvider).forChannel(room);
       final description =
-          _ref.read(channelDescriptionsControllerProvider)[room];
+          _ref.read(channelDescriptionsProvider).forChannel(room);
       final channel =
           _ref.read(channelDirectoryProvider).byName(room);
       final offersHistory = channel?.shareHistory ?? false;
@@ -13011,7 +12993,7 @@ class MessagingService {
       _heardPresence[canonical] = (online: beacon.online, at: stamp);
     }
     if (fresh) {
-      final presence = _ref.read(presenceControllerProvider.notifier);
+      final presence = _ref.read(presenceBookProvider);
       final wasHere = presence.freshFor(canonical)?.online ?? false;
       presence.record(
         canonical,
@@ -13333,7 +13315,7 @@ class MessagingService {
     // removed by builds up to 944: those deleted the entry as well. A removal
     // made now keeps it and blocks nothing.
     await _ref
-        .read(removedContactsControllerProvider.notifier)
+        .read(removedContactsProvider)
         .restore(pubkeyHex);
     _ref.read(peerDirectoryProvider).upsert(
           pubkeyHex: pubkeyHex,
@@ -13632,7 +13614,7 @@ class MessagingService {
         DebugLog.instance
             .log('BLE-PERIPH', 'central connected: ${event.centralId}');
         _ref
-            .read(peripheralControllerProvider.notifier)
+            .read(centralLinksProvider)
             .onCentralConnected(event.centralId);
       } else if (event is PeripheralWrite) {
         _peripheralWriteMeter.add(event.centralId, event.data.length);
@@ -13647,7 +13629,7 @@ class MessagingService {
         DebugLog.instance
             .log('BLE-PERIPH', 'central disconnected: ${event.centralId}');
         _ref
-            .read(peripheralControllerProvider.notifier)
+            .read(centralLinksProvider)
             .onCentralDisconnected(event.centralId);
         _ref.read(chatSessionManagerProvider.notifier).drop(event.centralId);
       }
@@ -13675,7 +13657,7 @@ class MessagingService {
   /// flight is not answered by dialling a third.
   int get linkOrPendingCount =>
       _clients.length +
-      _ref.read(peripheralControllerProvider).connectedCentralIds.length;
+      _ref.read(connectedCentralsProvider).length;
 
   /// True when we are already talking to this identity, on any address and in
   /// either direction.
@@ -13708,10 +13690,7 @@ class MessagingService {
   bool _isDirectSession(ChatSession session) {
     final client = _clients[session.peerId];
     if (client != null && client.isConnected) return true;
-    return _ref
-        .read(peripheralControllerProvider)
-        .connectedCentralIds
-        .contains(session.peerId);
+    return _ref.read(connectedCentralsProvider).contains(session.peerId);
   }
 
   ChatSession? _directSessionTo(String peerHex) {
@@ -13750,10 +13729,8 @@ class MessagingService {
     final session = _directSessionTo(peerHex);
     if (session == null) return false;
     final client = _clients[session.peerId];
-    final peerIsCentral = _ref
-        .read(peripheralControllerProvider)
-        .connectedCentralIds
-        .contains(session.peerId);
+    final peerIsCentral =
+        _ref.read(connectedCentralsProvider).contains(session.peerId);
     try {
       var path = directWritePath(
         hasClient: client != null,

@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../../core/transport/ports/room_extras.dart';
 
 /// The message a chat currently has pinned.
 @immutable
@@ -58,7 +59,8 @@ class PinnedMessage {
 /// Pins live in the encrypted settings box. They are conversation state rather
 /// than a private preference, so [MessagingService] mirrors every change to the
 /// other side and both people see the same carousel.
-class PinnedController extends Notifier<Map<String, PinnedMessage>> {
+class PinnedController extends Notifier<Map<String, PinnedMessage>>
+    implements Pins {
   static const _key = 'pinned_messages';
 
   Box<dynamic>? _box;

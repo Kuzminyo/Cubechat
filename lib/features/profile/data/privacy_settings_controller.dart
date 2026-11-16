@@ -7,26 +7,13 @@ import 'package:hive/hive.dart';
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
 import '../../chats/data/message_requests_controller.dart';
+import '../../../core/models/stranger_reach.dart';
+import '../../../core/transport/ports/privacy_prefs.dart';
 import '../../cube_id/data/cube_id_controller.dart';
 
-/// Who may reach this phone from the internet without being a contact —
-/// Profile → Privacy. See `strangerVerdict` for what each value does, and the
-/// Cube ID registry, which hides the @name altogether for [none].
-///
-/// [wire] is the exact string the registry and this phone's settings store.
-enum StrangerReach {
-  all,
-  request,
-  none;
-
-  String get wire => name;
-
-  static StrangerReach fromWire(String? value) => switch (value) {
-        'request' => StrangerReach.request,
-        'none' => StrangerReach.none,
-        _ => StrangerReach.all,
-      };
-}
+// [StrangerReach] lives in core; re-exported so Privacy's readers keep
+// reading it from here.
+export '../../../core/models/stranger_reach.dart';
 
 /// What this device tells other people about *when* it was here and *when* it
 /// read them.
@@ -146,7 +133,21 @@ class PrivacySettings {
       strangerReach);
 }
 
-class PrivacySettingsController extends Notifier<PrivacySettings> {
+class PrivacySettingsController extends Notifier<PrivacySettings>
+    implements PrivacyPrefs {
+  // The transport's questions, answered from the settings as they stand.
+  @override
+  bool get shareLastSeen => state.shareLastSeen;
+
+  @override
+  bool get shareReadReceipts => state.shareReadReceipts;
+
+  @override
+  bool get allowForwardLink => state.allowForwardLink;
+
+  @override
+  StrangerReach get strangerReach => state.strangerReach;
+
   static const _keyLastSeen = 'privacy.shareLastSeen';
   static const _keyReceipts = 'privacy.shareReadReceipts';
   static const _keyMapLocation = 'privacy.shareMapLocation';

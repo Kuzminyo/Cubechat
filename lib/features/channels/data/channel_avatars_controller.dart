@@ -8,6 +8,7 @@ import 'package:hive/hive.dart';
 import '../../../core/identity/avatar_controller.dart';
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../../core/transport/ports/room_extras.dart';
 import '../../../core/transport/inner_payload.dart';
 import '../models/channel.dart';
 
@@ -18,7 +19,8 @@ import '../models/channel.dart';
 /// is the sender: a channel frame is signed by whoever sent it, and only a
 /// member the roster already knows to be an admin is allowed to set the
 /// picture. See the `channelAvatar` case in `MessagingService`.
-class ChannelAvatarsController extends Notifier<Map<String, Uint8List>> {
+class ChannelAvatarsController extends Notifier<Map<String, Uint8List>>
+    implements ChannelAvatars {
   Box<dynamic>? _box;
   Future<void>? _loading;
 

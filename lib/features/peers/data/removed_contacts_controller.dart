@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../../core/transport/ports/peer_extras.dart';
 
 /// People this phone was told to forget, so that forgetting them sticks.
 ///
@@ -26,7 +27,11 @@ import '../../../core/storage/hive_init.dart';
 /// [MessagingService]. Mail is never worth losing to a preference, and a
 /// message is a deliberate act by a person, not a radio doing its rounds. Re-
 /// adding them from a card clears it too.
-class RemovedContactsController extends Notifier<Set<String>> {
+class RemovedContactsController extends Notifier<Set<String>>
+    implements RemovedContacts {
+  @override
+  bool isRemoved(String pubkeyHex) => state.contains(pubkeyHex);
+
   static const _key = 'removed_contacts';
 
   Box<dynamic>? _box;

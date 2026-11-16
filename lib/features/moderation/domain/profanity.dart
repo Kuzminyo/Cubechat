@@ -1,5 +1,9 @@
 import '../../chat/models/message.dart';
 
+// [hasWrittenIn] — who counts as a stranger — lives in core: the transport's
+// stranger gate asks it too. Re-exported for the filter's readers.
+export '../../../core/models/chat_history.dart' show hasWrittenIn;
+
 /// Deliberately short, stem-based list. App Review asks for a filter, not a
 /// classifier: this folds the obvious words away on this phone and nothing
 /// more. A token matches when it *starts* with a stem, so a stem hidden
@@ -127,18 +131,6 @@ bool containsProfanity(String text) {
   return false;
 }
 
-/// Who counts as a stranger for the filter.
-///
-/// The app keeps no contact list to ask. `knownPeers` holds everybody whose
-/// key this phone has ever seen, which includes every sender, so the
-/// handoff's "in knownPeers" test made the filter a no-op in direct chats;
-/// and the Contacts tab is "anyone with history", which a stranger's first
-/// message already is. So a conversation stops being a stranger's once you
-/// have written in it yourself (review of 2026-09-25). Unknown history — a
-/// chat whose messages are not loaded yet — counts as a stranger's, so the
-/// fold errs toward hiding.
-bool hasWrittenIn(Iterable<Message>? history) =>
-    history?.any((m) => m.isMine) ?? false;
 
 bool shouldFilter({
   required Message message,

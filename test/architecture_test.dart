@@ -15,11 +15,9 @@ import 'package:flutter_test/flutter_test.dart';
 /// A number may go down — lower it here in the same change — and may never go
 /// up. A file not listed may import no feature at all.
 const _featureImportsAllowed = <String, int>{
-  // The send paths and the payloads the transport still answers itself
-  // (room posts and administration, media, presence, avatars) read feature
-  // controllers directly. Each one moved behind a port or into a module
-  // takes its import with it.
-  'lib/core/transport/messaging_service.dart': 27,
+  // Empty since 2026-11-16: everything the transport needs from a feature is
+  // a port in core/transport/ports/, bound in lib/app/bindings.dart. Keep it
+  // that way — a new dependency is a new port, not an import.
 };
 
 final _featureImport = RegExp(

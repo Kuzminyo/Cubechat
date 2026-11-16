@@ -16,6 +16,7 @@
 // that doubles them is visible in a diff instead of in somebody's battery.
 import 'dart:io';
 
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/storage/hive_cipher.dart';
 import 'package:cubechat/core/theme/colors.dart';
 import 'package:cubechat/core/widgets/floating_glass.dart';
@@ -85,6 +86,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
+        overrides: appBindings,
         child: MaterialApp(
           locale: const Locale('en'),
           localizationsDelegates: AppLocalizations.localizationsDelegates,

@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../../core/transport/ports/moderation.dart';
 import '../../chat/data/messages_controller.dart';
 import '../../chat/models/message.dart';
 import '../../peers/data/known_peers_controller.dart';
@@ -35,7 +36,8 @@ class MessageRequests {
 /// into Requests on its first frame. Stored like [ArchivedChatsController]
 /// stores its set — merged under what is in memory, a write before the box
 /// opened kept for when it does.
-class MessageRequestsController extends Notifier<MessageRequests> {
+class MessageRequestsController extends Notifier<MessageRequests>
+    implements MessageRequestBook {
   static const _keyPending = 'requests.pending';
   static const _keyAccepted = 'requests.accepted';
 
@@ -94,7 +96,11 @@ class MessageRequestsController extends Notifier<MessageRequests> {
     }
   }
 
+  @override
   bool isPending(String peer) => state.pending.contains(peer);
+
+  @override
+  bool isAccepted(String peer) => state.accepted.contains(peer);
 
   Future<void> markPending(String peer) async {
     if (state.pending.contains(peer) || state.accepted.contains(peer)) return;

@@ -1,0 +1,122 @@
+import 'dart:typed_data';
+
+import 'call_signal.dart';
+
+export 'call_signal.dart' show callIdLen;
+
+/// How long each part of a call is allowed to take.
+///
+/// Three numbers, and the order between them is the point: an invite outlives
+/// the ringing it starts, so a call that is still being answered is never
+/// thrown away as stale, while yesterday's invite still is.
+abstract final class CallTimings {
+  /// How long the caller waits for the callee's acknowledgement before saying
+  /// the person is unavailable.
+  ///
+  /// An older build drops an unknown inner type silently, so silence here is
+  /// the only signal that the other end cannot take calls at all. Ringing on
+  /// against a phone that heard nothing is the failure this replaces.
+  static const Duration ringingAck = Duration(seconds: 8);
+
+  /// How long a call rings before it becomes a missed call.
+  static const Duration noAnswer = Duration(seconds: 45);
+
+  /// How old an invite may be and still ring a phone.
+  static const Duration inviteFreshness = Duration(seconds: 60);
+
+  /// How long an answered call may take to carry sound before it is given up.
+  ///
+  /// Both SDPs are complete by the time either side is here — each carries
+  /// its one relay candidate — so what is left is a TURN allocation on each
+  /// phone and a connectivity check through the relay, measured on the
+  /// droplet at well under a second. Thirty seconds is for a phone on a
+  /// network that is failing, not a phone on a slow one.
+  static const Duration connecting = Duration(seconds: 30);
+
+  /// How far ahead of us a sender's clock may be before the timestamp is
+  /// nonsense rather than drift.
+  static const Duration clockSkew = Duration(seconds: 30);
+
+  /// How long a finished call's id is remembered, so its invite cannot ring
+  /// a phone after the call is over.
+  ///
+  /// A relay hands stored events over on reconnect newest first, and the mesh
+  /// can carry a frame the long way round, so a hangup can arrive *before* the
+  /// invite it cancels. The hangup finds no call and is dropped, then the
+  /// invite rings — a call nobody is making, for the full [noAnswer]. Kept for
+  /// as long as an invite can still pass [inviteIsFresh]: its age limit plus
+  /// the clock skew a sender is allowed to have.
+  static const Duration endedMemory = Duration(seconds: 90);
+
+  /// How often a device in a call says so again to this account's other
+  /// devices. One call at a time per account (2026-10-12): a phone and a
+  /// computer signed in with its account have to agree on which has it.
+  static const Duration ownDeviceHeartbeat = Duration(seconds: 20);
+
+  /// How long another device counts as being in a call after it last said
+  /// so. Three missed repeats: a device that crashed or lost the internet
+  /// mid-call must not keep the whole account from calling for good.
+  static const Duration ownDeviceSilence = Duration(seconds: 60);
+}
+
+/// Whether a notice from another device of this account, stamped [sentAtMs],
+/// still says something about now. A relay hands its stored events over again
+/// on every reconnect; an hour-old "busy" read as news would keep this
+/// account from calling for a minute.
+bool ownDeviceNoticeIsFresh({required int sentAtMs, required DateTime now}) {
+  final age = now.millisecondsSinceEpoch - sentAtMs;
+  if (age < 0) return -age <= CallTimings.clockSkew.inMilliseconds;
+  return age <=
+      (CallTimings.ownDeviceSilence + CallTimings.clockSkew).inMilliseconds;
+}
+
+/// Whether an invite stamped [sentAtMs] should ring a phone at [now].
+bool inviteIsFresh({required int sentAtMs, required DateTime now}) {
+  final age = now.millisecondsSinceEpoch - sentAtMs;
+  if (age < 0) return -age <= CallTimings.clockSkew.inMilliseconds;
+  return age <= CallTimings.inviteFreshness.inMilliseconds;
+}
+
+/// Whether our own call wins when both sides dialled at once.
+///
+/// Byte-for-byte, lower wins. Both sides run the same comparison over the same
+/// two ids and reach the same answer, so no negotiation is needed and there is
+/// no round trip in which the two could disagree.
+bool winsGlare({required Uint8List mine, required Uint8List theirs}) {
+  for (var i = 0; i < callIdLen; i++) {
+    if (mine[i] != theirs[i]) return mine[i] < theirs[i];
+  }
+  // Identical ids cannot happen with sixteen random bytes, and if they did,
+  // both sides claiming victory would leave two half-calls. Both lose instead.
+  return false;
+}
+
+/// Whether this frame should wake a sleeping phone at all.
+///
+/// A ringing acknowledgement and an accept travel to somebody who is by
+/// definition awake — they are in a call screen. A hangup and a decline do
+/// not: the phone at the other end may be ringing in a pocket, and a phone
+/// that missed the hangup goes on ringing after the caller gave up.
+bool callWakesPeer(CallSignalKind kind) => switch (kind) {
+      CallSignalKind.invite ||
+      CallSignalKind.hangup ||
+      CallSignalKind.decline =>
+        true,
+      CallSignalKind.ringing ||
+      CallSignalKind.accept ||
+      CallSignalKind.busy ||
+      // To our own other devices: one that is closed has no call to be told
+      // about, and waking it would be a push for nothing.
+      CallSignalKind.device =>
+        false,
+    };
+
+/// Whether this frame should be delivered as a VoIP push rather than an
+/// ordinary silent wake.
+///
+/// **Only the invite, and this is not a detail.** iOS terminates an app that
+/// accepts a VoIP push without immediately reporting a new incoming call. A
+/// hangup has no call to report, so a VoIP push carrying one would kill the
+/// app; and it needs none, because the app is awake by then — it reported the
+/// incoming call moments earlier and still holds its relay subscription.
+bool callIsVoipWake(CallSignalKind kind) => kind == CallSignalKind.invite;

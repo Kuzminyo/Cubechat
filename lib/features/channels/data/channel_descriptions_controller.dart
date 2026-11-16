@@ -6,6 +6,7 @@ import 'package:hive/hive.dart';
 
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../../core/transport/ports/room_extras.dart';
 
 /// Ceiling on a channel description/topic, in UTF-16 code units. Generous for
 /// a one-line topic, well short of anything that would make the broadcast
@@ -19,7 +20,8 @@ const int kChannelDescriptionMaxLength = 500;
 /// frame is signed by whoever sent it, and only a member the roster already
 /// knows to be an admin is allowed to set the topic. See the
 /// `channelDescription` case in `MessagingService`.
-class ChannelDescriptionsController extends Notifier<Map<String, String>> {
+class ChannelDescriptionsController extends Notifier<Map<String, String>>
+    implements ChannelDescriptions {
   Box<dynamic>? _box;
   Future<void>? _loading;
 
