@@ -83,7 +83,7 @@ ships and breaks phones that already have the app installed.
   one when you revert something, too.
 - Measure before optimising. The wins here were GPS and uncapped image decodes,
   not blurs and not signing.
-- `MessagingService` is ~8k lines and reaches every controller through
+- `MessagingService` is ~15k lines and reaches every controller through
   `_ref.read`. Work there is additive; do not extract a subsystem in passing.
 - Analyzer runs strict: `strict-casts`, `strict-inference`, `strict-raw-types`,
   `prefer_final_locals`, `require_trailing_commas`.
