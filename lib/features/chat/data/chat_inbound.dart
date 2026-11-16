@@ -4,7 +4,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/identity/nickname_controller.dart';
 import '../../../core/locale/locale_controller.dart';
+import '../../../core/models/channel.dart';
 import '../../../core/models/message.dart';
 import '../../../core/notifications/notification_service.dart';
 import '../../../core/radio_spike.dart';
@@ -211,6 +213,58 @@ class ChatIncomingMessages implements IncomingMessages {
     );
   }
 
+  @override
+  void fileInRoom(
+    Channel channel, {
+    required String authorName,
+    required Message message,
+  }) {
+    // append() is idempotent on wireId; only a genuinely new message
+    // warrants a notification.
+    if (_ref
+        .read(messagesControllerProvider.notifier)
+        .append(channel.name, message)) {
+      _notifyRoom(channel: channel, authorName: authorName, message: message);
+    }
+  }
+
+  /// The room's banner: its name for a title — with an `@` when the post
+  /// mentions our nickname — and the author before the preview.
+  void _notifyRoom({
+    required Channel channel,
+    required String authorName,
+    required Message message,
+  }) {
+    if (AppLifecycle.instance.isViewingChat(channel.name)) return;
+    final nickname =
+        _ref.read(nicknameControllerProvider).replaceAll(RegExp(r'\s+'), '_');
+    final mentioned = RegExp(
+      r'(^|\s)@' + RegExp.escape(nickname) + r'(\s|$)',
+      caseSensitive: false,
+    ).hasMatch(message.text);
+    final localizations =
+        lookupAppLocalizations(_ref.read(localeControllerProvider));
+    final preview = messagePreview(
+      message,
+      localizations,
+      hideOffensive: shouldFilter(
+        message: message,
+        isChannel: true,
+        fromContact: false,
+        enabled: _ref.read(filterEnabledProvider),
+      ),
+    );
+    unawaited(
+      NotificationService.instance.showMessage(
+        threadKey: channel.name,
+        title: mentioned ? '@ ${channel.name}' : channel.name,
+        body: '$authorName: $preview',
+        senderId: channel.name,
+        isGroup: true,
+      ),
+    );
+  }
+
   /// The attribution from the other side: stamp it on the message if that has
   /// arrived, and hold it if it has not.
   void ingestForwardedFrom({
@@ -312,6 +366,8 @@ class ChatInbound implements InboundModule {
     direct(InnerPayloadType.conversationClear, _conversationClear);
     direct(InnerPayloadType.copyRestriction, _copyRestriction);
 
+    room(InnerPayloadType.text, _roomText);
+    room(InnerPayloadType.textReply, _roomTextReply);
     room(InnerPayloadType.reaction, _roomReaction);
     room(InnerPayloadType.edit, _roomEdit);
     room(InnerPayloadType.delete, _roomDelete);
@@ -600,6 +656,72 @@ class ChatInbound implements InboundModule {
   }
 
   // --------------------------------- rooms ---------------------------------
+
+  void _roomText(InboundContext ctx, InnerPayloadType type, Uint8List body) {
+    final channel = ctx.channel!;
+    final plaintext = utf8.decode(
+      unpadTextPayload(body),
+      allowMalformed: true,
+    );
+    // A map beacon, as in a one-to-one chat: transport in a text message's
+    // clothes, recorded on the map and never filed as a post.
+    final arrivedAt = DateTime.now();
+    final beacon = SharedLocation.tryParse(plaintext);
+    if (beacon != null && SharedLocation.isBeaconText(plaintext, arrivedAt)) {
+      _ref.read(mapPresenceStoreProvider.notifier).record(
+            ctx.authorId!,
+            beacon,
+            sentAt: arrivedAt,
+          );
+      return;
+    }
+    final message = Message(
+      id: 'm${DateTime.now().microsecondsSinceEpoch}',
+      chatId: channel.name,
+      text: plaintext,
+      sentAt: DateTime.now(),
+      isMine: false,
+      wireId: ctx.wireId,
+      authorName: ctx.authorName,
+      // The fingerprint, not the name: an inbound edit is checked
+      // against it, and display names are not identities.
+      authorId: ctx.authorId,
+      route: ctx.route,
+      routeHops: ctx.routeHops,
+    );
+    _ref
+        .read(incomingMessagesProvider)
+        .fileInRoom(channel, authorName: ctx.authorName!, message: message);
+  }
+
+  void _roomTextReply(
+    InboundContext ctx,
+    InnerPayloadType type,
+    Uint8List body,
+  ) {
+    final channel = ctx.channel!;
+    final reply = unpackTextReply(body);
+    final plaintext = utf8.decode(
+      unpadTextPayload(reply.paddedText),
+      allowMalformed: true,
+    );
+    final message = Message(
+      id: 'm${DateTime.now().microsecondsSinceEpoch}',
+      chatId: channel.name,
+      text: plaintext,
+      sentAt: DateTime.now(),
+      isMine: false,
+      wireId: ctx.wireId,
+      authorName: ctx.authorName,
+      authorId: ctx.authorId,
+      replyToWireId: TransportEnvelope.hashHex(reply.targetMsgId),
+      route: ctx.route,
+      routeHops: ctx.routeHops,
+    );
+    _ref
+        .read(incomingMessagesProvider)
+        .fileInRoom(channel, authorName: ctx.authorName!, message: message);
+  }
 
   void _roomReaction(InboundContext ctx, InnerPayloadType type, Uint8List body) {
     final rx = Reaction.decode(body);

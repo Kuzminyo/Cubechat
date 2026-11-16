@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../models/channel.dart';
 import '../../models/message.dart';
 
 /// Where a message from one person ends up: their conversation, with a
@@ -18,6 +19,15 @@ abstract interface class IncomingMessages {
   void file(
     Uint8List? senderPub, {
     required String fallbackPeerId,
+    required Message message,
+  });
+
+  /// Files [message] in [channel] — the room name is the bucket, with no
+  /// session to fan out to and no key to canonicalise under — and raises the
+  /// room's banner, naming [authorName]. Not filed or announced twice.
+  void fileInRoom(
+    Channel channel, {
+    required String authorName,
     required Message message,
   });
 }

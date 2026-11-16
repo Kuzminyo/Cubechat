@@ -62,6 +62,8 @@ void main() {
         expect(owner(InboundScope.direct, t), 'chat', reason: t.name);
       }
       for (final t in [
+        InnerPayloadType.text,
+        InnerPayloadType.textReply,
         InnerPayloadType.edit,
         InnerPayloadType.delete,
         InnerPayloadType.pin,
@@ -70,14 +72,25 @@ void main() {
       ]) {
         expect(owner(InboundScope.room, t), 'chat', reason: t.name);
       }
+      expect(
+        owner(InboundScope.room, InnerPayloadType.channelPoll),
+        'channels',
+      );
       expect(owner(InboundScope.direct, InnerPayloadType.typing), 'peers');
       expect(
         owner(InboundScope.direct, InnerPayloadType.forwardPrivacy),
         'peers',
       );
-      // Room posts, media, calls and the control streams are still the
-      // transport's.
-      expect(owner(InboundScope.room, InnerPayloadType.text), 'transport');
+      // Room administration, media, presence, calls and the control streams
+      // are still the transport's.
+      expect(
+        owner(InboundScope.room, InnerPayloadType.channelAdmin),
+        'transport',
+      );
+      expect(
+        owner(InboundScope.direct, InnerPayloadType.presence),
+        'transport',
+      );
       expect(
         owner(InboundScope.direct, InnerPayloadType.mediaManifest),
         'transport',

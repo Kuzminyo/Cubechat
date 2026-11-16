@@ -27,20 +27,12 @@ import '../../features/chat/data/pinned_controller.dart';
 import '../../features/chats/data/message_requests_controller.dart';
 import '../../features/chats/data/read_markers_controller.dart';
 import '../../features/chats/domain/stranger_gate.dart';
-import '../../features/chat/domain/message_preview.dart';
 import '../../features/moderation/domain/profanity.dart';
-import '../../features/moderation/data/filter_settings.dart';
 import '../../features/moderation/data/ban_list_controller.dart';
 import '../../features/moderation/data/hidden_authors.dart';
 import '../models/message.dart';
-import '../../l10n/app_localizations.dart';
-import '../locale/locale_controller.dart';
 import '../../features/files/data/file_transfer_controller.dart';
-import '../../features/map/data/shared_map_locations_provider.dart';
 import '../../features/peers/data/known_peers_controller.dart';
-import '../../features/peers/data/contact_aliases_controller.dart';
-import '../../features/chats/data/favorites_controller.dart';
-import '../../features/chats/data/pinned_chats_controller.dart';
 import '../../features/peers/data/removed_contacts_controller.dart';
 import '../../features/peers/data/peer_avatars_controller.dart';
 import '../../features/peers/data/peer_discovery_controller.dart';
@@ -56,7 +48,6 @@ import '../../features/airdrop/presentation/airdrop_navigation.dart';
 import '../../features/profile/data/media_download_settings_controller.dart';
 import '../../features/profile/data/privacy_settings_controller.dart';
 import '../../features/profile/data/relay_settings_controller.dart';
-import '../../features/radio/data/radio_inbound.dart';
 import '../ble/ble_constants.dart';
 import '../ble/ble_peripheral.dart';
 import '../crypto/channel_crypto.dart';
@@ -92,7 +83,6 @@ import 'chat_session.dart';
 import 'chat_session_manager.dart';
 import 'contact_card.dart';
 import 'dedup_cache.dart';
-import 'shared_location.dart';
 import 'store_forward_cache.dart';
 import 'envelope.dart';
 import 'relay_policy.dart';
@@ -103,6 +93,8 @@ import 'image_reassembly.dart';
 import 'mtu_budget.dart';
 import 'inbound/inbound.dart';
 import 'inbound/incoming_messages.dart';
+import 'ports/stranger_pruning.dart';
+import 'radio_tuning.dart';
 import 'inner_payload.dart';
 import 'channel_poll.dart';
 import '../util/media_storage.dart';
@@ -6750,147 +6742,37 @@ class MessagingService {
     }
   }
 
-  /// The room payloads the transport still answers itself: posts and polls,
-  /// administration, history, the room's picture and rules, and room media.
+  /// The room payloads the transport still answers itself: administration,
+  /// history, the room's picture and rules, and room media.
   ///
-  /// Reactions, edits, deletions, pins and read receipts in a room are the
-  /// chat's, in `features/chat/data/chat_inbound.dart`; the registry routes
-  /// them there and never here — see [_inboundRegistry]. The locals keep the
-  /// names the switch had inline in [_handleChannelBody].
+  /// Posts, replies, reactions, edits, deletions, pins and read receipts in a
+  /// room are the chat's (`features/chat/data/chat_inbound.dart`), polls the
+  /// channels' (`features/channels/data/channels_inbound.dart`); the registry
+  /// routes them there and never here — see [_inboundRegistry]. The locals
+  /// keep the names the switch had inline in [_handleChannelBody].
   Future<void> _onRoomPayload(
     InboundContext inbound,
     InnerPayloadType type,
     Uint8List body,
   ) async {
-    final peerId = inbound.linkPeerId;
-    final env = inbound.env;
     final channel = inbound.channel!;
     final authorName = inbound.authorName!;
     final reactorId = inbound.authorId!;
-    final incomingHops = inbound.routeHops;
     final unpacked = (type: type, body: body);
     try {
       switch (unpacked.type) {
+        case InnerPayloadType.text:
+        case InnerPayloadType.textReply:
         case InnerPayloadType.reaction:
         case InnerPayloadType.edit:
         case InnerPayloadType.delete:
         case InnerPayloadType.pin:
         case InnerPayloadType.receipt:
-          // Answered by the chat module; the registry never routes these
-          // here. Listed so this switch stays exhaustive.
+        case InnerPayloadType.channelPoll:
+          // Answered by the chat and channels modules; the registry never
+          // routes these here. Listed so this switch stays exhaustive.
           break;
 
-        case InnerPayloadType.text:
-          final plaintext = utf8.decode(
-            unpadTextPayload(unpacked.body),
-            allowMalformed: true,
-          );
-          final arrivedAt = DateTime.now();
-          final beacon = SharedLocation.tryParse(plaintext);
-          if (beacon != null &&
-              SharedLocation.isBeaconText(plaintext, arrivedAt)) {
-            _ref.read(mapPresenceStoreProvider.notifier).record(
-                  reactorId,
-                  beacon,
-                  sentAt: arrivedAt,
-                );
-            return;
-          }
-          final message = Message(
-            id: 'm${DateTime.now().microsecondsSinceEpoch}',
-            chatId: channel.name,
-            text: plaintext,
-            sentAt: DateTime.now(),
-            isMine: false,
-            wireId: TransportEnvelope.hashHex(env.msgId),
-            authorName: authorName,
-            // The fingerprint, not the name: an inbound edit is checked
-            // against it, and display names are not identities.
-            authorId: reactorId,
-            route: peerId == _nostrPeerId
-                ? MessageRoute.internet
-                : (incomingHops ?? 2) > 1
-                    ? MessageRoute.mesh
-                    : MessageRoute.bluetooth,
-            routeHops: incomingHops,
-          );
-          // append() is idempotent on wireId; only a genuinely new message
-          // warrants a notification.
-          if (_ref
-              .read(messagesControllerProvider.notifier)
-              .append(channel.name, message)) {
-            _notifyChannel(
-                channel: channel, authorName: authorName, message: message);
-          }
-
-        case InnerPayloadType.textReply:
-          final reply = unpackTextReply(unpacked.body);
-          final plaintext = utf8.decode(
-            unpadTextPayload(reply.paddedText),
-            allowMalformed: true,
-          );
-          final message = Message(
-            id: 'm${DateTime.now().microsecondsSinceEpoch}',
-            chatId: channel.name,
-            text: plaintext,
-            sentAt: DateTime.now(),
-            isMine: false,
-            wireId: TransportEnvelope.hashHex(env.msgId),
-            authorName: authorName,
-            authorId: reactorId,
-            replyToWireId: TransportEnvelope.hashHex(reply.targetMsgId),
-            route: peerId == _nostrPeerId
-                ? MessageRoute.internet
-                : (incomingHops ?? 2) > 1
-                    ? MessageRoute.mesh
-                    : MessageRoute.bluetooth,
-            routeHops: incomingHops,
-          );
-          if (_ref
-              .read(messagesControllerProvider.notifier)
-              .append(channel.name, message)) {
-            _notifyChannel(
-                channel: channel, authorName: authorName, message: message);
-          }
-
-        case InnerPayloadType.channelPoll:
-          final poll = ChannelPollPayload.decode(unpacked.body);
-          if (poll.operation == ChannelPollOperation.create) {
-            final message = Message(
-              id: 'm${DateTime.now().microsecondsSinceEpoch}',
-              chatId: channel.name,
-              text: poll.question!,
-              sentAt: DateTime.now(),
-              isMine: false,
-              kind: MessageKind.poll,
-              wireId: TransportEnvelope.hashHex(env.msgId),
-              authorName: authorName,
-              authorId: reactorId,
-              pollOptions: poll.options,
-              route: peerId == _nostrPeerId
-                  ? MessageRoute.internet
-                  : (incomingHops ?? 2) > 1
-                      ? MessageRoute.mesh
-                      : MessageRoute.bluetooth,
-              routeHops: incomingHops,
-            );
-            if (_ref
-                .read(messagesControllerProvider.notifier)
-                .append(channel.name, message)) {
-              _notifyChannel(
-                channel: channel,
-                authorName: authorName,
-                message: message,
-              );
-            }
-          } else {
-            _ref.read(messagesControllerProvider.notifier).applyPollVote(
-                  channel.name,
-                  pollWireId: poll.targetWireId!,
-                  voterId: reactorId,
-                  option: poll.option!,
-                );
-          }
         case InnerPayloadType.channelDelete:
           final ask = ChannelDelete.decode(unpacked.body);
           final roster = _ref.read(channelRosterControllerProvider.notifier);
@@ -7160,38 +7042,9 @@ class MessagingService {
     return 'Peer ${_hexOf(edPub).substring(0, 6)}';
   }
 
-  void _notifyChannel({
-    required Channel channel,
-    required String authorName,
-    required Message message,
-  }) {
-    if (AppLifecycle.instance.isViewingChat(channel.name)) return;
-    final nickname =
-        _ref.read(nicknameControllerProvider).replaceAll(RegExp(r'\s+'), '_');
-    final mentioned = RegExp(
-      r'(^|\s)@' + RegExp.escape(nickname) + r'(\s|$)',
-      caseSensitive: false,
-    ).hasMatch(message.text);
-    unawaited(NotificationService.instance.showMessage(
-      threadKey: channel.name,
-      title: mentioned ? '@ ${channel.name}' : channel.name,
-      body: '$authorName: ${messagePreview(message, _localizations, hideOffensive: shouldFilter(message: message, isChannel: true, fromContact: false, enabled: _ref.read(filterEnabledProvider)))}',
-      senderId: channel.name,
-      isGroup: true,
-    ));
-  }
-
   /// The first eight characters of a chat id, which is how every other line
   /// in the log names a peer.
   static String _short(String id) => id.length > 8 ? id.substring(0, 8) : id;
-
-  /// The app's strings, in the language it is set to.
-  ///
-  /// A notification is composed outside the widget tree, so there is no
-  /// context to look these up from — and the lines it used to build were
-  /// English constants regardless of what the user had chosen.
-  AppLocalizations get _localizations =>
-      lookupAppLocalizations(_ref.read(localeControllerProvider));
 
   /// Linear scan through active sessions for the one whose authenticated
   /// pubkey matches [pubkeyHex]. Returns null if no live session for that
@@ -7818,6 +7671,9 @@ class MessagingService {
 
   /// Room payloads a feature module answers; the rest are [_onRoomPayload]'s.
   static const _roomByModules = {
+    InnerPayloadType.text,
+    InnerPayloadType.textReply,
+    InnerPayloadType.channelPoll,
     InnerPayloadType.reaction,
     InnerPayloadType.edit,
     InnerPayloadType.delete,
@@ -9556,15 +9412,11 @@ class MessagingService {
       // canonicalise under — the room name *is* the bucket. It does still want
       // the same banner a channel text message raises.
       if (channel != null) {
-        if (_ref
-            .read(messagesControllerProvider.notifier)
-            .append(channel.name, message)) {
-          _notifyChannel(
-            channel: channel,
-            authorName: authorName ?? '',
-            message: message,
-          );
-        }
+        _ref.read(incomingMessagesProvider).fileInRoom(
+              channel,
+              authorName: authorName ?? '',
+              message: message,
+            );
         return;
       }
       _appendToAllSessionsForSamePeer(senderPub,
@@ -10053,40 +9905,13 @@ class MessagingService {
     return true;
   }
 
-  /// Let the roster forget strangers past its cap — see
-  /// [KnownPeersController.pruneStrangers].
-  ///
-  /// Waits for the roster and the chat summaries first: before they land,
-  /// somebody with a whole conversation behind them would look like a
-  /// stranger with none.
+  /// Let the roster forget strangers past its cap. Who is worth keeping is
+  /// the app's call — see [StrangerPruning]; what the transport does with the
+  /// answer is forget the avatars it asked those people for.
   Future<void> _pruneStrangers() async {
-    final roster = _ref.read(knownPeersControllerProvider.notifier);
-    final messages = _ref.read(messagesControllerProvider.notifier);
-    await roster.loaded;
-    await messages.summariesLoaded;
-    if (_disposed) return;
-    final history = _ref.read(messagesControllerProvider);
-    final summaries = messages.summaries;
-    final favorites = _ref.read(favoritesControllerProvider).toSet();
-    final pinned = _ref.read(pinnedChatsControllerProvider).toSet();
-    final aliases = _ref.read(contactAliasesControllerProvider);
-    final requests = _ref.read(messageRequestsProvider.notifier);
-    final live = {
-      for (final s in _ref.read(chatSessionManagerProvider).values)
-        s.remotePubkeyHex,
-    };
-    final dropped = await roster.pruneStrangers(
-      isKept: (p) {
-        final id = p.pubkeyHex;
-        return (history[id]?.isNotEmpty ?? false) ||
-            summaries.containsKey(id) ||
-            favorites.contains(id) ||
-            pinned.contains(id) ||
-            aliases.containsKey(id) ||
-            requests.isPending(id) ||
-            live.contains(id);
-      },
-    );
+    final dropped = await _ref
+        .read(strangerPruningProvider)
+        .prune(stillWanted: () => !_disposed);
     if (dropped.isEmpty) return;
     final avatars = _ref.read(peerAvatarsControllerProvider.notifier);
     for (final id in dropped) {

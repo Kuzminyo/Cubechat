@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:cubechat/core/models/channel.dart';
 import 'package:cubechat/core/transport/call_signal.dart';
+import 'package:cubechat/core/transport/channel_poll.dart';
+import 'package:cubechat/core/transport/shared_location.dart';
 import 'package:cubechat/core/transport/envelope.dart';
 import 'package:cubechat/core/transport/inner_payload.dart';
 import 'package:cubechat/features/channels/data/channel_controller.dart';
@@ -319,6 +321,43 @@ void main() {
         h.container.read(pinnedControllerProvider)[room.name]?.wireId,
         TransportEnvelope.hashHex(id),
       );
+    });
+
+    test('a poll is filed as a poll, and a vote is counted per voter',
+        () async {
+      final room = await joined();
+      final id = await h.room(
+        room,
+        InnerPayloadType.channelPoll,
+        ChannelPollPayload.create('Коли збираємось?', ['завтра', 'в суботу'])
+            .encode(),
+      );
+      final poll = byWire(room.name, id)!;
+      expect(poll.kind, MessageKind.poll);
+      expect(poll.text, 'Коли збираємось?');
+      expect(poll.pollOptions, ['завтра', 'в суботу']);
+      expect(poll.authorId, h.peer.authorId);
+
+      final voter = await TestPhone.make();
+      await h.room(
+        room,
+        InnerPayloadType.channelPoll,
+        ChannelPollPayload.vote(TransportEnvelope.hashHex(id), 1).encode(),
+        from: voter,
+      );
+      expect(byWire(room.name, id)!.pollVotes, {voter.authorId: 1});
+    });
+
+    test('a map beacon in a room is not filed as a post', () async {
+      final room = await joined();
+      final beacon = SharedLocation(
+        latitude: 50.45,
+        longitude: 30.52,
+        expiresAt: DateTime.now().add(const Duration(minutes: 2)),
+        presence: true,
+      );
+      await h.room(room, InnerPayloadType.text, textBody(beacon.encode()));
+      expect(chat(room.name), isEmpty);
     });
 
     test('a frame in a room we are not in is not opened', () async {
