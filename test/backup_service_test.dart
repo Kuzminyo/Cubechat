@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/crypto/identity_service.dart';
 import 'package:cubechat/core/storage/hive_cipher.dart';
 import 'package:cubechat/core/storage/hive_init.dart';
@@ -32,7 +33,7 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp('cubechat_backup_test_');
     PathProviderPlatform.instance = _BackupPaths(tempDir.path);
     Hive.init(tempDir.path);
-    container = ProviderContainer();
+    container = ProviderContainer(overrides: appBindings);
   });
 
   tearDown(() async {

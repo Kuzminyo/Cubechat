@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/transport/shared_location.dart';
 import 'package:cubechat/core/storage/hive_init.dart';
 import 'package:cubechat/features/map/data/shared_map_locations_provider.dart';
@@ -39,7 +40,7 @@ void main() {
     phone = await Directory.systemTemp.createTemp('cubechat_media_backup_');
     PathProviderPlatform.instance = _FakePathProvider(phone.path);
     Hive.init(phone.path);
-    container = ProviderContainer();
+    container = ProviderContainer(overrides: appBindings);
   });
 
   tearDown(() async {

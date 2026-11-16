@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/theme/app_theme.dart';
 import 'package:cubechat/core/transport/nostr/websocket_relay_client.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
@@ -67,7 +68,10 @@ void main() {
           .setMockMethodCallHandler(MethodChannel(ch), (call) async => null);
     }
     final container = ProviderContainer(
-      overrides: [messagesControllerProvider.overrideWith(_FakeMessages.new)],
+      overrides: [
+        ...appBindings,
+        messagesControllerProvider.overrideWith(_FakeMessages.new),
+      ],
     );
 
     final counts = <String, int>{};

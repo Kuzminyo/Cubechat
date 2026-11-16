@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/theme/app_theme.dart';
 import 'package:cubechat/core/util/app_lifecycle.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
@@ -80,6 +81,7 @@ void main() {
     }
     final container = ProviderContainer(
       overrides: [
+        ...appBindings,
         messagesControllerProvider.overrideWith(_Messages.new),
         readMarkersControllerProvider.overrideWith(() => _ReadUpTo(readUpTo)),
       ],
@@ -140,7 +142,10 @@ void main() {
     // The real markers controller, not a stand-in: whatever moves the marker
     // on the way in and out moves it here too.
     final container = ProviderContainer(
-      overrides: [messagesControllerProvider.overrideWith(_Messages.new)],
+      overrides: [
+        ...appBindings,
+        messagesControllerProvider.overrideWith(_Messages.new),
+      ],
     );
     Widget app(Widget home) => UncontrolledProviderScope(
           container: container,

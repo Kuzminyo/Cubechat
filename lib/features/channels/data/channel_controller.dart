@@ -9,6 +9,7 @@ import '../../../core/crypto/channel_crypto.dart';
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
 import '../../../core/transport/inner_payload.dart';
+import '../../../core/transport/ports/channel_directory.dart';
 import '../models/channel.dart';
 
 /// The set of group channels the user has joined, keyed by normalised name.
@@ -18,7 +19,8 @@ import '../models/channel.dart';
 /// and is erased by Emergency Wipe. Joining is purely local: deriving the key
 /// makes you a member the moment a matching-key message arrives; there's no
 /// server or invite round-trip.
-class ChannelController extends Notifier<Map<String, Channel>> {
+class ChannelController extends Notifier<Map<String, Channel>>
+    implements ChannelDirectory {
   Box<Map<dynamic, dynamic>>? _box;
   Future<void>? _loading;
 

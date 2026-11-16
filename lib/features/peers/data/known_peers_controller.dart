@@ -7,6 +7,7 @@ import 'package:hive/hive.dart';
 
 import '../../../core/storage/hive_cipher.dart';
 import '../../../core/storage/hive_init.dart';
+import '../../../core/transport/ports/peer_directory.dart';
 import '../models/known_peer.dart';
 import 'removed_contacts_controller.dart';
 
@@ -15,7 +16,8 @@ import 'removed_contacts_controller.dart';
 /// Backed by Hive (M4) — the roster survives app restarts. Each peer is
 /// stored as a plain `Map<String, dynamic>` so we don't need code-gen for
 /// a TypeAdapter (the schema is two strings + an ISO timestamp).
-class KnownPeersController extends Notifier<Map<String, KnownPeer>> {
+class KnownPeersController extends Notifier<Map<String, KnownPeer>>
+    implements PeerDirectory {
   Box<Map<dynamic, dynamic>>? _box;
   Future<void>? _loading;
 

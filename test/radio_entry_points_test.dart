@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:cubechat/app/app_router.dart';
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/theme/app_theme.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
 import 'package:cubechat/features/chat/models/message.dart';
@@ -127,6 +128,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...appBindings,
             acceptedTermsOverride,
             radioControllerProvider.overrideWith(() => fake),
           ],
@@ -197,6 +199,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...appBindings,
             knownPeersControllerProvider.overrideWith(() => _Roster(roster)),
             messagesControllerProvider.overrideWith(_NoMessages.new),
           ],
@@ -281,6 +284,7 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
+            ...appBindings,
             peerDiscoveryControllerProvider.overrideWith(_IdleDiscovery.new),
             peripheralControllerProvider.overrideWith(_Quiet.new),
           ],

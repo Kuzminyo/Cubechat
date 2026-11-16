@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:cubechat/app.dart';
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/features/channels/data/channel_controller.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
 import 'package:cubechat/features/chat/models/message.dart';
@@ -51,7 +52,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [acceptedTermsOverride],
+        overrides: [...appBindings, acceptedTermsOverride],
         child: const CubechatApp(),
       ),
     );

@@ -15,12 +15,10 @@ import 'package:cryptography/cryptography.dart';
 
 import '../../features/call/domain/call_rules.dart';
 import '../../features/channels/data/channel_avatars_controller.dart';
-import '../../features/channels/data/channel_controller.dart';
 import '../../features/channels/data/channel_descriptions_controller.dart';
-import '../../features/channels/data/channel_roster_controller.dart';
 import '../models/channel.dart';
+import '../models/channel_member.dart';
 import '../../features/chat/data/conversation_settings_controller.dart';
-import '../../features/chat/data/messages_controller.dart';
 import '../../features/chat/data/send_queue.dart';
 import '../../features/chat/data/held_media.dart';
 import '../../features/chat/data/pinned_controller.dart';
@@ -32,7 +30,6 @@ import '../../features/moderation/data/ban_list_controller.dart';
 import '../../features/moderation/data/hidden_authors.dart';
 import '../models/message.dart';
 import '../../features/files/data/file_transfer_controller.dart';
-import '../../features/peers/data/known_peers_controller.dart';
 import '../../features/peers/data/removed_contacts_controller.dart';
 import '../../features/peers/data/peer_avatars_controller.dart';
 import '../../features/peers/data/peer_discovery_controller.dart';
@@ -93,6 +90,10 @@ import 'image_reassembly.dart';
 import 'mtu_budget.dart';
 import 'inbound/inbound.dart';
 import 'inbound/incoming_messages.dart';
+import 'ports/channel_directory.dart';
+import 'ports/channel_roster.dart';
+import 'ports/conversations.dart';
+import 'ports/peer_directory.dart';
 import 'ports/stranger_pruning.dart';
 import 'radio_tuning.dart';
 import 'inner_payload.dart';
@@ -237,7 +238,7 @@ List<KnownPeer> roomRelayAudience(
 bool isRoomMember(KnownPeer peer, Set<String> memberIds) {
   final key = peer.signPublicKey;
   return key != null &&
-      memberIds.contains(ChannelRosterController.fingerprintOf(key));
+      memberIds.contains(memberFingerprintOf(key));
 }
 
 /// Top-level orchestrator that ties BLE, Noise sessions, and the in-memory
@@ -258,7 +259,7 @@ bool isRoomMember(KnownPeer peer, Set<String> memberIds) {
 ///   2. We start a [ChatSession] as responder, drive the handshake by
 ///      pushing HS2 / HS3 back via [BlePeripheral.notifyInbound]
 ///   3. Subsequent writes carry transport frames → we decrypt and append
-///      to [MessagesController]
+///      to [Conversations]
 class MessagingService {
   MessagingService(this._ref) {
     _wirePeripheralEvents();
@@ -268,7 +269,7 @@ class MessagingService {
     // allowed to have sent them; this is what lets the answer catch up, and
     // what tells a new member what the room looks like.
     _ref.listen(
-      channelRosterControllerProvider,
+      channelRostersProvider,
       (previous, next) {
         unawaited(_replayHeldChannelState());
         unawaited(_replayHeldChannelPosts());
@@ -280,7 +281,7 @@ class MessagingService {
     // changing is the moment the answer may have arrived, so it is the moment
     // to try what was held. See [_holdUnverified].
     _ref.listen<Map<String, KnownPeer>>(
-      knownPeersControllerProvider,
+      knownPeersProvider,
       (previous, next) {
         unawaited(_replayHeldUnverified());
         _greetNewPeers(previous, next);
@@ -640,7 +641,7 @@ class MessagingService {
   /// Resolve an origin/dest id back to the peer's canonical X25519 pubkey,
   /// across every epoch they might have used.
   Future<Uint8List?> _peerForId(Uint8List id) async {
-    final roster = _ref.read(knownPeersControllerProvider);
+    final roster = _ref.read(knownPeersProvider);
     final pubkeys = <Uint8List>[];
     for (final p in roster.values) {
       try {
@@ -1020,7 +1021,7 @@ class MessagingService {
         final channelName = map['c'] as String?;
         final channel = channelName == null
             ? null
-            : _ref.read(channelControllerProvider.notifier).byName(channelName);
+            : _ref.read(channelDirectoryProvider).byName(channelName);
         if (channelName != null && channel == null) continue;
         if (manifest.isForwardSecret) await _deriveAndStoreMediaKey(manifest);
         _pendingManifests[key] = _ManifestEntry(
@@ -1345,7 +1346,7 @@ class MessagingService {
     // link (see [relayWakeWaitFor]), and a contact with no Nostr key cannot go
     // by relay however long it lasts.
     final npub =
-        _ref.read(knownPeersControllerProvider)[canonicalId]?.nostrPubkey;
+        _ref.read(knownPeersProvider)[canonicalId]?.nostrPubkey;
     if (npub == null || npub.length != 32) {
       DebugLog.instance.log(
         'NOSTR',
@@ -1594,7 +1595,7 @@ class MessagingService {
   Future<({SecretKey key, Uint8List identityPub, Uint8List ephemeralPub})?>
       _deriveMediaFsSetup(String canonicalId, Uint8List peerPub) async {
     final recipientSpk =
-        _ref.read(knownPeersControllerProvider)[canonicalId]?.signedPrekeyPub;
+        _ref.read(knownPeersProvider)[canonicalId]?.signedPrekeyPub;
     if (recipientSpk == null || recipientSpk.length != 32) return null;
     try {
       final identity = await _ref.read(identityProvider.future);
@@ -1868,7 +1869,7 @@ class MessagingService {
     } else {
       // No direct session — fall back to a mesh send if we know this pubkey
       // from a prior announcement / handshake.
-      final known = _ref.read(knownPeersControllerProvider)[chatId];
+      final known = _ref.read(knownPeersProvider)[chatId];
       if (known != null) {
         try {
           peerPub = _hexDecodeBytes(known.pubkeyHex);
@@ -1928,7 +1929,7 @@ class MessagingService {
     // nobody has been dead code since it was written. Location is the most
     // expensive thing this app can leave running.
     var transientDelivered = false;
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     // A resend is already in the conversation; filing it again would be a
     // second bubble for one message.
     if (!transient && resendOf == null) {
@@ -1961,7 +1962,7 @@ class MessagingService {
       // and fits longer text). FS uses the compact signature (0xA2) and no
       // length padding to claw back MTU headroom.
       final recipientSpk =
-          _ref.read(knownPeersControllerProvider)[canonicalId]?.signedPrekeyPub;
+          _ref.read(knownPeersProvider)[canonicalId]?.signedPrekeyPub;
       Uint8List? body;
       if (recipientSpk != null && recipientSpk.length == 32) {
         // Any failure in the FS path MUST fall through to SealedBox — never
@@ -2325,7 +2326,7 @@ class MessagingService {
       peerPub = session.remoteStaticPublicKey;
       canonicalId = session.remotePubkeyHex ?? chatId;
     } else {
-      final known = _ref.read(knownPeersControllerProvider)[chatId];
+      final known = _ref.read(knownPeersProvider)[chatId];
       if (known != null) {
         try {
           peerPub = _hexDecodeBytes(known.pubkeyHex);
@@ -2398,7 +2399,7 @@ class MessagingService {
       fileBytes: size,
       wireId: TransportEnvelope.hashHex(fileId),
     );
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     if (appendLocally) {
       messages.append(canonicalId, msg);
       if (chatId != canonicalId) messages.append(chatId, msg);
@@ -2790,7 +2791,7 @@ class MessagingService {
       return;
     }
     await transfers.remove(transferId);
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     if (task.messageId case final messageId?) {
       messages.deleteLocal(task.chatId, messageId);
     }
@@ -2857,7 +2858,7 @@ class MessagingService {
       peerPub = session.remoteStaticPublicKey;
       canonicalId = session.remotePubkeyHex ?? chatId;
     } else {
-      final known = _ref.read(knownPeersControllerProvider)[chatId];
+      final known = _ref.read(knownPeersProvider)[chatId];
       if (known != null) {
         try {
           peerPub = _hexDecodeBytes(known.pubkeyHex);
@@ -2895,7 +2896,7 @@ class MessagingService {
       viewOnce: viewOnce,
       albumId: albumId,
     );
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     messages.append(canonicalId, msg);
     if (chatId != canonicalId) {
       messages.append(chatId, msg);
@@ -2936,7 +2937,7 @@ class MessagingService {
     ChatSession? session = manager.sessionFor(chatId);
     session ??= _findSessionByPubkeyHex(chatId);
 
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
 
     // "Sending a photo…" on the other phone while this runs — see
     // [_beginSendingMedia]. Each photo of an album passes through here in turn,
@@ -3162,7 +3163,7 @@ class MessagingService {
         // Whatever is left has not been attempted and will not be. Say so on
         // each of them rather than leaving a row of bubbles stuck on "sending"
         // forever.
-        final messages = _ref.read(messagesControllerProvider.notifier);
+        final messages = _ref.read(conversationsProvider);
         for (final abandoned in pending.skip(i + 1)) {
           messages.updateStatus(
             abandoned.canonicalId,
@@ -3203,7 +3204,7 @@ class MessagingService {
       peerPub = session.remoteStaticPublicKey;
       canonicalId = session.remotePubkeyHex ?? chatId;
     } else {
-      final known = _ref.read(knownPeersControllerProvider)[chatId];
+      final known = _ref.read(knownPeersProvider)[chatId];
       if (known != null) {
         try {
           peerPub = _hexDecodeBytes(known.pubkeyHex);
@@ -3244,7 +3245,7 @@ class MessagingService {
       audioLevels: bars,
       wireId: TransportEnvelope.hashHex(audioId),
     );
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     messages.append(canonicalId, msg);
     if (chatId != canonicalId) {
       messages.append(chatId, msg);
@@ -3512,12 +3513,12 @@ class MessagingService {
       DebugLog.instance.log('RECEIPT', 'not sending: read receipts are off');
       return;
     }
-    final msgs = _ref.read(messagesControllerProvider)[canonicalId];
+    final msgs = _ref.read(messagesProvider)[canonicalId];
     if (msgs == null || msgs.isEmpty) return;
 
     final isChannel = canonicalId.startsWith('#');
     final channel = isChannel
-        ? _ref.read(channelControllerProvider.notifier).byName(canonicalId)
+        ? _ref.read(channelDirectoryProvider).byName(canonicalId)
         : null;
     if (isChannel && channel == null) return; // left it, or never joined
 
@@ -3785,7 +3786,7 @@ class MessagingService {
     if (_disposed || _outbox.isEmpty) return;
     if (_flushingOutbox) return;
     _flushingOutbox = true;
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     final delivered = <String, Set<String>>{};
     var failures = 0;
     // Texts on their way: on a slow link presence and receipts wait for them —
@@ -3821,7 +3822,7 @@ class MessagingService {
         _outbox.remove(entry.key);
         // Collected, not applied. Reporting each landing on its own woke
         // every screen watching the message store once per message; the batch
-        // goes in after the loop — see [MessagesController.markDeliveredBatch].
+        // goes in after the loop — see [Conversations.markDeliveredBatch].
         for (final id in {ref.canonicalId, ref.chatId}) {
           (delivered[id] ??= <String>{}).add(ref.messageId);
         }
@@ -3885,7 +3886,7 @@ class MessagingService {
   /// 32-byte Nostr key on file. See [textWaitingForRelay].
   bool get _relayTextQueued {
     if (_outbox.isEmpty) return false;
-    final peers = _ref.read(knownPeersControllerProvider);
+    final peers = _ref.read(knownPeersProvider);
     return _outbox.values
         .any((held) => peers[held.canonicalId]?.nostrPubkey?.length == 32);
   }
@@ -3980,7 +3981,7 @@ class MessagingService {
 
   Future<void> _flushPendingReadReceiptsInner() async {
     if (_disposed) return;
-    for (final chatId in _ref.read(messagesControllerProvider).keys.toList()) {
+    for (final chatId in _ref.read(messagesProvider).keys.toList()) {
       if (_disposed) return;
       try {
         await sendReadReceipts(chatId);
@@ -4008,7 +4009,7 @@ class MessagingService {
     if (target.length != Reaction.idLen) return;
 
     // Optimistic local echo.
-    _ref.read(messagesControllerProvider.notifier).applyReaction(
+    _ref.read(conversationsProvider).applyReaction(
           chatId,
           targetWireId: targetWireId,
           emoji: emoji,
@@ -4026,7 +4027,7 @@ class MessagingService {
     try {
       if (chatId.startsWith('#')) {
         final channel =
-            _ref.read(channelControllerProvider.notifier).byName(chatId);
+            _ref.read(channelDirectoryProvider).byName(chatId);
         if (channel == null) return;
         final msgId = TransportEnvelope.newMsgId(initialTtl: _meshTtl);
         final frame = await _buildChannelFrame(
@@ -4180,7 +4181,7 @@ class MessagingService {
     Uint8List body,
   ) async {
     final peers = [
-      for (final p in _ref.read(knownPeersControllerProvider).values)
+      for (final p in _ref.read(knownPeersProvider).values)
         if (!p.isBlocked) p,
     ];
     var sent = 0;
@@ -4504,7 +4505,7 @@ class MessagingService {
     if (_disposed) return;
     final settings = _ref.read(privacySettingsProvider);
     final on = allowed ?? settings.allowForwardLink;
-    final peers = _ref.read(knownPeersControllerProvider);
+    final peers = _ref.read(knownPeersProvider);
     var told = 0;
     for (final peer in peers.values) {
       if (peer.isBlocked) continue;
@@ -4546,9 +4547,9 @@ class MessagingService {
     DateTime? until,
   }) async {
     final channel =
-        _ref.read(channelControllerProvider.notifier).byName(channelName);
+        _ref.read(channelDirectoryProvider).byName(channelName);
     if (channel == null) throw StateError('not a member of $channelName');
-    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final roster = _ref.read(channelRosterProvider);
     final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
     if (!roster.isAdmin(channel.name, me.id)) {
       throw StateError('only an admin can moderate $channelName');
@@ -4596,12 +4597,12 @@ class MessagingService {
   /// job and a far larger one.
   Future<int> sendChannelHistory(String channelName) async {
     final channel =
-        _ref.read(channelControllerProvider.notifier).byName(channelName);
+        _ref.read(channelDirectoryProvider).byName(channelName);
     if (channel == null) throw StateError('not a member of $channelName');
     if (!channel.adminOnly) {
       throw StateError('history is only shareable in an announcement channel');
     }
-    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final roster = _ref.read(channelRosterProvider);
     final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
     if (!roster.isAdmin(channel.name, me.id)) {
       throw StateError('only an admin can share the history of $channelName');
@@ -4613,7 +4614,7 @@ class MessagingService {
     // holds nobody. Announcing the seat first is what makes the offer landable
     // — the same order [sendChannelAdminOnly] uses, and for the same reason.
     await announceChannelSeat(channel.name);
-    final stored = _ref.read(messagesControllerProvider)[channel.name] ??
+    final stored = _ref.read(messagesProvider)[channel.name] ??
         const <Message>[];
     final posts = <ChannelHistoryPost>[];
     final photos = <Message>[];
@@ -4737,9 +4738,9 @@ class MessagingService {
 
     if (chatId.startsWith('#')) {
       final channel =
-          _ref.read(channelControllerProvider.notifier).byName(chatId);
+          _ref.read(channelDirectoryProvider).byName(chatId);
       if (channel == null) throw StateError('not a member of $chatId');
-      final roster = _ref.read(channelRosterControllerProvider.notifier);
+      final roster = _ref.read(channelRosterProvider);
       final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
       if (!roster.isAdmin(channel.name, me.id)) {
         throw StateError('only an admin can set wallpaper for $chatId');
@@ -4809,9 +4810,9 @@ class MessagingService {
     bool restricted,
   ) async {
     final channel =
-        _ref.read(channelControllerProvider.notifier).byName(channelName);
+        _ref.read(channelDirectoryProvider).byName(channelName);
     if (channel == null) throw StateError('not a member of $channelName');
-    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final roster = _ref.read(channelRosterProvider);
     final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
     // A real check again, exactly as for the picture and the topic.
     if (!roster.isAdmin(channel.name, me.id)) {
@@ -4857,10 +4858,10 @@ class MessagingService {
   /// store it and then enforce it themselves on every frame that arrives — see
   /// [Channel.adminOnly] for why the receiving side is the only side that can.
   Future<void> sendChannelAdminOnly(String channelName, bool adminOnly) async {
-    final channels = _ref.read(channelControllerProvider.notifier);
+    final channels = _ref.read(channelDirectoryProvider);
     final channel = channels.byName(channelName);
     if (channel == null) throw StateError('not a member of $channelName');
-    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final roster = _ref.read(channelRosterProvider);
     final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
     if (!roster.isAdmin(channel.name, me.id)) {
       throw StateError(
@@ -4932,10 +4933,10 @@ class MessagingService {
     String wireIdHex, {
     bool notifyPeer = true,
   }) async {
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     final burned = await messages.consumeViewOnce(chatId, wireIdHex);
     // Mirror into any transport-id bucket the same conversation is open under.
-    for (final id in _ref.read(messagesControllerProvider).keys) {
+    for (final id in _ref.read(messagesProvider).keys) {
       if (id != chatId) await messages.consumeViewOnce(id, wireIdHex);
     }
     if (burned == null || !notifyPeer) return;
@@ -5047,7 +5048,7 @@ class MessagingService {
       return;
     }
     final chatId = senderPub != null ? _hexOf(senderPub) : peerId;
-    final messages = _ref.read(messagesControllerProvider)[chatId] ?? const [];
+    final messages = _ref.read(messagesProvider)[chatId] ?? const [];
     Message? mine;
     for (final m in messages) {
       if (m.wireId == wireId && m.isMine && m.kind == MessageKind.file) {
@@ -5094,7 +5095,7 @@ class MessagingService {
     }
     if (target.length != MessageEdit.idLen) return;
 
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     if (!messages.editMine(chatId, targetWireId, newText)) return;
 
     final body = MessageEdit(targetMsgId: target, text: newText).encode();
@@ -5102,7 +5103,7 @@ class MessagingService {
     try {
       if (chatId.startsWith('#')) {
         final channel =
-            _ref.read(channelControllerProvider.notifier).byName(chatId);
+            _ref.read(channelDirectoryProvider).byName(chatId);
         if (channel == null) return;
         final frame = await _buildChannelFrame(
           channel,
@@ -5141,7 +5142,7 @@ class MessagingService {
     }
     if (target.length != MessageDelete.idLen) return;
 
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     if (!messages.deleteMineByWireId(chatId, targetWireId)) return;
 
     final body = MessageDelete(targetMsgId: target).encode();
@@ -5149,7 +5150,7 @@ class MessagingService {
     try {
       if (chatId.startsWith('#')) {
         final channel =
-            _ref.read(channelControllerProvider.notifier).byName(chatId);
+            _ref.read(channelDirectoryProvider).byName(chatId);
         if (channel == null) return;
         final frame = await _buildChannelFrame(
           channel,
@@ -5210,7 +5211,7 @@ class MessagingService {
     try {
       if (chatId.startsWith('#')) {
         final channel =
-            _ref.read(channelControllerProvider.notifier).byName(chatId);
+            _ref.read(channelDirectoryProvider).byName(chatId);
         if (channel == null) return;
         final frame = await _buildChannelFrame(
           channel,
@@ -5245,7 +5246,7 @@ class MessagingService {
     required String peerCanonicalId,
   }) async {
     final channel =
-        _ref.read(channelControllerProvider.notifier).byName(channelName);
+        _ref.read(channelDirectoryProvider).byName(channelName);
     if (channel == null) {
       throw StateError('not a member of $channelName');
     }
@@ -5298,9 +5299,9 @@ class MessagingService {
     }
     try {
       final channel = await _ref
-          .read(channelControllerProvider.notifier)
+          .read(channelDirectoryProvider)
           .joinWithKey(invite.name, invite.key);
-      final roster = _ref.read(channelRosterControllerProvider.notifier);
+      final roster = _ref.read(channelRosterProvider);
       await roster.record(
         channel.name,
         ChannelMember(
@@ -5329,7 +5330,7 @@ class MessagingService {
 
   /// The roster entry whose Ed25519 signing key is [edPub], or null.
   KnownPeer? _knownPeerBySignKey(Uint8List edPub) {
-    for (final p in _ref.read(knownPeersControllerProvider).values) {
+    for (final p in _ref.read(knownPeersProvider).values) {
       final pub = p.signPublicKey;
       if (pub != null && _bytesEqual(pub, edPub)) return p;
     }
@@ -5337,7 +5338,7 @@ class MessagingService {
   }
 
   Future<void> _ensureCanPostToChannel(Channel channel) async {
-    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final roster = _ref.read(channelRosterProvider);
     final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
     if (channel.adminOnly && !roster.isAdmin(channel.name, me.id)) {
       throw StateError('only admins can write to ${channel.name}');
@@ -5367,7 +5368,7 @@ class MessagingService {
     if (channelForCommunity(channel.name) != null) return;
     if (!channel.adminOnly) return;
     try {
-      final channels = _ref.read(channelControllerProvider.notifier);
+      final channels = _ref.read(channelDirectoryProvider);
       final community = await channels.joinCommunity(
         channel.name,
         // We are posting to an admin-only room, so we are one of its admins —
@@ -5398,7 +5399,7 @@ class MessagingService {
     String? replyPreview,
   }) async {
     final channel =
-        _ref.read(channelControllerProvider.notifier).byName(channelName);
+        _ref.read(channelDirectoryProvider).byName(channelName);
     if (channel == null) {
       throw StateError('not a member of $channelName');
     }
@@ -5416,7 +5417,7 @@ class MessagingService {
       replyToWireId: replyToWireId,
       replyPreview: replyPreview,
     );
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     messages.append(canonicalId, msg);
 
     try {
@@ -5498,7 +5499,7 @@ class MessagingService {
     Uint8List? reuseImageId,
   }) async {
     final channel =
-        _ref.read(channelControllerProvider.notifier).byName(channelName);
+        _ref.read(channelDirectoryProvider).byName(channelName);
     if (channel == null) throw StateError('not a member of $channelName');
     await _ensureCanPostToChannel(channel);
 
@@ -5518,7 +5519,7 @@ class MessagingService {
       wireId: TransportEnvelope.hashHex(imageId),
       mediaId: _hexOf(imageId),
     );
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     if (!replay) messages.append(channel.name, msg);
 
     try {
@@ -5632,7 +5633,7 @@ class MessagingService {
     String? cachedPath,
   }) async {
     final channel =
-        _ref.read(channelControllerProvider.notifier).byName(channelName);
+        _ref.read(channelDirectoryProvider).byName(channelName);
     if (channel == null) throw StateError('not a member of $channelName');
     await _ensureCanPostToChannel(channel);
 
@@ -5650,7 +5651,7 @@ class MessagingService {
       audioDurationMs: durationMs,
       wireId: TransportEnvelope.hashHex(audioId),
     );
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     messages.append(channel.name, msg);
 
     try {
@@ -5745,9 +5746,9 @@ class MessagingService {
   /// their own roster, because our own copy of it is not evidence of anything.
   Future<void> sendChannelAvatar(String channelName, Uint8List? jpeg) async {
     final channel =
-        _ref.read(channelControllerProvider.notifier).byName(channelName);
+        _ref.read(channelDirectoryProvider).byName(channelName);
     if (channel == null) throw StateError('not a member of $channelName');
-    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final roster = _ref.read(channelRosterProvider);
     final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
     // [ensureSelf] above has just claimed the seat if it was going spare, so
     // by here a room genuinely has an owner and this is a real check again.
@@ -5859,9 +5860,9 @@ class MessagingService {
   /// roster.
   Future<void> sendChannelDescription(String channelName, String text) async {
     final channel =
-        _ref.read(channelControllerProvider.notifier).byName(channelName);
+        _ref.read(channelDirectoryProvider).byName(channelName);
     if (channel == null) throw StateError('not a member of $channelName');
-    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final roster = _ref.read(channelRosterProvider);
     final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
     // A real check again, exactly as for the picture above.
     if (!roster.isAdmin(channel.name, me.id)) {
@@ -5892,7 +5893,7 @@ class MessagingService {
     List<String> options,
   ) async {
     final channel =
-        _ref.read(channelControllerProvider.notifier).byName(channelName);
+        _ref.read(channelDirectoryProvider).byName(channelName);
     if (channel == null) throw StateError('not a member of $channelName');
     final payload = ChannelPollPayload.create(question, options);
     await _ensureCanPostToChannel(channel);
@@ -5909,7 +5910,7 @@ class MessagingService {
       wireId: TransportEnvelope.hashHex(msgId),
       pollOptions: payload.options,
     );
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     messages.append(channel.name, message);
     try {
       final frame = await _buildChannelFrame(
@@ -5947,10 +5948,10 @@ class MessagingService {
     int option,
   ) async {
     final channel =
-        _ref.read(channelControllerProvider.notifier).byName(channelName);
+        _ref.read(channelDirectoryProvider).byName(channelName);
     if (channel == null) throw StateError('not a member of $channelName');
     final payload = ChannelPollPayload.vote(pollWireId, option);
-    _ref.read(messagesControllerProvider.notifier).applyPollVote(
+    _ref.read(conversationsProvider).applyPollVote(
           channel.name,
           pollWireId: pollWireId,
           voterId: 'me',
@@ -6001,9 +6002,9 @@ class MessagingService {
   Future<void> _announceOwnAdminSeat(String channelName) async {
     try {
       final channel =
-          _ref.read(channelControllerProvider.notifier).byName(channelName);
+          _ref.read(channelDirectoryProvider).byName(channelName);
       if (channel == null) return;
-      final roster = _ref.read(channelRosterControllerProvider.notifier);
+      final roster = _ref.read(channelRosterProvider);
       final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
       if (!roster.isAdmin(channel.name, me.id)) return;
       final frame = await _buildChannelFrame(
@@ -6024,9 +6025,9 @@ class MessagingService {
     bool isAdmin,
   ) async {
     final channel =
-        _ref.read(channelControllerProvider.notifier).byName(channelName);
+        _ref.read(channelDirectoryProvider).byName(channelName);
     if (channel == null) throw StateError('not a member of $channelName');
-    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final roster = _ref.read(channelRosterProvider);
     final me = await roster.ensureSelf(channel.name, adminWhenFirst: true);
     if (!roster.isAdmin(channel.name, me.id)) {
       throw StateError('administrator permission required');
@@ -6219,9 +6220,9 @@ class MessagingService {
   /// says so.
   Future<void> sendChannelDeleteForEveryone(String channelName) async {
     final channel =
-        _ref.read(channelControllerProvider.notifier).byName(channelName);
+        _ref.read(channelDirectoryProvider).byName(channelName);
     if (channel == null) throw StateError('not a member of $channelName');
-    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final roster = _ref.read(channelRosterProvider);
     final me = await roster.selfMemberId();
     if (!roster.isOwner(channel.name, me)) {
       throw StateError('only the owner can close $channelName');
@@ -6245,16 +6246,16 @@ class MessagingService {
   /// the same sequence from the transport's side, and it asks nothing because
   /// the decision was made by somebody with the authority to make it.
   Future<void> wipeChannelLocally(String name) async {
-    await _ref.read(messagesControllerProvider.notifier).clearForChat(name);
+    await _ref.read(conversationsProvider).clearForChat(name);
     await _ref.read(pinnedControllerProvider.notifier).forget(name);
     await _ref.read(readMarkersControllerProvider.notifier).forget(name);
-    await _ref.read(channelRosterControllerProvider.notifier).forget(name);
+    await _ref.read(channelRosterProvider).forget(name);
     await _ref
         .read(channelDescriptionsControllerProvider.notifier)
         .forget(name);
     await _ref.read(channelAvatarsControllerProvider.notifier).forget(name);
     // Last, because everything above is keyed on the room still being one.
-    await _ref.read(channelControllerProvider.notifier).leave(name);
+    await _ref.read(channelDirectoryProvider).leave(name);
     DebugLog.instance.log('CHAN', 'wiped $name locally');
   }
 
@@ -6439,7 +6440,7 @@ class MessagingService {
     if (_nostr == null) return 0;
     final now = DateTime.now();
     final peers = _ref
-        .read(knownPeersControllerProvider)
+        .read(knownPeersProvider)
         .values
         .where((p) =>
             p.nostrPubkey != null &&
@@ -6452,7 +6453,7 @@ class MessagingService {
 
     final members = room == null
         ? const <String>{}
-        : roomMemberIds(_ref.read(channelRosterControllerProvider)[room]);
+        : roomMemberIds(_ref.read(channelRostersProvider)[room]);
 
     // **A photo goes to the room, not to the address book.**
     //
@@ -6568,7 +6569,7 @@ class MessagingService {
     final tag =
         Uint8List.fromList(channelBody.sublist(0, ChannelCrypto.tagLen));
     final channel =
-        _ref.read(channelControllerProvider.notifier).channelForTag(tag);
+        _ref.read(channelDirectoryProvider).channelForTag(tag);
     if (channel == null) return; // not a member — relayed only
 
     // Skip our own broadcast reflected back through a relay.
@@ -6638,7 +6639,7 @@ class MessagingService {
       final reactorId = _hexOf(senderEdPub).substring(0, 16);
       if (_ref.read(banListProvider).isBannedFingerprint(reactorId) ||
           _ref.read(hiddenAuthorsProvider).contains(reactorId)) return;
-      await _ref.read(channelRosterControllerProvider.notifier).record(
+      await _ref.read(channelRosterProvider).record(
             channel.name,
             ChannelMember(
               id: reactorId,
@@ -6675,7 +6676,7 @@ class MessagingService {
       // them.
       if (_isChannelPost(unpacked.type) &&
           !_ref
-              .read(channelRosterControllerProvider.notifier)
+              .read(channelRosterProvider)
               .canPost(channel.name, reactorId)) {
         DebugLog.instance.log(
           'CHAN',
@@ -6697,7 +6698,7 @@ class MessagingService {
       if (channel.adminOnly &&
           needsAnAdmin &&
           !_ref
-              .read(channelRosterControllerProvider.notifier)
+              .read(channelRosterProvider)
               .isAdmin(channel.name, reactorId)) {
         DebugLog.instance.log('CHAN',
             'hold ${channel.name} post: $reactorId is not a known admin yet');
@@ -6775,7 +6776,7 @@ class MessagingService {
 
         case InnerPayloadType.channelDelete:
           final ask = ChannelDelete.decode(unpacked.body);
-          final roster = _ref.read(channelRosterControllerProvider.notifier);
+          final roster = _ref.read(channelRosterProvider);
           // The name inside the signed body has to be the room the frame
           // arrived in. The signature covers the body, so this is what stops a
           // delete lifted from one room being replayed into another — and for
@@ -6808,7 +6809,7 @@ class MessagingService {
 
         case InnerPayloadType.channelAdmin:
           final change = ChannelAdminChange.decode(unpacked.body);
-          final roster = _ref.read(channelRosterControllerProvider.notifier);
+          final roster = _ref.read(channelRosterProvider);
           // Somebody saying they are the admin of a room that has none.
           //
           // Without this a room's admin is a fact only their own phone holds.
@@ -6871,7 +6872,7 @@ class MessagingService {
 
         case InnerPayloadType.channelModeration:
           final call = ChannelModeration.decode(unpacked.body);
-          final roster = _ref.read(channelRosterControllerProvider.notifier);
+          final roster = _ref.read(channelRosterProvider);
           // Only from somebody this device already holds as an administrator.
           // The frame is signed, so this is not about who sent it but about
           // whether they were entitled to — and an unowned room grants nothing,
@@ -7025,7 +7026,7 @@ class MessagingService {
       final p = session.remoteStaticPublicKey;
       if (p != null) return p;
     }
-    final known = _ref.read(knownPeersControllerProvider)[canonicalId];
+    final known = _ref.read(knownPeersProvider)[canonicalId];
     if (known != null) {
       try {
         return _hexDecodeBytes(known.pubkeyHex);
@@ -7139,7 +7140,7 @@ class MessagingService {
     // and a signature three times a second, for nothing.
     if (!_hasAnyLink && !_radioInternetUp && !debugAssumeLinkUp) return 0;
     final pubHex =
-        _ref.read(knownPeersControllerProvider)[canonicalId]?.pubkeyHex ??
+        _ref.read(knownPeersProvider)[canonicalId]?.pubkeyHex ??
             _findSessionByPubkeyHex(canonicalId)?.remotePubkeyHex;
     if (pubHex == null) return 0;
     final key = await _radioPairKeyFor(pubHex);
@@ -7203,7 +7204,7 @@ class MessagingService {
   /// lowercase hex. Empty when there is no key to derive them from.
   Future<Set<String>> radioPairTagsFor(String canonicalId) async {
     final pubHex =
-        _ref.read(knownPeersControllerProvider)[canonicalId]?.pubkeyHex ??
+        _ref.read(knownPeersProvider)[canonicalId]?.pubkeyHex ??
             _findSessionByPubkeyHex(canonicalId)?.remotePubkeyHex;
     if (pubHex == null) return const {};
     final key = await _radioPairKeyFor(pubHex);
@@ -7394,7 +7395,7 @@ class MessagingService {
   /// contact map, then a set comparison only if the map was replaced.
   bool _radioPairTagsStale() {
     if (PeerId.epochAt(DateTime.now()) != _radioPairTagsEpoch) return true;
-    final peers = _ref.read(knownPeersControllerProvider);
+    final peers = _ref.read(knownPeersProvider);
     final wanted = _ref.read(radioPairPeersProvider);
     if (identical(peers, _radioPairTagsFrom) &&
         identical(wanted, _radioPairTagsWanted)) {
@@ -7411,7 +7412,7 @@ class MessagingService {
   /// Contacts a pair chunk could be believed from: tuned in on the radio,
   /// signing key on file, not blocked.
   Set<String> _radioPairCandidates(Map<String, KnownPeer> peers) {
-    final notifier = _ref.read(knownPeersControllerProvider.notifier);
+    final notifier = _ref.read(peerDirectoryProvider);
     return {
       for (final id in _ref.read(radioPairPeersProvider))
         if (peers[id] case final p?)
@@ -7435,7 +7436,7 @@ class MessagingService {
   Future<void> _buildRadioPairTags() async {
     debugRadioPairTagBuilds++;
     final now = DateTime.now();
-    final peers = _ref.read(knownPeersControllerProvider);
+    final peers = _ref.read(knownPeersProvider);
     final wanted = _ref.read(radioPairPeersProvider);
     final ids = _radioPairCandidates(peers);
     final tags = <String, String>{};
@@ -7499,7 +7500,7 @@ class MessagingService {
     if (contactId == null) return; // nobody's we know: forwarded only
     final pairKey = _radioPairKeys[contactId];
     final signPub =
-        _ref.read(knownPeersControllerProvider)[contactId]?.signPublicKey;
+        _ref.read(knownPeersProvider)[contactId]?.signPublicKey;
     if (pairKey == null || signPub == null) return;
     final ({RadioChunk chunk, Uint8List senderEdPub}) opened;
     try {
@@ -7517,7 +7518,7 @@ class MessagingService {
       _noteRadioFailure('p:$contactId', 'from ${_short(contactId)}', e);
       return;
     }
-    if (_ref.read(knownPeersControllerProvider.notifier).isBlocked(contactId)) {
+    if (_ref.read(peerDirectoryProvider).isBlocked(contactId)) {
       return;
     }
     _emitRadio(senderId: contactId, groupTag: null, chunk: opened.chunk);
@@ -7552,7 +7553,7 @@ class MessagingService {
     final contact = _knownPeerBySignKey(opened.senderEdPub);
     if (contact != null &&
         _ref
-            .read(knownPeersControllerProvider.notifier)
+            .read(peerDirectoryProvider)
             .isBlocked(contact.pubkeyHex)) {
       return;
     }
@@ -8244,11 +8245,11 @@ class MessagingService {
       // reactions, edits) before it can touch the store or the UI.
       if (senderPub != null &&
           (_ref
-                  .read(knownPeersControllerProvider.notifier)
+                  .read(peerDirectoryProvider)
                   .isBlocked(_hexOf(senderPub)) ||
               _ref.read(banListProvider).isBannedPeer(
                     _hexOf(senderPub),
-                    _ref.read(knownPeersControllerProvider)[_hexOf(senderPub)]
+                    _ref.read(knownPeersProvider)[_hexOf(senderPub)]
                         ?.nostrPubkey,
                     signPublicKey: verifiedSenderEdPub,
                   ))) {
@@ -8305,14 +8306,14 @@ class MessagingService {
             requests.pending.contains(sender)) {
           // "Never wrote to them" must be read from real history, not from a
           // store still loading — or a known contact would be dropped.
-          final messages = _ref.read(messagesControllerProvider.notifier);
+          final messages = _ref.read(conversationsProvider);
           await messages.loaded;
           final own = await _ref.read(identityProvider.future);
           final verdict = strangerVerdict(
             reach: reach,
             viaInternet: true,
             wroteToThem:
-                hasWrittenIn(_ref.read(messagesControllerProvider)[sender]),
+                hasWrittenIn(_ref.read(messagesProvider)[sender]),
             accepted: requests.accepted.contains(sender),
             alreadyPending: requests.pending.contains(sender),
             historyKnown: !messages.loadFailed,
@@ -9120,7 +9121,7 @@ class MessagingService {
               peerName: senderHex == null
                   ? null
                   : _ref
-                      .read(knownPeersControllerProvider)[senderHex]
+                      .read(knownPeersProvider)[senderHex]
                       ?.displayName,
             ),
           );
@@ -9278,7 +9279,7 @@ class MessagingService {
           final room = channel;
           if (room != null) {
             final author = authorId;
-            final roster = _ref.read(channelRosterControllerProvider.notifier);
+            final roster = _ref.read(channelRosterProvider);
             if (author == null || !roster.isAdmin(room.name, author)) {
               DebugLog.instance.log(
                 'CHAN',
@@ -9604,7 +9605,7 @@ class MessagingService {
     // ids are the sender's to mint, so applying one chat-wide would let a peer
     // regroup photos somebody else sent. Cosmetic if it happened, and there is
     // no reason to allow it.
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     final targets = <String>{peerId};
     if (senderPub != null) {
       targets.add(_hexOf(senderPub));
@@ -9707,7 +9708,7 @@ class MessagingService {
     // Scoped to this peer's buckets, exactly as an album hint is: media ids
     // are the sender's to mint, and nobody gets to redraw a voice note
     // somebody else sent.
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     final targets = <String>{peerId};
     if (senderPub != null) {
       targets.add(_hexOf(senderPub));
@@ -9868,7 +9869,7 @@ class MessagingService {
     // about the radio that this frame never asked.
     if (introductionLiftsRemoval(
       addressedToUs: addressedToUs,
-      inRoster: _ref.read(knownPeersControllerProvider)[pubkeyHex] != null,
+      inRoster: _ref.read(knownPeersProvider)[pubkeyHex] != null,
       removed: _ref.read(removedContactsControllerProvider).contains(pubkeyHex),
     )) {
       await _ref
@@ -9880,8 +9881,8 @@ class MessagingService {
             'to us — back in the roster',
       );
     }
-    final isNew = _ref.read(knownPeersControllerProvider)[pubkeyHex] == null;
-    _ref.read(knownPeersControllerProvider.notifier).upsert(
+    final isNew = _ref.read(knownPeersProvider)[pubkeyHex] == null;
+    _ref.read(peerDirectoryProvider).upsert(
           pubkeyHex: pubkeyHex,
           displayName: ann.nickname,
           signPublicKey: ann.signPubkey,
@@ -9921,7 +9922,7 @@ class MessagingService {
     DebugLog.instance.log(
       'MESH',
       'forgot ${dropped.length} stranger(s) heard longest ago '
-          '(over ${KnownPeersController.strangerCap})',
+          "(over the roster's cap)",
     );
   }
 
@@ -10186,7 +10187,7 @@ class MessagingService {
   /// The check itself, shared by the one-frame and the chunked arrival.
   Future<void> _ingestAvatarBytes(String pubkeyHex, Uint8List jpeg) async {
     var expected =
-        _ref.read(knownPeersControllerProvider)[pubkeyHex]?.avatarHash;
+        _ref.read(knownPeersProvider)[pubkeyHex]?.avatarHash;
 
     // A picture we asked for is a picture we may keep, even if the peer's
     // stored digest has moved on since.
@@ -10590,7 +10591,7 @@ class MessagingService {
       }
     }
     _ref.read(mediaSendProgressProvider.notifier).clear(message.id);
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     messages.deleteLocal(chatId, message.id);
     if (message.chatId != chatId) messages.deleteLocal(message.chatId, message.id);
     DebugLog.instance.log('CHAT', 'send cancelled by the user');
@@ -10605,7 +10606,7 @@ class MessagingService {
     final stored = _store.discardMsgId(wireId);
     if (held == null && !stored) return false;
     _scheduleRelayPersist();
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     messages.deleteLocal(chatId, message.id);
     final canonical = held?.canonicalId;
     if (canonical != null && canonical != chatId) {
@@ -10646,7 +10647,7 @@ class MessagingService {
     _reminting = true;
     try {
       final now = DateTime.now();
-      final waiting = queuedMessages(_ref.read(messagesControllerProvider));
+      final waiting = queuedMessages(_ref.read(messagesProvider));
       var reminted = 0;
       for (final item in waiting) {
         final m = item.message;
@@ -10826,7 +10827,7 @@ class MessagingService {
     if (_hasAnyLink) return true;
     if (_relayClient?.isConnected != true) return false;
     final npub =
-        _ref.read(knownPeersControllerProvider)[canonicalId]?.nostrPubkey;
+        _ref.read(knownPeersProvider)[canonicalId]?.nostrPubkey;
     return npub != null && npub.length == 32;
   }
 
@@ -11151,7 +11152,7 @@ class MessagingService {
       if (_disposed) return false;
       if (!relayOnly) return _hasMediaRoute(canonicalId);
       final npub =
-          _ref.read(knownPeersControllerProvider)[canonicalId]?.nostrPubkey;
+          _ref.read(knownPeersProvider)[canonicalId]?.nostrPubkey;
       return client != null &&
           client.isConnected &&
           npub != null &&
@@ -11580,7 +11581,7 @@ class MessagingService {
   Future<Uint8List?> _expectedEdPubFor(Uint8List originPubkeyHash) async {
     final pub = await _peerForId(originPubkeyHash);
     if (pub == null) return null;
-    return _ref.read(knownPeersControllerProvider)[_hexOf(pub)]?.signPublicKey;
+    return _ref.read(knownPeersProvider)[_hexOf(pub)]?.signPublicKey;
   }
 
   /// Reverse an envelope's [originPubkeyHash] back to the sender's full
@@ -11637,9 +11638,9 @@ class MessagingService {
     final pub = await _peerForId(originHash);
     if (pub == null) return;
     final pubkeyHex = _hexOf(pub);
-    final peer = _ref.read(knownPeersControllerProvider)[pubkeyHex];
+    final peer = _ref.read(knownPeersProvider)[pubkeyHex];
     if (peer == null || peer.signPublicKey != null) return; // already cached
-    _ref.read(knownPeersControllerProvider.notifier).upsert(
+    _ref.read(peerDirectoryProvider).upsert(
           pubkeyHex: pubkeyHex,
           displayName: peer.displayName,
           signPublicKey: edPub,
@@ -12155,7 +12156,7 @@ class MessagingService {
       return;
     }
     _answeredArrivalAt[peerHex] = now;
-    final peer = _ref.read(knownPeersControllerProvider)[peerHex];
+    final peer = _ref.read(knownPeersProvider)[peerHex];
     if (peer == null || peer.isBlocked) return;
     final Uint8List peerPub;
     try {
@@ -12247,7 +12248,7 @@ class MessagingService {
       return false;
     }
     final peers = _ref
-        .read(knownPeersControllerProvider)
+        .read(knownPeersProvider)
         .values
         // A Nostr key is what the relay needs; the mesh addresses people by
         // their pubkey and needs no such thing, so the goodbye is not limited
@@ -12380,7 +12381,7 @@ class MessagingService {
     required String senderId,
     required Uint8List body,
   }) async {
-    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final roster = _ref.read(channelRosterProvider);
     if (!roster.isAdmin(channelName, senderId)) {
       _holdChannelState(channelName, type, senderId, body);
       return;
@@ -12441,7 +12442,7 @@ class MessagingService {
       case InnerPayloadType.channelAdminOnly:
         if (body.isEmpty) return;
         await _ref
-            .read(channelControllerProvider.notifier)
+            .read(channelDirectoryProvider)
             .setAdminOnly(channelName, body[0] == 0x01);
 
       case InnerPayloadType.copyRestriction:
@@ -12708,7 +12709,7 @@ class MessagingService {
   /// reads in the order it was spoken in.
   Future<void> _replayHeldChannelPosts() async {
     if (_heldChannelPosts.isEmpty) return;
-    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final roster = _ref.read(channelRosterProvider);
     final now = DateTime.now();
     for (final key in _heldChannelPosts.keys.toList(growable: false)) {
       final separator = key.lastIndexOf('|');
@@ -12776,7 +12777,7 @@ class MessagingService {
   /// stale. Runs on every roster change.
   Future<void> _replayHeldChannelState() async {
     if (_heldChannelState.isEmpty) return;
-    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final roster = _ref.read(channelRosterProvider);
     final now = DateTime.now();
     for (final key in _heldChannelState.keys.toList(growable: false)) {
       final held = _heldChannelState[key];
@@ -12857,7 +12858,7 @@ class MessagingService {
       final description =
           _ref.read(channelDescriptionsControllerProvider)[room];
       final channel =
-          _ref.read(channelControllerProvider.notifier).byName(room);
+          _ref.read(channelDirectoryProvider).byName(room);
       final offersHistory = channel?.shareHistory ?? false;
       if (picture == null &&
           (description == null || description.isEmpty) &&
@@ -12894,7 +12895,7 @@ class MessagingService {
   /// A room's backlog, offered by an administrator.
   ///
   /// Idempotent by construction: every post carries the wireId the original
-  /// travelled under, and [MessagesController.append] already refuses a
+  /// travelled under, and [Conversations.append] already refuses a
   /// wireId it holds. So this lands only where a post is missing — everybody
   /// who was in the room when it was said stores nothing, and the person who
   /// just joined gets what they missed.
@@ -12910,7 +12911,7 @@ class MessagingService {
     required String senderId,
     required Uint8List body,
   }) async {
-    final roster = _ref.read(channelRosterControllerProvider.notifier);
+    final roster = _ref.read(channelRosterProvider);
     if (!channel.adminOnly || !roster.isAdmin(channel.name, senderId)) {
       DebugLog.instance.log(
         'CHAN',
@@ -12925,11 +12926,11 @@ class MessagingService {
       DebugLog.instance.log('CHAN', 'drop ${channel.name} history: $e');
       return;
     }
-    final messages = _ref.read(messagesControllerProvider.notifier);
+    final messages = _ref.read(conversationsProvider);
     // The roster is where a fingerprint becomes a name; it recorded this
     // sender a few lines before we got here.
     final name = _ref
-            .read(channelRosterControllerProvider)[channel.name]?[senderId]
+            .read(channelRostersProvider)[channel.name]?[senderId]
             ?.name ??
         channel.name;
     var added = 0;
@@ -13036,7 +13037,7 @@ class MessagingService {
     // outlive the beacon, which is gone in a hundred seconds, while the clock
     // it hides is shown for as long as they are away. See
     // [KnownPeer.hidesLastSeen].
-    _ref.read(knownPeersControllerProvider.notifier).markPresent(
+    _ref.read(peerDirectoryProvider).markPresent(
           canonical,
           at: stamp,
           hidesLastSeen: beacon.hideLastSeen,
@@ -13079,7 +13080,7 @@ class MessagingService {
     _announcedOverNostr.clear();
 
     final peers = _ref
-        .read(knownPeersControllerProvider)
+        .read(knownPeersProvider)
         .values
         .where((p) => !p.isBlocked && (p.nostrPubkey?.length ?? 0) == 32)
         .toList()
@@ -13166,7 +13167,7 @@ class MessagingService {
     required Uint8List originHash,
   }) async {
     final peers = _ref
-        .read(knownPeersControllerProvider)
+        .read(knownPeersProvider)
         .values
         .where((p) => !p.isBlocked)
         .toList()
@@ -13332,7 +13333,7 @@ class MessagingService {
     await _ref
         .read(removedContactsControllerProvider.notifier)
         .restore(pubkeyHex);
-    _ref.read(knownPeersControllerProvider.notifier).upsert(
+    _ref.read(peerDirectoryProvider).upsert(
           pubkeyHex: pubkeyHex,
           displayName: ann.nickname,
           signPublicKey: ann.signPubkey,
@@ -13400,7 +13401,7 @@ class MessagingService {
   void _registerKnownPeer(ChatSession session) {
     final pubkeyHex = session.remotePubkeyHex;
     if (pubkeyHex == null) return;
-    _ref.read(knownPeersControllerProvider.notifier).upsert(
+    _ref.read(peerDirectoryProvider).upsert(
           pubkeyHex: pubkeyHex,
           displayName: session.peerLabel,
         );
@@ -13495,7 +13496,7 @@ class MessagingService {
       final key = TransportEnvelope.hashHex(env.msgId);
       final ref = _outbox.remove(key);
       if (ref == null) return;
-      final messages = _ref.read(messagesControllerProvider.notifier);
+      final messages = _ref.read(conversationsProvider);
       messages.updateStatus(
           ref.canonicalId, ref.messageId, MessageStatus.delivered);
       if (ref.chatId != ref.canonicalId) {

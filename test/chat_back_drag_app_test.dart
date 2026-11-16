@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:cubechat/app.dart';
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/features/chat/presentation/chat_screen.dart';
 import 'package:cubechat/features/chats/presentation/chats_list_screen.dart';
 import 'package:flutter/material.dart';
@@ -40,7 +41,7 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [acceptedTermsOverride],
+        overrides: [...appBindings, acceptedTermsOverride],
         child: const CubechatApp(),
       ),
     );

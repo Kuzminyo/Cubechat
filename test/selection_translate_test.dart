@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cubechat/app.dart';
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/features/chat/data/message_selection.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
 import 'package:cubechat/features/chat/data/transcription_language.dart';
@@ -89,6 +90,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          ...appBindings,
           acceptedTermsOverride,
           translatorProvider.overrideWithValue(_FakeTranslator()),
           // Chosen already, so the transcription below does not wait on a

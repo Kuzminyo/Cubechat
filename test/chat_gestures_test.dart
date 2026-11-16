@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cubechat/app.dart';
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/features/chat/data/message_reply_target.dart';
 import 'package:cubechat/features/chat/data/message_selection.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
@@ -72,7 +73,7 @@ void main() {
 
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [acceptedTermsOverride],
+        overrides: [...appBindings, acceptedTermsOverride],
         child: const CubechatApp(),
       ),
     );

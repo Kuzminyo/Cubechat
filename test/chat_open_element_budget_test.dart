@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/theme/app_theme.dart';
 import 'package:cubechat/core/util/timed_subtree.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
@@ -88,7 +89,10 @@ void main() {
           .setMockMethodCallHandler(MethodChannel(ch), (call) async => null);
     }
     final container = ProviderContainer(
-      overrides: [messagesControllerProvider.overrideWith(_FakeMessages.new)],
+      overrides: [
+        ...appBindings,
+        messagesControllerProvider.overrideWith(_FakeMessages.new),
+      ],
     );
     await tester.pumpWidget(UncontrolledProviderScope(
       container: container,

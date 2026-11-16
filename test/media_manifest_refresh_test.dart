@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/transport/file_reassembly.dart';
 import 'package:cubechat/core/transport/inner_payload.dart';
 import 'package:cubechat/core/transport/messaging_service.dart';
@@ -57,6 +58,7 @@ void main() {
   Future<MessagingService> start() async {
     final container = ProviderContainer(
       overrides: [
+        ...appBindings,
         relaySettingsProvider.overrideWith(_Offline.new),
         messagingServiceProvider.overrideWith((ref) {
           final service = MessagingService(ref);

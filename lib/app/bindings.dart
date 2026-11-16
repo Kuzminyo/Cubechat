@@ -2,9 +2,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/transport/inbound/inbound.dart';
 import '../core/transport/inbound/incoming_messages.dart';
+import '../core/transport/ports/channel_directory.dart';
+import '../core/transport/ports/channel_roster.dart';
+import '../core/transport/ports/conversations.dart';
+import '../core/transport/ports/peer_directory.dart';
 import '../core/transport/ports/stranger_pruning.dart';
+import '../features/channels/data/channel_controller.dart';
+import '../features/channels/data/channel_roster_controller.dart';
 import '../features/channels/data/channels_inbound.dart';
 import '../features/chat/data/chat_inbound.dart';
+import '../features/chat/data/messages_controller.dart';
+import '../features/peers/data/known_peers_controller.dart';
 import '../features/peers/data/peers_inbound.dart';
 import '../features/peers/data/stranger_pruning.dart';
 
@@ -33,4 +41,25 @@ final List<Override> appBindings = [
     (ref) => ref.watch(chatIncomingMessagesProvider),
   ),
   strangerPruningProvider.overrideWith(RosterStrangerPruning.new),
+  knownPeersProvider.overrideWith(
+    (ref) => ref.watch(knownPeersControllerProvider),
+  ),
+  peerDirectoryProvider.overrideWith(
+    (ref) => ref.watch(knownPeersControllerProvider.notifier),
+  ),
+  messagesProvider.overrideWith(
+    (ref) => ref.watch(messagesControllerProvider),
+  ),
+  conversationsProvider.overrideWith(
+    (ref) => ref.watch(messagesControllerProvider.notifier),
+  ),
+  channelDirectoryProvider.overrideWith(
+    (ref) => ref.watch(channelControllerProvider.notifier),
+  ),
+  channelRostersProvider.overrideWith(
+    (ref) => ref.watch(channelRosterControllerProvider),
+  ),
+  channelRosterProvider.overrideWith(
+    (ref) => ref.watch(channelRosterControllerProvider.notifier),
+  ),
 ];

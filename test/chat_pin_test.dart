@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:cubechat/app.dart';
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/features/channels/data/channel_controller.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
 import 'package:cubechat/features/chat/data/pinned_controller.dart';
@@ -50,7 +51,7 @@ void main() {
   Future<ProviderContainer> openPinnedChat(WidgetTester tester) async {
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [acceptedTermsOverride],
+        overrides: [...appBindings, acceptedTermsOverride],
         child: const CubechatApp(),
       ),
     );
@@ -85,7 +86,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [acceptedTermsOverride],
+        overrides: [...appBindings, acceptedTermsOverride],
         child: const CubechatApp(),
       ),
     );
@@ -190,7 +191,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [acceptedTermsOverride],
+        overrides: [...appBindings, acceptedTermsOverride],
         child: const CubechatApp(),
       ),
     );
@@ -271,7 +272,7 @@ void main() {
   testWidgets('walking the pins actually scrolls to each one', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [acceptedTermsOverride],
+        overrides: [...appBindings, acceptedTermsOverride],
         child: const CubechatApp(),
       ),
     );
@@ -345,7 +346,7 @@ void main() {
   testWidgets('two pins alternate on every tap', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [acceptedTermsOverride],
+        overrides: [...appBindings, acceptedTermsOverride],
         child: const CubechatApp(),
       ),
     );
@@ -399,7 +400,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [acceptedTermsOverride],
+        overrides: [...appBindings, acceptedTermsOverride],
         child: const CubechatApp(),
       ),
     );
@@ -461,7 +462,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [acceptedTermsOverride],
+        overrides: [...appBindings, acceptedTermsOverride],
         child: const CubechatApp(),
       ),
     );

@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/transport/ports/conversations.dart';
 import '../../../core/util/debug_log.dart';
 import '../../../core/util/frame_stats.dart';
 import '../../../core/util/media_storage.dart';
@@ -46,7 +47,8 @@ class MarkReadOutcome {
       );
 }
 
-class MessagesController extends Notifier<Map<String, List<Message>>> {
+class MessagesController extends Notifier<Map<String, List<Message>>>
+    implements Conversations {
   /// Where history actually lives. One record per message, so the cost of
   /// recording a tick or a reaction no longer grows with the length of the
   /// conversation it lands in — see [MessageStore].

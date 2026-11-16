@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:cryptography/cryptography.dart';
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/crypto/radio_crypto.dart';
 import 'package:cubechat/core/transport/envelope.dart';
 import 'package:cubechat/core/transport/frame.dart';
@@ -376,6 +377,7 @@ void main() {
     Future<(ProviderContainer, MessagingService)> start() async {
       final container = ProviderContainer(
         overrides: [
+          ...appBindings,
           relaySettingsProvider.overrideWith(_Offline.new),
           messagingServiceProvider.overrideWith((ref) {
             final service = MessagingService(ref)

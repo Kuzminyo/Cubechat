@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/app/ios_background_refresh.dart';
 import 'package:cubechat/core/transport/messaging_service.dart';
 import 'package:cubechat/core/util/location_service.dart';
@@ -88,6 +89,7 @@ void main() {
     var built = false;
     final container = ProviderContainer(
       overrides: [
+        ...appBindings,
         messagingServiceProvider.overrideWith((ref) {
           built = true;
           final service = MessagingService(ref);
@@ -117,6 +119,7 @@ void main() {
     _FakeMapPresenceController.poked = false;
     final container = ProviderContainer(
       overrides: [
+        ...appBindings,
         mapPresenceControllerProvider.overrideWith(
           _FakeMapPresenceController.new,
         ),
@@ -143,6 +146,7 @@ void main() {
     _FakeMapPresenceController.offered = null;
     final container = ProviderContainer(
       overrides: [
+        ...appBindings,
         mapPresenceControllerProvider.overrideWith(
           _FakeMapPresenceController.new,
         ),
@@ -210,7 +214,7 @@ void main() {
   });
   test('the window is bounded — it returns rather than running until killed',
       () async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: appBindings);
     addTearDown(container.dispose);
     IosBackgroundRefresh.instance.install(container);
 
@@ -225,7 +229,7 @@ void main() {
 
   test('an overlapping call is refused instead of opening a second window',
       () async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: appBindings);
     addTearDown(container.dispose);
     IosBackgroundRefresh.instance.install(container);
 
@@ -249,7 +253,7 @@ void main() {
 
   test('an unknown method is reported as missing, not silently accepted',
       () async {
-    final container = ProviderContainer();
+    final container = ProviderContainer(overrides: appBindings);
     addTearDown(container.dispose);
     IosBackgroundRefresh.instance.install(container);
     addTearDown(

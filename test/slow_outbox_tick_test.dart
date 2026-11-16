@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/transport/messaging_service.dart';
 import 'package:cubechat/core/transport/nostr/link_quality.dart';
 import 'package:cubechat/core/transport/nostr/nostr_signer.dart';
@@ -107,6 +108,7 @@ void main() {
       () async {
     final container = ProviderContainer(
       overrides: [
+        ...appBindings,
         relaySettingsProvider.overrideWith(_Offline.new),
         messagingServiceProvider.overrideWith((ref) {
           final service = MessagingService(ref);
@@ -171,6 +173,7 @@ void main() {
       () async {
     final container = ProviderContainer(
       overrides: [
+        ...appBindings,
         relaySettingsProvider.overrideWith(_Offline.new),
         messagingServiceProvider.overrideWith((ref) {
           final service = MessagingService(ref);

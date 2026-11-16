@@ -17,6 +17,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cubechat/app/app_router.dart';
+import 'package:cubechat/app/bindings.dart';
 import 'package:cubechat/core/theme/app_theme.dart';
 import 'package:cubechat/core/util/ui_activity.dart';
 import 'package:cubechat/features/chat/data/messages_controller.dart';
@@ -91,6 +92,7 @@ void main(){
   tester.view.physicalSize=const Size(1170,2532);tester.view.devicePixelRatio=3;
   final router=buildRouter();final key=GlobalKey();
   final container=ProviderContainer(overrides:[
+   ...appBindings,
    chatsProvider.overrideWithValue([for(var i=0;i<6;i++)Chat(id:ids[i],peerId:ids[i],peerName:names[i],lastMessage:previews[i],lastTime:now.subtract(Duration(minutes:i*8)),unreadCount:i==0?2:0,isMesh:true,isPinned:i==0)]),
    nicknameControllerProvider.overrideWith(DemoNickname.new),avatarProvider.overrideWith(DemoAvatar.new),privacySettingsProvider.overrideWith(DemoPrivacy.new),
    platformCapabilitiesProvider.overrideWithValue(const PlatformCapabilities(bluetooth:true,maps:true,googleMaps:false,shareLocation:true,camera:true,calls:true,translation:true,gallery:true)),
