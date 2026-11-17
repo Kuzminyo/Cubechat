@@ -100,7 +100,8 @@ Rules that follow:
 
 ## Localization
 
-Every user-visible string goes through `AppLocalizations`. Add the key to both
-`lib/l10n/app_en.arb` and `lib/l10n/app_uk.arb` — they are currently at 595 keys
-each and in sync — then run `flutter gen-l10n` and commit the regenerated
-`app_localizations*.dart`, which are checked in.
+Every user-visible string goes through `AppLocalizations`. Add the key to
+**every** ARB in `lib/l10n/` — 19 locales, `app_en.arb` the template, all at
+1282 keys and in sync on 2026-11-17 — then run `flutter gen-l10n` and commit
+the regenerated `app_localizations*.dart`, which are checked in. The edit hook
+reports any ARB that falls out of step.

@@ -41,9 +41,11 @@ before deciding which column you are optimising.
 
 ## Get the log before it evicts itself
 
-`DebugLog` holds **200 lines** and one photo batch fills it. Ask for the log
-immediately after the failing action, before any media is sent — otherwise the
-evidence has already been pushed out by chunk lines.
+`DebugLog` holds **1000 lines** (it was 200, which covered about three seconds
+of a read-receipt sweep — see `_capacity` in `debug_log.dart`). A photo batch
+still fills it fast. Ask for the log immediately after the failing action,
+before any media is sent — otherwise the evidence has already been pushed out
+by chunk lines.
 
 ## What has already been done
 

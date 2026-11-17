@@ -22,10 +22,11 @@ powershell -ExecutionPolicy Bypass -File tool/build_apk.ps1    # Windows
 
 Flags are the same idea on both — `--clean` / `-Clean`, `--skip-pub-get` /
 `-SkipPubGet`, `--bundle` / `-Bundle` for the AAB Play requires, and `--arm64` /
-`-Arm64`, which is a third the size and what testers are actually handed. The
-universal APK also carries x86_64, which is emulators only: on build 1091 that
-was ~60 MB of the 184 MB unpacked, loaded by no phone. An arm64 build is named
-`...-arm64.apk`, so the two cannot be mistaken for each other.
+`-Arm64`, a third the size. **Build the universal APK unless arm64 is asked
+for** — the owner's standing choice since 2026-10-27, whatever CI hands
+testers. The universal APK also carries x86_64, which is emulators only: on
+build 1091 that was ~60 MB of the 184 MB unpacked, loaded by no phone. An arm64
+build is named `...-arm64.apk`, so the two cannot be mistaken for each other.
 
 ### On Windows, `flutter build apk` is genuinely broken and the error lies
 
@@ -114,7 +115,8 @@ from a tree that fails its own tests.
   then greps the log for errors and warnings. The tree carries several hundred
   style infos (mostly missing trailing commas); making those block would mean
   the gate is switched off within a day. **The separator differs by platform:**
-  `error -` locally on Windows, `error •` on the Linux runner — match both.
+  `error -` locally on Windows, `error •` on macOS and the Linux runner — match
+  both.
 - Goldens are excluded because font rasterisation differs enough between Windows
   and Linux to fail them by ~3% of pixels every time.
 - Android builds `--split-per-abi` then universal, and publishes to a rolling
@@ -142,7 +144,7 @@ bundle id actually shipped.
 Regenerated only when the logo changes:
 
 ```bash
-flutter run -t tool/export_logo.dart -d windows
+flutter run -t tool/export_logo.dart -d macos
 dart run flutter_launcher_icons
 dart run flutter_native_splash:create
 flutter test tool/export_theme_icons.dart

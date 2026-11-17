@@ -6,7 +6,8 @@ user-invocable: true
 
 # Testing cubechat
 
-143 test files under `test/`, flat — no subdirectories except `support/`.
+~440 test files under `test/`, flat — the only subdirectory in git is
+`support/` (shared harnesses; `test/failures/` is gitignored output).
 
 ## Running
 
@@ -22,23 +23,25 @@ flutter test test/mesh_ttl_test.dart
 flutter test test/mesh_ttl_test.dart --plain-name "the cut is a reduction"
 ```
 
-`flutter` is on PATH via `~/.bashrc`. Running any flutter command rewrites
-`.flutter-plugins-dependencies` in a way that breaks a direct Gradle build —
-harmless for tests, relevant if a build follows (see the `release-build` skill).
+`flutter` is on PATH via `~/.zprofile`. On Windows only, running any flutter
+command rewrites `.flutter-plugins-dependencies` in a way that breaks a direct
+Gradle build — harmless for tests, relevant if a build follows (see the
+`release-build` skill).
 
 ## Goldens are host-specific
 
-Four files are tagged `@Tags(['golden'])` and excluded from CI with
-`--exclude-tags golden`: `chat_search_capture_test`, `contact_profile_capture_test`,
-`people_map_capture_test`, `profile_sections_capture_test`.
+Five files are tagged `@Tags(['golden'])` and excluded from CI with
+`--exclude-tags golden`: `channel_info_capture_test`, `chat_search_capture_test`,
+`contact_profile_capture_test`, `people_map_capture_test`,
+`profile_sections_capture_test`.
 
 ```bash
 flutter test --tags golden
 ```
 
 The reference PNGs live in `.codex/design-qa/`, not under `test/`. They were
-recorded on this Windows machine; a Linux runner reproduces them within about 3%
-of pixels, which is a real difference and not a real regression. **Some are stale
+recorded on a developer machine (Windows first, later this Mac); a Linux runner
+reproduces them within about 3% of pixels, which is a real difference and not a real regression. **Some are stale
 and red on a clean tree** — a red golden is not automatically caused by your
 change. Failure images are written to `test/failures/`, which is gitignored.
 
@@ -104,6 +107,15 @@ ProviderScope(
 
 Widgets need `AppLocalizations` in scope; copy the harness from
 `chat_search_capture_test.dart`.
+
+## Inbound payloads
+
+Test what the phone does with a received payload from the outside, through
+`test/support/inbound_harness.dart`: one phone's transport with the app's own
+bindings, and a contact whose frames are signed, sealed and enveloped the way
+its phone would build them. `inbound_dispatch_characterization_test.dart` is
+the shape to copy, and it passed against the old switches first — a red test
+there after moving a handler is a behaviour change, not a new expectation.
 
 ### A screen whose state comes from the identity cannot be pumped into place
 
@@ -177,13 +189,13 @@ flutter analyze
 ```
 
 Strict mode is on: `strict-casts`, `strict-inference`, `strict-raw-types`, plus
-`prefer_const_constructors`, `prefer_final_locals`, `avoid_print` and
-`require_trailing_commas`.
+`prefer_const_constructors`, `prefer_final_locals`, `avoid_print`,
+`require_trailing_commas` and `sort_pub_dependencies`.
 
-The tree carries several hundred style infos, so CI gates on errors and warnings
-only. **The severity separator differs by platform** — `error -` on Windows,
-`error •` on the Linux runner. Grep for both or CI will catch warnings that are
-invisible locally:
+The tree carries ~1200 style infos (2026-11-17: 1244, no errors or warnings),
+so CI gates on errors and warnings only. **The severity separator differs by
+platform** — `error -` on Windows, `error •` on macOS and the Linux runner.
+Grep for both so a warning cannot hide in the infos:
 
 ```bash
 flutter analyze 2>&1 | grep -E "^[[:space:]]*(error|warning)[[:space:]]*[-•]"

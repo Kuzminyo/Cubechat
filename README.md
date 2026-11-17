@@ -176,12 +176,13 @@ Emergency Wipe turns the fallback off.
 
 ## Build & run
 
-Requires **Flutter SDK ≥ 3.27**. Platform folders (`android/`, `ios/`,
+Requires **Flutter SDK ≥ 3.27**; releases and CI are built with 3.41.x and
+JDK 17. Platform folders (`android/`, `ios/`,
 `macos/`, `windows/`, `web/`) are checked in.
 
 ```bash
 flutter pub get      # also runs gen-l10n (generate: true in pubspec)
-flutter test         # the whole suite, incl. crypto known-answer vectors
+flutter test --exclude-tags golden   # the suite as CI runs it, incl. crypto known-answer vectors
 flutter run          # pick a target below
 ```
 
@@ -668,7 +669,7 @@ lib/
 │   ├── channels/     # group channels: model, admin, polls, history
 │   ├── contacts/     # contact list
 │   ├── peers/        # Nearby discovery, peripheral controller, verification
-│   ├── call/         # voice calls (WebRTC over our TURN, CallKit)
+│   ├── call/         # voice and video calls (WebRTC over our TURN, CallKit)
 │   ├── radio/        # walkie-talkie
 │   ├── map/ · area/  # map, shared locations, public area chats and notes
 │   ├── airdrop/      # send to people nearby (bump, Wi-Fi lane)
@@ -717,8 +718,16 @@ after the peer reopens it.
 
 ## Testing
 
-`flutter test` runs the whole suite (`test/`, several hundred files).
-Highlights:
+`flutter test` runs the whole suite (`test/`, ~440 files, flat). The golden
+captures are tagged `golden` and pinned to the host that recorded them, so CI
+runs `--exclude-tags golden`. Highlights:
+
+- `architecture_test` — the dependency direction: `lib/core/` imports no
+  feature and nothing from `lib/app/`
+- `inbound_registry_complete_test`, `inbound_dispatch_characterization_test` —
+  every inner-payload type is answered or dropped on purpose in every scope, and real signed, sealed
+  frames fed in from outside land where they did before the transport was split
+  (`test/support/inbound_harness.dart`)
 
 - `noise_ik_test`, `noise_ik_session_test` — the IK pattern: two-message
   round trip, mutual authentication, that neither static key appears on the
