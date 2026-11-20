@@ -88,12 +88,28 @@ class BleGattClient {
   /// sensitivity, and this change exists for range. A link already on 1M is
   /// left where it is; the request then changes nothing.
   ///
-  /// Asked once per link. If the phones then drift apart past 1M range the
-  /// link drops, and the next dial goes to the Coded address because the
-  /// ordinary one is no longer heard (BleScanner._isCodedOnly) — a reconnect
-  /// rather than a downgrade in place, which keeps this to one decision.
+  /// The other direction is [_codedPhyRssi].
   static const int _onePhyRssi = -80;
-  bool _phyAsked = false;
+
+  /// Signal at which a link is asked onto LE Coded (S=8).
+  ///
+  /// Until this existed (2026-11-20, the same day) the switch went one way
+  /// only: two phones walking apart lost their 1M link at the edge, and the
+  /// Coded one came up only after the next scan cycle had noticed the
+  /// ordinary advertisement was gone, plus a connect — 15 s to a minute with
+  /// no link at all. Asking for Coded while the link still works keeps it.
+  /// -90 is about 5 dB above where 1M gives out on typical phones.
+  ///
+  /// The ten dB between this and [_onePhyRssi] is the hysteresis: a link
+  /// whose signal wobbles around one threshold must not bounce between PHYs
+  /// on every reading. A peer whose controller has no Coded simply answers
+  /// the request with what it has and the link stays on 1M; the request is
+  /// link layer only, so it costs nothing to ask and nothing changes above.
+  static const int _codedPhyRssi = -90;
+
+  /// The PHY last asked for on this link, or null before the first request.
+  /// Requests go out only on a change, never on every reading.
+  Phy? _phyWanted;
 
   final _frames = StreamController<Uint8List>.broadcast();
   final _connection = StreamController<BluetoothConnectionState>.broadcast();
@@ -320,24 +336,32 @@ class BleGattClient {
       if (logIt) {
         DebugLog.instance.log('BLE-CENTRAL', 'link RSSI $rssi dBm at connect');
       }
-      if (!_phyAsked && rssi >= _onePhyRssi) await _preferOnePhy(rssi);
+      if (rssi >= _onePhyRssi && _phyWanted != Phy.le1m) {
+        await _preferPhy(Phy.le1m, rssi);
+      } else if (rssi <= _codedPhyRssi && _phyWanted != Phy.leCoded) {
+        await _preferPhy(Phy.leCoded, rssi);
+      }
     } catch (_) {
       // Leave the previous reading in place — it is still the latest we have.
     }
   }
 
-  /// See [_onePhyRssi]. Android only: CoreBluetooth picks the PHY itself and
-  /// never connects on Coded.
-  Future<void> _preferOnePhy(int rssi) async {
-    _phyAsked = true;
+  /// See [_onePhyRssi] and [_codedPhyRssi]. Android only: CoreBluetooth picks
+  /// the PHY itself and gives an app no say.
+  Future<void> _preferPhy(Phy phy, int rssi) async {
+    _phyWanted = phy;
     if (defaultTargetPlatform != TargetPlatform.android) return;
+    final coded = phy == Phy.leCoded;
     try {
       await _device.setPreferredPhy(
-        txPhy: Phy.le1m.mask,
-        rxPhy: Phy.le1m.mask,
-        option: PhyCoding.noPreferred,
+        txPhy: phy.mask,
+        rxPhy: phy.mask,
+        option: coded ? PhyCoding.s8 : PhyCoding.noPreferred,
       );
-      DebugLog.instance.log('BLE-CENTRAL', 'asked for 1M PHY at $rssi dBm');
+      DebugLog.instance.log(
+        'BLE-CENTRAL',
+        'asked for ${coded ? 'Coded (S8)' : '1M'} PHY at $rssi dBm',
+      );
     } catch (e) {
       DebugLog.instance.log('BLE-CENTRAL', 'PHY request refused: $e');
     }
@@ -447,7 +471,7 @@ class BleGattClient {
     _stopRssiSampling();
     _lastRssi = null;
     _lastRssiAt = null;
-    _phyAsked = false;
+    _phyWanted = null;
     await _inboundSub?.cancel();
     _inboundSub = null;
     await _connectionSub?.cancel();
