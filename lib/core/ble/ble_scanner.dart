@@ -28,12 +28,22 @@ class BleScanner {
     bool? isIOS,
     BleScanPlatform platform = const BleScanPlatform(),
     DateTime Function()? now,
+    int? iosOverflowBit = BleConstants.iosOverflowBit,
   })  : _isIOS = isIOS ?? PlatformInfo.isIOS,
         _radio = platform,
-        _clock = now ?? DateTime.now;
+        _clock = now ?? DateTime.now,
+        _iosOverflowBit = iosOverflowBit;
 
   /// Which platform's cycle shape to use — see [BleConstants.scanWindowFor].
   final bool _isIOS;
+
+  /// [BleConstants.iosOverflowBit], injectable so a test can stand in for the
+  /// measured value.
+  final int? _iosOverflowBit;
+
+  /// Addresses whose Apple overflow advertisement has been logged, so the
+  /// measurement line comes once per iPhone, not once per advertisement.
+  final _overflowLogged = <String>{};
 
   /// The radio, injectable so the order of starts can be tested off-device.
   final BleScanPlatform _radio;
@@ -665,6 +675,18 @@ class BleScanner {
           }
         }
       }
+      // An iPhone in the background: no rotating id, our UUID only as a bit
+      // in Apple's overflow area. Listed — under its address, until a
+      // handshake says who it is — only when that bit is ours; the filter
+      // lets every overflow advertisement through while the bit is unknown.
+      final overflow = rotatingId == null ? _appleOverflowOf(r) : null;
+      if (overflow != null) {
+        final bit = _iosOverflowBit;
+        if (bit == null || !BleConstants.overflowHasBit(overflow, bit)) {
+          _logOverflowOnce(mac, overflow);
+          continue;
+        }
+      }
       if (_proximity) {
         final prev = _advertAt[mac];
         if (prev != null && !r.timeStamp.isAfter(prev)) continue;
@@ -693,6 +715,8 @@ class BleScanner {
           rotatingId != null
               ? 'saw rotating id $rotatingId ($mac'
                   '${_isCodedOnly(r) ? ', long range' : ''})'
+              : overflow != null
+              ? 'saw a background iPhone at $mac (Apple overflow bit)'
               : 'no rotating id from $mac (advName="$advName", '
                   '${r.advertisementData.serviceData.length} service-data entries)',
         );
@@ -801,6 +825,36 @@ class BleScanner {
   /// that cannot run a radio.
   @visibleForTesting
   void debugOnResults(List<ScanResult> results) => _onResults(results);
+
+  /// The 16-byte overflow-area mask of an Apple advertisement, or null when
+  /// [r] carries none. See [BleConstants.iosOverflowBit].
+  static List<int>? _appleOverflowOf(ScanResult r) {
+    final apple =
+        r.advertisementData.manufacturerData[BleConstants.appleCompanyId];
+    if (apple == null ||
+        apple.length < 1 + BleConstants.appleOverflowMaskLen ||
+        apple[0] != BleConstants.appleOverflowType) {
+      return null;
+    }
+    return apple.sublist(1, 1 + BleConstants.appleOverflowMaskLen);
+  }
+
+  /// The measurement line for [BleConstants.iosOverflowBit]: which bits an
+  /// overflow advertisement set, once per address — and, when this address
+  /// was seen earlier with a rotating id (the iPhone before it was locked),
+  /// that id, which is what proves the line is a cubechat phone's.
+  void _logOverflowOnce(String mac, List<int> mask) {
+    if (_overflowLogged.length >= 256) _overflowLogged.clear();
+    if (!_overflowLogged.add(mac)) return;
+    final twin = _keyOfDeviceId(mac);
+    DebugLog.instance.log(
+      'BLE-SCAN',
+      'apple overflow from $mac: bits ${BleConstants.overflowBits(mask)}'
+          '${twin != null && twin.startsWith('r:') ? ' — this address was '
+              'rotating id ${twin.substring(2)}' : ''}'
+          '${_iosOverflowBit == null ? ' (bit not yet measured)' : ''}',
+    );
+  }
 
   /// Whether [r] is the long-range (LE Coded) advertisement of an Android
   /// peer rather than its ordinary one.

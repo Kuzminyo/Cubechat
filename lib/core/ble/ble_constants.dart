@@ -274,4 +274,50 @@ abstract final class BleConstants {
     if (active) return peerStaleAfter;
     return isIOS ? peerStaleAfterIdleIos : peerStaleAfterIdle;
   }
+
+  // ---- an iPhone in the background, as Android hears it ----
+  //
+  // With the app in the background (screen locked, phone in a pocket) iOS
+  // rewrites our advertisement: the local name — where the rotating id rides —
+  // is dropped, and the service UUID leaves the UUID list for Apple's
+  // "overflow area": manufacturer data under Apple's company id, a type byte
+  // 0x01 and a 128-bit mask in which every UUID an app advertises sets one bit.
+  // Other iPhones match that bit for us; Android scans by UUID list and never
+  // heard such an iPhone at all — so every iPhone in a pocket was a relay for
+  // iPhones only. Since 2026-11-20 the Android scanner matches the bit itself.
+
+  /// Apple's Bluetooth SIG company id.
+  static const int appleCompanyId = 0x004C;
+
+  /// First byte of Apple manufacturer data that is an overflow-area mask.
+  static const int appleOverflowType = 0x01;
+
+  /// Bytes in the overflow-area mask.
+  static const int appleOverflowMaskLen = 16;
+
+  /// The bit [serviceUuid] sets in the overflow-area mask, counted from the
+  /// most significant bit of the first mask byte (0..127) — or null while it
+  /// has not been measured.
+  ///
+  /// iOS derives it from the UUID with a hash Apple does not publish, so it is
+  /// read off a phone once and fixed here; it never changes for this UUID.
+  /// While it is null, Android matches no background iPhone and only logs each
+  /// overflow advertisement it hears (`BLE-SCAN apple overflow …`, once per
+  /// address). To measure: cubechat on an iPhone, locked, next to an Android
+  /// running this build with nothing else advertising from the iPhone in the
+  /// background; the Android's Diagnostics shows the set bits, and the line
+  /// that names the same address as a rotating id seen earlier is ours.
+  static const int? iosOverflowBit = null;
+
+  /// Whether [mask] has [bit] set, in [iosOverflowBit]'s numbering.
+  static bool overflowHasBit(List<int> mask, int bit) =>
+      bit >= 0 &&
+      bit < mask.length * 8 &&
+      mask[bit >> 3] & (0x80 >> (bit & 7)) != 0;
+
+  /// Every bit set in [mask], in [iosOverflowBit]'s numbering.
+  static List<int> overflowBits(List<int> mask) => [
+        for (var bit = 0; bit < mask.length * 8; bit++)
+          if (overflowHasBit(mask, bit)) bit,
+      ];
 }

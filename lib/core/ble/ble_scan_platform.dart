@@ -32,6 +32,12 @@ class BleScanPlatform {
         withServiceData: defaultTargetPlatform == TargetPlatform.android
             ? [ServiceDataFilter(Guid(BleConstants.serviceUuid))]
             : const [],
+        // Android only, for the same reason: an iPhone with cubechat in the
+        // background advertises our UUID as a bit in Apple's overflow area,
+        // not in its UUID list. See BleConstants.iosOverflowBit.
+        withMsd: defaultTargetPlatform == TargetPlatform.android
+            ? [appleOverflowFilter(BleConstants.iosOverflowBit)]
+            : const [],
         timeout: timeout,
         androidScanMode: mode,
         continuousUpdates: continuousUpdates,
@@ -40,6 +46,30 @@ class BleScanPlatform {
   Future<void> stopScan() => FlutterBluePlus.stopScan();
 
   Stream<List<ScanResult>> get scanResults => FlutterBluePlus.scanResults;
+}
+
+/// The scan filter for Apple overflow-area advertisements carrying [bit].
+///
+/// With the bit unknown it matches every overflow advertisement, so the
+/// scanner can log what it hears for the one-off measurement — a rare thing to
+/// hear, since only an app advertising from the background makes one. Never
+/// Apple's other advertisements (Nearby Info, Find My, AirDrop), which every
+/// iPhone sends constantly: those start with a different type byte.
+MsdFilter appleOverflowFilter(int? bit) {
+  if (bit == null) {
+    return MsdFilter(
+      BleConstants.appleCompanyId,
+      data: const [BleConstants.appleOverflowType],
+      mask: const [0xFF],
+    );
+  }
+  final data = List<int>.filled(1 + BleConstants.appleOverflowMaskLen, 0);
+  final mask = List<int>.filled(1 + BleConstants.appleOverflowMaskLen, 0);
+  data[0] = BleConstants.appleOverflowType;
+  mask[0] = 0xFF;
+  data[1 + (bit >> 3)] = 0x80 >> (bit & 7);
+  mask[1 + (bit >> 3)] = 0x80 >> (bit & 7);
+  return MsdFilter(BleConstants.appleCompanyId, data: data, mask: mask);
 }
 
 /// Android stops returning scan results — silently, no error — after five
