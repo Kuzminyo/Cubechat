@@ -43,8 +43,9 @@ abstract class BlePeripheral {
 
   /// Advertise at Android's LOW_LATENCY (about every 100 ms) while the AirDrop
   /// page is on screen, so the bump gesture on the other phone hears us ten
-  /// times a second rather than two to four. The transmit level is unchanged,
-  /// so RSSI readings stay comparable. Android only; a no-op elsewhere.
+  /// times a second rather than two to four. The transmit level drops from the
+  /// usual HIGH to MEDIUM here, because the bump thresholds were measured at
+  /// MEDIUM. Android only; a no-op elsewhere.
   Future<bool> setAdvertiseFast({required bool fast});
 
   /// Push a single frame to every subscribed central via the inbound (notify)

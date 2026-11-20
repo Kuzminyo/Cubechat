@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import 'ble_constants.dart';
@@ -22,6 +23,15 @@ class BleScanPlatform {
   }) =>
       FlutterBluePlus.startScan(
         withServices: [Guid(BleConstants.serviceUuid)],
+        // Android only: the long-range (LE Coded) set a peer advertises
+        // carries our UUID as service data and not in its UUID list, so the
+        // filter above alone never matches it — see BleScanner._isCodedOnly
+        // for why it is left out of the list. Filters are OR'ed. iOS gets
+        // nothing here: CoreBluetooth filters by service UUID only, and a
+        // background scan without that filter returns nothing at all.
+        withServiceData: defaultTargetPlatform == TargetPlatform.android
+            ? [ServiceDataFilter(Guid(BleConstants.serviceUuid))]
+            : const [],
         timeout: timeout,
         androidScanMode: mode,
         continuousUpdates: continuousUpdates,

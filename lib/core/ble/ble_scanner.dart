@@ -129,6 +129,25 @@ class BleScanner {
   /// its list afresh.
   final _advertAt = <String, DateTime>{};
 
+  /// When each rotating id was last heard on its ordinary (1M, legacy)
+  /// advertisement — see [_isCodedOnly].
+  ///
+  /// Since 2026-11-20 an Android phone that can also advertises a second,
+  /// long-range set on LE Coded PHY. The controller gives that set its own
+  /// address, so one phone arrives under two MACs with the same rotating id,
+  /// and the entry's `id` — the address a dial goes to — would flip between
+  /// them on every advertisement. A link opened to the Coded address starts
+  /// on Coded PHY, eight times slower than 1M, so the ordinary address wins
+  /// for as long as it is being heard, and the Coded one is used only once
+  /// it has gone quiet: the peer is out of 1M range, which is the one case
+  /// the Coded set exists for.
+  final _uncodedHeardAt = <String, DateTime>{};
+
+  /// How long the ordinary advertisement keeps priority after it was last
+  /// heard: one whole scan cycle plus slack, so a cycle whose first result
+  /// happens to be the Coded one does not flip the address for a moment.
+  Duration get _codedYieldsFor => _window + _gap + const Duration(seconds: 2);
+
   /// Proximity mode's emit throttle — see [_emitThrottled].
   Timer? _emitTimer;
   bool _emitPending = false;
@@ -635,6 +654,17 @@ class BleScanner {
     final now = DateTime.now();
     for (final r in results) {
       final mac = r.device.remoteId.str;
+      final rotatingId = _rotatingIdOf(r);
+      if (rotatingId != null) {
+        if (!_isCodedOnly(r)) {
+          _uncodedHeardAt[rotatingId] = now;
+        } else {
+          final heard = _uncodedHeardAt[rotatingId];
+          if (heard != null && now.difference(heard) < _codedYieldsFor) {
+            continue;
+          }
+        }
+      }
       if (_proximity) {
         final prev = _advertAt[mac];
         if (prev != null && !r.timeStamp.isAfter(prev)) continue;
@@ -646,7 +676,6 @@ class BleScanner {
         _pruneAdverts(at);
       }
       final advName = r.advertisementData.advName;
-      final rotatingId = _rotatingIdOf(r);
       final advertisedName = _resolveName(r);
       // Dedup key: Android rotates the BLE MAC for privacy, so the SAME phone
       // shows up under many addresses. The rotating peer id is stable across
@@ -662,7 +691,8 @@ class BleScanner {
         DebugLog.instance.log(
           'BLE-SCAN',
           rotatingId != null
-              ? 'saw rotating id $rotatingId ($mac)'
+              ? 'saw rotating id $rotatingId ($mac'
+                  '${_isCodedOnly(r) ? ', long range' : ''})'
               : 'no rotating id from $mac (advName="$advName", '
                   '${r.advertisementData.serviceData.length} service-data entries)',
         );
@@ -772,6 +802,21 @@ class BleScanner {
   @visibleForTesting
   void debugOnResults(List<ScanResult> results) => _onResults(results);
 
+  /// Whether [r] is the long-range (LE Coded) advertisement of an Android
+  /// peer rather than its ordinary one.
+  ///
+  /// The platform does not say which PHY a result came in on, so the two sets
+  /// are told apart by what they carry. The ordinary one lists the service
+  /// UUID (iOS: and a local name); the Coded set carries the rotating id as
+  /// service data and nothing else. Leaving the UUID list out is deliberate:
+  /// a build before 2026-11-20 scans by service UUID alone, so it never hears
+  /// the Coded set — it could not connect to it (its central opens links on
+  /// 1M only) and would otherwise keep dialling an address it cannot reach.
+  static bool _isCodedOnly(ScanResult r) =>
+      r.advertisementData.serviceUuids.isEmpty &&
+      r.advertisementData.advName.isEmpty &&
+      r.advertisementData.serviceData.isNotEmpty;
+
   /// The rotating peer id this advertisement carried, lowercase hex, or null.
   ///
   /// Two places to look, because the platforms allow different things: Android
@@ -845,6 +890,8 @@ class BleScanner {
 
   void _gcStalePeers() {
     final now = DateTime.now();
+    _uncodedHeardAt
+        .removeWhere((_, at) => now.difference(at) >= _codedYieldsFor);
     final stale = _peers.entries
         .where((e) =>
             !e.value.isConnected &&

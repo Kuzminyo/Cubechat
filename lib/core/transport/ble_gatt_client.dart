@@ -58,6 +58,43 @@ class BleGattClient {
   StreamSubscription<BluetoothConnectionState>? _connectionSub;
   StreamSubscription<int>? _mtuSub;
 
+  /// How often a live link's signal is read — see [_lastRssi].
+  static const Duration _rssiEvery = Duration(seconds: 10);
+  Timer? _rssiTimer;
+
+  /// The link's signal at the last reading, and when that was.
+  ///
+  /// Kept for one log line: the signal a link had just before it dropped.
+  /// That is the number the TX-power walk test compares (HIGH since
+  /// 2026-11-20, MEDIUM before) and nothing else in the app measures it — the
+  /// scanner's RSSI is the advertisement, not the connection. A reading is
+  /// the controller's own figure for the link, not a packet on the air, so
+  /// one every ten seconds per link costs next to nothing. Only the reading
+  /// at connect and the last one before the drop are logged; a line every
+  /// ten seconds would wash the ring buffer.
+  int? _lastRssi;
+  DateTime? _lastRssiAt;
+
+  /// Signal at which a link is asked onto 1M PHY.
+  ///
+  /// A link to a peer's long-range advertising set comes up on LE Coded,
+  /// which reaches several times as far and moves data eight times slower —
+  /// a photo that takes seconds on 1M would take most of a minute. Once the
+  /// signal is this strong there is no reach left to buy: typical phones
+  /// still receive 1M near -95 dBm, so -80 leaves about 15 dB for a body or
+  /// a wall moving between the two phones.
+  ///
+  /// 1M only, never 2M. 2M is faster again but gives up a few dB more of
+  /// sensitivity, and this change exists for range. A link already on 1M is
+  /// left where it is; the request then changes nothing.
+  ///
+  /// Asked once per link. If the phones then drift apart past 1M range the
+  /// link drops, and the next dial goes to the Coded address because the
+  /// ordinary one is no longer heard (BleScanner._isCodedOnly) — a reconnect
+  /// rather than a downgrade in place, which keeps this to one decision.
+  static const int _onePhyRssi = -80;
+  bool _phyAsked = false;
+
   final _frames = StreamController<Uint8List>.broadcast();
   final _connection = StreamController<BluetoothConnectionState>.broadcast();
 
@@ -175,6 +212,15 @@ class BleGattClient {
       log.log('BLE-CENTRAL', 'state=$s');
       if (s == BluetoothConnectionState.disconnected) {
         _running = false;
+        _stopRssiSampling();
+        final at = _lastRssiAt;
+        if (at != null) {
+          log.log(
+            'BLE-CENTRAL',
+            'link lost — last link RSSI $_lastRssi dBm, '
+                '${DateTime.now().difference(at).inSeconds}s before the drop',
+          );
+        }
       }
     });
 
@@ -259,6 +305,47 @@ class BleGattClient {
       _frames.add(Uint8List.fromList(bytes));
     });
     DebugLog.instance.log('BLE-CENTRAL', 'ready');
+    await _sampleRssi(logIt: true);
+    _rssiTimer = Timer.periodic(_rssiEvery, (_) => unawaited(_sampleRssi()));
+  }
+
+  /// Reads the live link's RSSI into [_lastRssi]. Never throws: a link that
+  /// is going away fails the read, and that is not worth a line.
+  Future<void> _sampleRssi({bool logIt = false}) async {
+    if (!_device.isConnected) return;
+    try {
+      final rssi = await _device.readRssi(timeout: 3);
+      _lastRssi = rssi;
+      _lastRssiAt = DateTime.now();
+      if (logIt) {
+        DebugLog.instance.log('BLE-CENTRAL', 'link RSSI $rssi dBm at connect');
+      }
+      if (!_phyAsked && rssi >= _onePhyRssi) await _preferOnePhy(rssi);
+    } catch (_) {
+      // Leave the previous reading in place — it is still the latest we have.
+    }
+  }
+
+  /// See [_onePhyRssi]. Android only: CoreBluetooth picks the PHY itself and
+  /// never connects on Coded.
+  Future<void> _preferOnePhy(int rssi) async {
+    _phyAsked = true;
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      await _device.setPreferredPhy(
+        txPhy: Phy.le1m.mask,
+        rxPhy: Phy.le1m.mask,
+        option: PhyCoding.noPreferred,
+      );
+      DebugLog.instance.log('BLE-CENTRAL', 'asked for 1M PHY at $rssi dBm');
+    } catch (e) {
+      DebugLog.instance.log('BLE-CENTRAL', 'PHY request refused: $e');
+    }
+  }
+
+  void _stopRssiSampling() {
+    _rssiTimer?.cancel();
+    _rssiTimer = null;
   }
 
   /// Waits briefly for the platform to report this link's MTU.
@@ -357,6 +444,10 @@ class BleGattClient {
 
   Future<void> disconnect() async {
     _running = false;
+    _stopRssiSampling();
+    _lastRssi = null;
+    _lastRssiAt = null;
+    _phyAsked = false;
     await _inboundSub?.cancel();
     _inboundSub = null;
     await _connectionSub?.cancel();

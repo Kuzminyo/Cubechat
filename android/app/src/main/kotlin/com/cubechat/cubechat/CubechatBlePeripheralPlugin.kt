@@ -13,7 +13,11 @@ import android.bluetooth.BluetoothProfile
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothStatusCodes
+import android.bluetooth.le.AdvertisingSet
+import android.bluetooth.le.AdvertisingSetCallback
+import android.bluetooth.le.AdvertisingSetParameters
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
 import android.content.pm.PackageManager
@@ -68,12 +72,18 @@ class CubechatBlePeripheralPlugin(
     /// phone in a pocket that nobody is looking for. It is the largest constant
     /// radio cost the app has while idle.
     ///
-    /// LOW_POWER moves that to ~1 s and drops the transmit level a notch: a
-    /// quarter of the radio events, and a peer who *is* looking still finds us
-    /// within their scan window, because their window is seconds wide and they
-    /// are the one in the foreground doing the looking. Discoverability is
-    /// unchanged in the case that matters; what goes away is shouting at an
-    /// empty room four times a second.
+    /// LOW_POWER moves that to ~1 s: a quarter of the radio events, and a peer
+    /// who *is* looking still finds us within their scan window, because their
+    /// window is seconds wide and they are the one in the foreground doing the
+    /// looking. Discoverability is unchanged in the case that matters; what
+    /// goes away is shouting at an empty room four times a second.
+    ///
+    /// It no longer drops the transmit level too (it went to LOW here until
+    /// 2026-11-20). The saving is in how often we transmit, not how loud: each
+    /// advertising event is a few hundred microseconds on air, so the level
+    /// moves the average current by almost nothing. What LOW did cost was
+    /// reach — and the phone in a pocket is exactly the relay a message
+    /// between two other people has to be heard by. See [buildAdvertiseSettings].
     private var lowPower = false
 
     /// Whether advertising should run at LOW_LATENCY: only while the AirDrop
@@ -343,6 +353,7 @@ class CubechatBlePeripheralPlugin(
             advertiser?.startAdvertising(settings, advertiseData, scanResponse, advertiseCallback)
             emitLog("advertiser.startAdvertising called")
             running = true
+            startCodedSet(adapter)
             true
         } catch (e: SecurityException) {
             emitLog("advertise denied (SecurityException): ${e.message}")
@@ -360,9 +371,25 @@ class CubechatBlePeripheralPlugin(
                     else -> AdvertiseSettings.ADVERTISE_MODE_BALANCED
                 }
             )
+            // HIGH everywhere except the bump page. Was MEDIUM (LOW in the
+            // background) until 2026-11-20: roughly -7 dBm against +1 dBm on
+            // typical chips, ~8 dB that the far edge of the mesh was not using.
+            // Advertising is what a phone at the edge has to hear before it can
+            // connect at all, so this is the reach of every hop, not only of
+            // discovery. The connection itself keeps whatever level the
+            // controller picks; Android gives no handle on that.
+            //
+            // The bump page keeps MEDIUM: every threshold in ProximityTracker
+            // and BumpController was measured against it (see [fast]). With
+            // the app out of sight there is no page, so LOW_POWER gets HIGH.
+            //
+            // Unmeasured in the field when it landed — the walk test that goes
+            // with it compares the "last link RSSI" line BleGattClient logs on
+            // link loss, and the distance a text still arrives at, against a
+            // MEDIUM build.
             .setTxPowerLevel(
-                if (lowPower) AdvertiseSettings.ADVERTISE_TX_POWER_LOW
-                else AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM
+                if (fast && !lowPower) AdvertiseSettings.ADVERTISE_TX_POWER_MEDIUM
+                else AdvertiseSettings.ADVERTISE_TX_POWER_HIGH
             )
             .setConnectable(true)
             .setTimeout(0)
@@ -386,9 +413,9 @@ class CubechatBlePeripheralPlugin(
     }
 
     private fun modeName(): String = when {
-        lowPower -> "LOW_POWER"
-        fast -> "LOW_LATENCY"
-        else -> "BALANCED"
+        lowPower -> "LOW_POWER/TX_HIGH"
+        fast -> "LOW_LATENCY/TX_MEDIUM"
+        else -> "BALANCED/TX_HIGH"
     }
 
     /// Restart the live advertisement with [buildAdvertiseSettings].
@@ -426,8 +453,104 @@ class CubechatBlePeripheralPlugin(
         }
     }
 
+    /// The long-range advertisement: a second advertising set on LE Coded PHY,
+    /// alongside the ordinary one, never instead of it — iPhones cannot hear
+    /// Coded at all, and neither can an Android without the hardware.
+    ///
+    /// Coded (S=8) trades speed for about 12 dB of receiver sensitivity, which
+    /// in open air is several times the distance of 1M. Only a central that
+    /// opens links on Coded can use it — ours does since 2026-11-20 (see
+    /// third_party/flutter_blue_plus_android/CUBECHAT_PATCH.md) — and the
+    /// link that results is moved back to 1M/2M by BleGattClient as soon as
+    /// the signal is strong enough, because Coded is eight times slower.
+    ///
+    /// What it carries is the rotating id as service data and nothing else —
+    /// the same eight bytes the ordinary set already puts in its scan response,
+    /// so nothing new is broadcast. The service UUID is left out of the UUID
+    /// list on purpose: an older build scans by that list, cannot connect over
+    /// Coded, and must not see this set at all (BleScanner._isCodedOnly).
+    ///
+    /// Always at the slow interval (about 1 s, HIGH transmit level): a Coded
+    /// advertising event is several milliseconds on air, against a few hundred
+    /// microseconds for 1M, and a peer at the edge of range needs to hear us
+    /// once per scan window, not four times a second. Best effort — a chipset
+    /// that cannot run a second set fails here, which is logged and ignored.
+    private fun startCodedSet(adapter: BluetoothAdapter) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        if (codedRunning) return
+        if (!adapter.isLeCodedPhySupported || !adapter.isLeExtendedAdvertisingSupported) {
+            emitLog("long range: not supported by this chipset (coded=" +
+                "${adapter.isLeCodedPhySupported} extended=" +
+                "${adapter.isLeExtendedAdvertisingSupported})")
+            return
+        }
+        val adv = advertiser ?: return
+        val svc = serviceUuid ?: return
+        val cb = codedCallback ?: return
+        val id = advertisedId
+        if (id == null || id.isEmpty()) return
+        val params = AdvertisingSetParameters.Builder()
+            .setLegacyMode(false)
+            .setConnectable(true)
+            .setScannable(false)
+            .setPrimaryPhy(BluetoothDevice.PHY_LE_CODED)
+            .setSecondaryPhy(BluetoothDevice.PHY_LE_CODED)
+            .setInterval(AdvertisingSetParameters.INTERVAL_HIGH)
+            .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_HIGH)
+            .build()
+        val data = AdvertiseData.Builder()
+            .setIncludeDeviceName(false)
+            .setIncludeTxPowerLevel(false)
+            .addServiceData(ParcelUuid(svc), id)
+            .build()
+        try {
+            adv.startAdvertisingSet(params, data, null, null, null, cb)
+            codedRunning = true
+        } catch (e: SecurityException) {
+            emitLog("long range: denied (SecurityException): ${e.message}")
+        } catch (e: IllegalArgumentException) {
+            emitLog("long range: refused: ${e.message}")
+        }
+    }
+
+    private fun stopCodedSet() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        if (!codedRunning) return
+        codedRunning = false
+        val cb = codedCallback ?: return
+        try {
+            advertiser?.stopAdvertisingSet(cb)
+        } catch (_: SecurityException) {
+            // ignore
+        }
+    }
+
+    private var codedRunning = false
+
+    private val codedCallback: AdvertisingSetCallback? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            object : AdvertisingSetCallback() {
+                override fun onAdvertisingSetStarted(
+                    advertisingSet: AdvertisingSet?,
+                    txPower: Int,
+                    status: Int,
+                ) {
+                    if (status == ADVERTISE_SUCCESS) {
+                        emitLog("long range: Coded set advertising at $txPower dBm")
+                    } else {
+                        codedRunning = false
+                        emitLog("long range: Coded set failed status=$status " +
+                            "(2=TOO_MANY_ADVERTISERS 4=INTERNAL_ERROR 5=FEATURE_UNSUPPORTED)")
+                    }
+                }
+            }
+        } else {
+            null
+        }
+
     private fun stopPeripheral() {
         running = false
+        stopCodedSet()
         try {
             advertiser?.stopAdvertising(advertiseCallback)
         } catch (_: SecurityException) {

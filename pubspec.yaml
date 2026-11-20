@@ -186,6 +186,10 @@ dependency_overrides:
   # Its libopus linked for 16 KB pages; see that folder's CUBECHAT_PATCH.md.
   opus_flutter_android:
     path: third_party/opus_flutter_android
+  # Opens links on LE Coded as well as 1M, so the long-range advertising set
+  # can be connected to; see that folder's CUBECHAT_PATCH.md.
+  flutter_blue_plus_android:
+    path: third_party/flutter_blue_plus_android
 
 dev_dependencies:
   flutter_lints: ^4.0.0
