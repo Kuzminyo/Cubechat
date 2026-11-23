@@ -5538,7 +5538,21 @@ class _ChatBottomBarState extends ConsumerState<_ChatBottomBar>
     // open and no new message arrives, which is exactly the case where somebody
     // is watching the other person's tick fail to turn over.
     ref.listen(chatSessionManagerProvider, (_, __) => _maybeSendReadReceipts());
-    ref.listen(relayStatusProvider, (_, __) => _maybeSendReadReceipts());
+    // The relays only on the change that matters: from none connected to at
+    // least one. It listened to every state message, and with no network the
+    // pool sends one per relay per retry — a 1215 log (2026-11-23) with a chat
+    // open offline ran the receipt sweep and wrote "nothing to ack" 903 times
+    // in six and a half minutes, which washed the rest of the log out of the
+    // 1000-line buffer. A relay going down, or a second one coming up, gives a
+    // receipt no new road.
+    ref.listen<bool>(
+      relayStatusProvider.select(
+        (states) => states.values.any((s) => s == RelayState.connected),
+      ),
+      (_, connected) {
+        if (connected) _maybeSendReadReceipts();
+      },
+    );
     // Voice notes are still 1:1: a room relays every chunk through every
     // member, so the cost of an attachment there is paid by everyone. Photos
     // are worth that and are capped by the picker; see
