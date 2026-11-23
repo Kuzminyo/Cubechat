@@ -10740,7 +10740,16 @@ class MessagingService {
     final client = _relayClient;
     if (client == null) return false;
     if (client.isConnected) return true;
-    client.wake();
+    // Through the rate limit, never `client.wake()` directly. This is the path
+    // [wakeRelays]' doc warns about — every send with no road — and calling
+    // the client here went round that limit: a log from 1215 (2026-11-23),
+    // with no DNS for five minutes and a chat open, had every relay's backoff
+    // knocked back to 2 s again and again, each reset lined up with the chat
+    // marking itself read — a mark that goes to the account's other devices
+    // by this path. 28 attempts per relay where the doubling should have
+    // reached two minutes. Within the gap the sockets a
+    // recent wake started are still opening, so waiting below still works.
+    wakeRelays();
     if (client.isConnected) return true;
     try {
       await client.stateChanges
