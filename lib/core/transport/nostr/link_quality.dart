@@ -172,13 +172,42 @@ class LinkQualityMeter {
   /// minute. Nothing counts inside [_exitGrace] after leaving slow mode.
   void recordConnect(String url, Duration elapsed, {bool anchor = false}) {
     _lastConnect = elapsed;
-    if (_slow || elapsed <= _slowConnect) return;
+    if (elapsed <= _slowConnect) return;
+    _countSlowConnect(url, anchor: anchor);
+  }
+
+  void _countSlowConnect(String url, {required bool anchor}) {
+    if (_slow) return;
     final now = _clock();
     final left = _fastSince;
     if (left != null && now.difference(left) < _exitGrace) return;
     _slowConnects[url] = now;
     _slowConnects.removeWhere((_, at) => now.difference(at) > _connectWindow);
     if (anchor || _slowConnects.length >= 2) _setSlow(true);
+  }
+
+  /// A socket to [url] gave up connecting after [after] without finishing.
+  ///
+  /// Counted as a slow connect, because on EDGE it is the slowest one there
+  /// is. Only finished handshakes were counted before, and on a link where
+  /// nine sockets handshake at once over a few KB/s none of them finishes
+  /// inside the pool's 15 s: no connect was measured, no publish could go to
+  /// be timed, and slow mode — the three sockets that would have had the
+  /// uplink to themselves, the 8 s wait for a socket, the outbox offered
+  /// again every 25 s — never came. Texts sat queued for as long as the
+  /// phone stayed on E.
+  ///
+  /// Never on its own, even for ours: a handshake that hangs can also be one
+  /// relay's server gone dark on a good network, so it takes a second relay
+  /// inside [_connectWindow] to say "the link". A failure that is not a
+  /// timeout — no DNS, refused — is no network or a dead relay, and does not
+  /// come here at all.
+  ///
+  /// Whatever [after] is: the pool's limit sits well past [_slowConnect], and
+  /// a handshake that did not finish inside it was slower than any that did.
+  void recordConnectTimeout(String url, Duration after) {
+    _lastConnect = after;
+    _countSlowConnect(url, anchor: false);
   }
 
   /// A publish went out and no relay answered it in time. Counted pool-wide:

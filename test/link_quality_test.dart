@@ -121,6 +121,24 @@ void main() {
     m.dispose();
   });
 
+  test('two relays giving up on their handshake make it slow', () {
+    // EDGE with nine sockets handshaking at once: none finishes in 15 s, so
+    // no finished connect is ever there to measure.
+    final m = LinkQualityMeter();
+    m.recordConnectTimeout('a', const Duration(seconds: 15));
+    expect(m.isSlow, isFalse, reason: 'one relay can be a server gone dark');
+    m.recordConnectTimeout('b', const Duration(seconds: 15));
+    expect(m.isSlow, isTrue);
+    m.dispose();
+  });
+
+  test('our relay giving up on its handshake alone is not the link', () {
+    final m = LinkQualityMeter();
+    m.recordConnectTimeout('ours', const Duration(seconds: 15));
+    expect(m.isSlow, isFalse);
+    m.dispose();
+  });
+
   test('a slow connect of our own relay makes it slow on its own', () {
     final m = LinkQualityMeter();
     m.recordConnect('ours', const Duration(seconds: 6), anchor: true);

@@ -53,6 +53,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
     void Function(List<String> ids)? onSeenIds,
     Duration? publishAckTimeout,
     Duration? probeTimeout,
+    Duration? connectTimeout,
     LinkQualityMeter? linkQuality,
     this.anchorUrl,
     List<String> pushWatchedUrls = const <String>[],
@@ -61,6 +62,7 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
         _ownsLinkQuality = linkQuality == null,
         _authSigner = authSigner,
         _probeTimeout = probeTimeout ?? defaultProbeTimeout,
+        _connectTimeout = connectTimeout ?? defaultConnectTimeout,
         _mediaSubscriptionsEnabled = subscribeToMedia,
         _mediaOnlyUrls = mediaRelayUrls.toSet().difference(<String>{
           ...relayUrls,
@@ -238,6 +240,15 @@ class WebSocketNostrRelayClient implements NostrRelayClient {
   bool _mediaSubscriptionsEnabled;
 
   final WebSocketChannel Function(Uri) _connect;
+
+  /// Longest an upgrade may take before it counts as failed. Generous next to
+  /// a real handshake — a slow relay answers in a second or two, EDGE in
+  /// 3-8 s — and short next to the OS giving up on a connect that will never
+  /// complete. Running out of it is also a measurement: see
+  /// [LinkQualityMeter.recordConnectTimeout].
+  static const Duration defaultConnectTimeout = Duration(seconds: 15);
+
+  final Duration _connectTimeout;
 
   /// Unix seconds of the newest event we've accepted, pool-wide. Sent as the
   /// REQ `since` (minus [_sinceSlack]) so neither a reconnect nor a fresh app
@@ -1244,7 +1255,7 @@ class _RelayConnection {
       // attempt there is: a TCP connect into a black hole hangs for the OS's
       // own timeout, a minute or two, and a wake() on resume could do nothing
       // for all of it. Past this it is a failure like any other, and retried.
-      await channel.ready.timeout(_connectTimeout);
+      await channel.ready.timeout(_pool._connectTimeout);
       // Each attempt answers only for its own socket. A handshake that lands
       // after its socket was torn down and replaced used to report the
       // replacement connected — or, failing late, tear the replacement down.
@@ -1268,13 +1279,14 @@ class _RelayConnection {
     } catch (e) {
       if (!identical(channel, _channel)) return;
       _onDown('connect failed: $e');
+      // After the retry is scheduled, not before: this can put the pool into
+      // slow mode, which lets this very relay go — and closing it then
+      // cancels the retry rather than leaving one behind.
+      if (e is TimeoutException) {
+        _pool._linkQuality.recordConnectTimeout(url, handshake.elapsed);
+      }
     }
   }
-
-  /// Longest an upgrade may take before it counts as failed. Generous next to
-  /// a real handshake — a slow relay answers in a second or two — and short
-  /// next to the OS giving up on a connect that will never complete.
-  static const Duration _connectTimeout = Duration(seconds: 15);
 
   WebSocketChannel _connectOrThrow() => _pool._connect(Uri.parse(url));
 

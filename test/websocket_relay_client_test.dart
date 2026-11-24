@@ -1668,6 +1668,56 @@ void main() {
     });
   });
 
+  group('handshakes that never finish', () {
+    // EDGE as a 1215 phone met it: TCP goes through, the upgrade never comes
+    // back inside the connect timeout — nine sockets sharing a few KB/s. Only
+    // finished handshakes used to be measured, so the pool never called the
+    // link slow and a queued text was never offered again.
+    Future<ServerSocket> silentServer() async {
+      final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
+      final held = <Socket>[];
+      server.listen(held.add); // accepted, never answered
+      addTearDown(() async {
+        for (final s in held) {
+          s.destroy();
+        }
+        await server.close();
+      });
+      return server;
+    }
+
+    test('two of them make the link slow', () async {
+      final a = await silentServer();
+      final b = await silentServer();
+      final urls = ['ws://127.0.0.1:${a.port}', 'ws://127.0.0.1:${b.port}'];
+      final client = WebSocketNostrRelayClient(
+        relayUrls: const [],
+        conversationRelayUrls: urls,
+        connectTimeout: const Duration(milliseconds: 300),
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await _until(() => client.isSlow, reason: 'slow mode');
+      expect(client.isConnected, isFalse);
+    });
+
+    test('refused connects are no network, not a slow one', () async {
+      final client = WebSocketNostrRelayClient(
+        relayUrls: const [],
+        conversationRelayUrls: const ['ws://localhost:9', 'ws://localhost:7'],
+        connectTimeout: const Duration(milliseconds: 300),
+      );
+      addTearDown(client.dispose);
+      client.start();
+      await _until(
+        () => client.states.values.every((s) => s == RelayState.failed),
+        reason: 'both refused',
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      expect(client.isSlow, isFalse);
+    });
+  });
+
   test('publish ignores a socket that has not finished connecting', () async {
     final relay = await _FakeRelayServer.start();
     addTearDown(relay.stop);
