@@ -532,6 +532,16 @@ class _PeopleMapScreenState extends ConsumerState<PeopleMapScreen>
 
     return Scaffold(
       backgroundColor: AppColors.bgDeep,
+      // The map never shrinks for the keyboard. There is no text field on this
+      // screen, and the resize was the cause of a white band: leave the app
+      // with the keyboard up anywhere (the Chats search), come back, and the
+      // map is rebuilt for its dead surface (see [didChangeAppLifecycleState])
+      // while the keyboard is still on screen — so the native view is created
+      // a keyboard short. Tap the map tab, the keyboard goes, the widget grows
+      // back to full height, and on Android the texture-layer view left the
+      // strip the keyboard had covered white. A map the same size whatever
+      // the keyboard does has nothing to grow back into.
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           Positioned.fill(
