@@ -51,6 +51,9 @@ Future<T?> showGlassSheet<T>({
   bool useRootNavigator = true,
   bool isScrollControlled = true,
   EdgeInsets margin = const EdgeInsets.fromLTRB(12, 0, 12, 12),
+  // False for a sheet with no text field of its own, opened from one that has
+  // the keyboard up: see [pickAreaDistrict].
+  bool avoidKeyboard = true,
 }) {
   return showModalBottomSheet<T>(
     context: context,
@@ -69,7 +72,8 @@ Future<T?> showGlassSheet<T>({
           right: margin.right,
           // Above the keyboard when there is one, above the gesture bar when
           // there is not.
-          bottom: margin.bottom + MediaQuery.viewInsetsOf(context).bottom,
+          bottom: margin.bottom +
+              (avoidKeyboard ? MediaQuery.viewInsetsOf(context).bottom : 0),
         ),
         // The bar's own glass, not an approximation of it: same blur, same
         // neutral gradient, same hairline, same two black shadows. A sheet that

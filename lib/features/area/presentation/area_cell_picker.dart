@@ -33,6 +33,12 @@ Future<String?> pickAreaDistrict(
 }) =>
     showGlassSheet<String>(
       context: context,
+      // Opened from the notes sheet, usually mid-note with the keyboard up,
+      // which then goes as this sheet takes focus. Lifted for it, the sheet
+      // would open a keyboard short and grow back, and a texture-layer map
+      // that grows leaves the new strip unpainted — the band the map tab had.
+      // There is nothing to type here, so it ignores the keyboard.
+      avoidKeyboard: false,
       builder: (_) => _AreaCellPicker(city: city),
     );
 
