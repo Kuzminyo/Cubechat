@@ -83,7 +83,13 @@ class PlatformRadioAudio implements RadioAudioSink {
     try {
       await channel.invokeMethod<void>(method, arguments);
     } on PlatformException catch (e) {
-      DebugLog.instance.log('RADIO', 'audio $method failed: ${e.code}');
+      // The message too: on iOS it is the AVAudioSession error, and `audio`
+      // alone could not tell a background refusal from a missing format.
+      DebugLog.instance.log(
+        'RADIO',
+        'audio $method failed: ${e.code}'
+            '${e.message == null ? '' : ' — ${e.message}'}',
+      );
     } on MissingPluginException {
       // No native player on this platform; silence is the honest answer.
     }

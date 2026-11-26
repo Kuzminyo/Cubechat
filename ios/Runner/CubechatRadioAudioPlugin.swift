@@ -72,11 +72,14 @@ final class CubechatRadioAudioPlugin: NSObject {
       let sampleRate = (args?["sampleRate"] as? NSNumber)?.doubleValue ?? 48_000
       let playInSilentMode = (args?["playInSilentMode"] as? Bool) ?? false
       let inCall = (args?["inCall"] as? Bool) ?? false
+      // Read here, on the main thread, where UIApplication may be asked.
+      let inBackground = UIApplication.shared.applicationState != .active
       queue.async {
         let error = self.start(
           sampleRate: sampleRate,
           playInSilentMode: playInSilentMode,
-          inCall: inCall
+          inCall: inCall,
+          inBackground: inBackground
         )
         DispatchQueue.main.async {
           if let error {
@@ -103,7 +106,12 @@ final class CubechatRadioAudioPlugin: NSObject {
   }
 
   /// Returns an error message, or nil when the speaker is open.
-  private func start(sampleRate: Double, playInSilentMode: Bool, inCall: Bool) -> String? {
+  private func start(
+    sampleRate: Double,
+    playInSilentMode: Bool,
+    inCall: Bool,
+    inBackground: Bool
+  ) -> String? {
     // "Start twice restarts cleanly": the first engine is gone before the
     // second is built.
     teardown(inCall: inCall)
@@ -115,7 +123,15 @@ final class CubechatRadioAudioPlugin: NSObject {
         // ducks other audio under the voice (the Android side asks for
         // MAY_DUCK) and the matching deactivation in `teardown` hands it back;
         // `.ambient` mixes with everything already.
-        if playInSilentMode {
+        //
+        // In the background it is always `.playback`. iOS silences `.ambient`
+        // once the app leaves the screen, so with the toggle off a radio
+        // message heard in the background played to nobody — "no sound from
+        // the radio in the background", iPhone, 2026-11-26. `.playback` with
+        // `.duckOthers` is mixable, which is what a backgrounded app with the
+        // `audio` mode may still activate. The cost: in the background the
+        // silent switch no longer mutes the radio, the same as a ringing call.
+        if playInSilentMode || inBackground {
           try session.setCategory(.playback, mode: .default, options: [.duckOthers])
         } else {
           try session.setCategory(.ambient, mode: .default, options: [])
