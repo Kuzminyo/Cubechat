@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/widgets.dart';
 
 import 'debug_log.dart';
+import 'resume_probe.dart';
 
 /// Notices when the UI thread stopped answering.
 ///
@@ -66,9 +67,14 @@ class UiStallWatch with WidgetsBindingObserver {
     // in a pocket — a meter that cries loudest when nothing is wrong is a meter
     // people learn to ignore.
     if (_foreground && late > _report) {
+      // Soon after a return, say how soon: the stall in the 2026-11-26 iPhone
+      // log came half a second after one, and the [RESUME] line beside it is
+      // what can then say which step it was.
+      final since = ResumeProbe.instance.sinceResume();
       DebugLog.instance.log(
         'STALL',
-        'UI thread did not answer for ${late.inMilliseconds} ms',
+        'UI thread did not answer for ${late.inMilliseconds} ms'
+            '${since == null ? '' : ', ${since.inMilliseconds} ms after resume'}',
       );
     }
     _schedule();

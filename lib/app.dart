@@ -25,6 +25,8 @@ import 'core/notifications/push_registration.dart';
 import 'app/app_router.dart';
 import 'core/transport/messaging_service.dart';
 import 'core/util/app_lifecycle.dart';
+import 'core/util/keyboard_on_return.dart';
+import 'core/util/resume_probe.dart';
 import 'features/profile/data/app_lock_controller.dart';
 import 'app/wipe_service.dart';
 import 'features/profile/data/dead_mans_switch_controller.dart';
@@ -216,6 +218,10 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
   /// skips the network when a verified answer is younger than that — so a
   /// resume or a network change in between costs nothing either.
   Timer? _banListTimer;
+
+  /// The keyboard that was up when the app was left, asked for again on the
+  /// way back. Android only: it is the platform that drops it.
+  final _keyboardOnReturn = KeyboardOnReturn();
 
   void _refreshModeration() {
     unawaited(ref.read(reportClientProvider).flush());
@@ -697,6 +703,10 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Every step of a return is timed, and the line lands in Diagnostics as
+    // [RESUME] — see [ResumeProbe] for the stall it is chasing.
+    final probe = ResumeProbe.instance;
+    if (state == AppLifecycleState.resumed) probe.begin();
     // Track foreground state so the messaging layer only raises a system
     // notification for messages that arrive while the user isn't looking.
     AppLifecycle.instance.isForeground = state == AppLifecycleState.resumed;
@@ -708,15 +718,23 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // back asks again only if the grace has run out.
     final lock = ref.read(appLockControllerProvider.notifier);
     if (state == AppLifecycleState.resumed) {
-      _refreshModeration();
+      probe.step('moderation', _refreshModeration);
       // Measured apart from any chat opened straight after, when the
       // transition probe is armed - see [TransitionProbe.noteResume].
       TransitionProbe.instance.noteResume();
-      lock.noteReturned();
-      unawaited(_checkDeadMansSwitch());
+      probe.step('lock', lock.noteReturned);
+      unawaited(probe.step('deadMan', _checkDeadMansSwitch));
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       lock.noteLeft();
+    }
+    // After the lock has had its say: a returning app that is now locked
+    // keeps its keyboard for the lock screen.
+    if (PlatformInfo.isAndroid) {
+      _keyboardOnReturn.onLifecycle(
+        state,
+        locked: ref.read(appLockControllerProvider).locked,
+      );
     }
     // Only the two states that mean something — the same filter the presence
     // beacon below already uses, and for the same reason.
@@ -730,7 +748,12 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // choosing between saves.
     if (state == AppLifecycleState.resumed ||
         state == AppLifecycleState.paused) {
-      _applyBackgroundRadioPolicy(resumed: state == AppLifecycleState.resumed);
+      probe.step(
+        'radioPolicy',
+        () => _applyBackgroundRadioPolicy(
+          resumed: state == AppLifecycleState.resumed,
+        ),
+      );
     }
     // Tell internet-reachable peers we've arrived / are leaving, so their "in
     // the app" dot flips now instead of waiting out the heartbeat. The goodbye
@@ -747,8 +770,11 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
     // rejected real messages too.
     if (state == AppLifecycleState.resumed ||
         state == AppLifecycleState.paused) {
-      _announcePresenceDebounced(
-        online: state == AppLifecycleState.resumed,
+      probe.step(
+        'presence',
+        () => _announcePresenceDebounced(
+          online: state == AppLifecycleState.resumed,
+        ),
       );
     }
     // Message writes are coalesced behind a short debounce, so leaving is the
@@ -769,7 +795,10 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       // iOS tears the relay sockets down while suspended and nothing was
       // asking them to come back, so a returning iPhone had no relay for up to
       // the two minutes its backoff had grown to.
-      ref.read(messagingServiceProvider).wakeRelays(force: true);
+      probe.step(
+        'relays',
+        () => ref.read(messagingServiceProvider).wakeRelays(force: true),
+      );
       // Say the push switch's current position again, now that there is very
       // likely a network.
       //
@@ -781,20 +810,38 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
       // to the foreground is the moment a phone most reliably has a connection
       // again, which makes it the right moment to re-state a promise that may
       // not have landed.
-      _refreshPushRegistration();
-      ref.read(backgroundModeProvider.notifier).apply();
-      ref.read(mapPresenceControllerProvider.notifier).resume();
+      probe.step('push', _refreshPushRegistration);
+      probe.step(
+        'backgroundMode',
+        () => ref.read(backgroundModeProvider.notifier).apply(),
+      );
+      probe.step(
+        'map',
+        () => ref.read(mapPresenceControllerProvider.notifier).resume(),
+      );
       // The BLE scan cadence is picked when a window opens, so coming back
       // mid-idle-cycle would leave discovery sluggish for up to 30 s with the
       // user looking straight at the Nearby list. Re-pick it now.
       unawaited(
-          ref.read(peerDiscoveryControllerProvider.notifier).retuneScan());
+        probe.step(
+          'scan',
+          () => ref.read(peerDiscoveryControllerProvider.notifier).retuneScan(),
+        ),
+      );
       // Coming back into an open chat: whatever piled up for it while we were
       // away has already been read the moment it's on screen.
       final open = AppLifecycle.instance.activeChatId;
       if (open != null) {
-        unawaited(NotificationService.instance.clearForChat(open));
-        ref.read(readMarkersControllerProvider.notifier).markRead(open);
+        unawaited(
+          probe.step(
+            'clearNotifications',
+            () => NotificationService.instance.clearForChat(open),
+          ),
+        );
+        probe.step(
+          'markRead',
+          () => ref.read(readMarkersControllerProvider.notifier).markRead(open),
+        );
       }
       // And the generic "new message" banner the push service may have rung,
       // whatever it was about: the app is open now, so it has been answered by
@@ -804,6 +851,7 @@ class _CubechatAppState extends ConsumerState<CubechatApp>
         NotificationService.instance
             .dismissStaleDoorbell(within: Duration.zero),
       );
+      probe.endHandler();
     }
   }
 
