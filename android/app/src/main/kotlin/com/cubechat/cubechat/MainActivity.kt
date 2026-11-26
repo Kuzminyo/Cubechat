@@ -7,9 +7,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsAnimation
 import android.view.WindowManager
 import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
@@ -233,8 +237,52 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
+        resyncInsetsAfterKeyboard()
         answerFromIntent(intent)
         shareFromIntent(intent)
+    }
+
+    /**
+     * Re-reads the window's insets once every keyboard animation has finished,
+     * so Flutter cannot be left holding a keyboard that is no longer there.
+     *
+     * Flutter's engine (ImeSyncDeferringInsetsCallback, API 30+) drops every
+     * insets update that arrives while a keyboard animation runs, and when the
+     * animation ends it applies the insets it saved when the animation began.
+     * Coming back to the app with the keyboard up, Android starts restoring the
+     * keyboard and then hides it again mid-animation: the "hidden" update is
+     * dropped, the saved "shown" insets are applied at the end, and nothing ever
+     * corrects them. Every screen then keeps room for an invisible keyboard:
+     * the composer stays halfway up the chat, the tab bar loses its bottom
+     * padding, and the map comes out a keyboard short with a dark band below.
+     * Seen on a phone on 2026-11-26.
+     *
+     * Asking for the insets again after the animation, when the engine has
+     * stopped deferring, hands it the real state. When nothing was lost it is
+     * the same insets again, which changes nothing.
+     *
+     * The callback goes on the content view, the FlutterView's parent, because
+     * the FlutterView's own slot is the engine's. CONTINUE_ON_SUBTREE keeps
+     * the engine's callback running below this one.
+     */
+    private fun resyncInsetsAfterKeyboard() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val content = findViewById<View>(android.R.id.content) ?: return
+        content.setWindowInsetsAnimationCallback(
+            object : WindowInsetsAnimation.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+                override fun onProgress(
+                    insets: WindowInsets,
+                    runningAnimations: MutableList<WindowInsetsAnimation>,
+                ): WindowInsets = insets
+
+                override fun onEnd(animation: WindowInsetsAnimation) {
+                    if (animation.typeMask and WindowInsets.Type.ime() == 0) return
+                    // Posted: the engine's own onEnd runs after this one, and
+                    // until it has, a fresh dispatch would be dropped too.
+                    content.post { content.requestApplyInsets() }
+                }
+            },
+        )
     }
 
     override fun onNewIntent(intent: Intent) {
