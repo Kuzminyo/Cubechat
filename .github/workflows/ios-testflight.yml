@@ -55,7 +55,14 @@ jobs:
   upload:
     name: Sign and upload to TestFlight
     needs: verify
-    runs-on: macos-15
+    # The image that carries Xcode 27. Build 1218 went up from macos-15, whose
+    # newest Xcode is 26.x, and App Store Connect answered with ITMS-90725:
+    # built with the iOS 26.2 SDK, and from April 2027 an upload needs the
+    # iOS 27 SDK. Neither macos-15 nor macos-26 lists a 27.x Xcode
+    # (runner-images README, checked 2026-11-26); Xcode 27 is only on the
+    # separate `xcode-27` image, which GitHub still calls a public preview.
+    # When macos-26 (or its successor) ships Xcode 27, move back to it.
+    runs-on: xcode-27
 
     steps:
       - name: Checkout
@@ -64,7 +71,9 @@ jobs:
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: latest-stable
+          # Pinned to the major, not latest-stable: "latest" is what quietly
+          # stayed on 26.x while the SDK requirement moved.
+          xcode-version: '27'
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
